@@ -1,5 +1,7 @@
 ﻿@using Blazemoji.Layout;
+@using Microsoft.JSInterop;
 @using MudBlazor
+@inject IJSRuntime _jsRuntime
 @inherits LayoutComponentBase
 
 <MudLayout>
@@ -44,8 +46,16 @@
     private bool _isDarkMode = false;
     private string _themeIcon = Icons.Material.Outlined.LightMode;
 
-    private void ToggleDarkMode()
+    private async Task ToggleDarkMode()
     {
         _isDarkMode = !_isDarkMode;
+        if(_isDarkMode)
+        {
+            await BlazorMonaco.Editor.Global.SetTheme(_jsRuntime, "vs-dark");
+        }
+        else
+        {
+            await BlazorMonaco.Editor.Global.SetTheme(_jsRuntime, "vs");
+        }
     }
 }
