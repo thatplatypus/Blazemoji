@@ -1,4 +1,4 @@
-﻿namespace Blazemoji.Models.Compiler
+﻿namespace Blazemoji.Shared.Models.Compiler
 {
     public class EmojicodecResult
     {

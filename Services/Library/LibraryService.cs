@@ -1,4 +1,4 @@
-﻿using Blazemoji.Models.Library;
+﻿using Blazemoji.Shared.Models.Library;
 using Blazored.LocalStorage;
 using System.Collections.Concurrent;
 using System.Linq;

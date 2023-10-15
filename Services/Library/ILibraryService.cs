@@ -1,4 +1,4 @@
-﻿using Blazemoji.Models.Library;
+﻿using Blazemoji.Shared.Models.Library;
 
 namespace Blazemoji.Services.Library
 {
