@@ -1,0 +1,19 @@
+﻿<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="FileName" Label="Enter File Name" Variant="Variant.Text" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit">Ok</MudButton>
+    </DialogActions>
+</MudDialog>
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
+
+    protected string FileName { get; set; } = "Untitled";
+    private const string _extension = "🍇";
+
+
+    void Submit() => MudDialog.Close(DialogResult.Ok($"{FileName}.{_extension}"));
+    void Cancel() => MudDialog.Cancel();
+}

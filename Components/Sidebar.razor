@@ -1,0 +1,19 @@
+﻿@using Blazemoji.Models.Library;
+<MudTabs Elevation="2" Rounded="false" ApplyEffectsToContainer="true" Centered="true" PanelClass="pa-2" MinimumTabWidth="120px">
+    <MudTabPanel Text="Toolbox" Icon="@Icons.Material.Filled.Handyman">
+       <EmojiToolbox  />
+    </MudTabPanel>
+    <MudTabPanel Text="Library" Icon="@Icons.Material.Filled.LibraryBooks">
+        <Library OnEmojicFileSelected="EmojicFileSelected" />
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    [Parameter]
+    public EventCallback<EmojicFile> OnEmojicFileSelected { get; set; }
+
+    private async Task EmojicFileSelected(EmojicFile file)
+    {
+        await OnEmojicFileSelected.InvokeAsync(file);
+    }
+}

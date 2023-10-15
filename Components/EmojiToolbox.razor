@@ -1,0 +1,52 @@
+﻿@using Blazemoji.Emojicode.Keywords;
+<div style="min-height:78vh;">
+    <MudList Clickable="false">
+    <MudListItem><h6>@EmojicodeCategory.Basics</h6></MudListItem>
+        <MudDivider />
+        <MudGrid Spacing="1" Justify="Justify.FlexStart">
+            <MudItem xs="4">
+                <Emoji Keyword="@_flag" />
+            </MudItem>
+            <MudItem xs="4">
+                <Emoji Keyword="@_grape" />
+            </MudItem>
+            <MudItem xs="4">
+                <Emoji Keyword="@_watermelon" />
+            </MudItem>
+            <MudItem xs="4">
+                <Emoji Keyword="@_grinningFace" />
+            </MudItem>
+        </MudGrid>
+        <MudListItem><h6>@EmojicodeCategory.ClassesAndValueTypes</h6></MudListItem>
+        <MudDivider />
+        <MudGrid Spacing="1" Justify="Justify.Center">
+            <MudItem xs="4">
+                <Emoji Keyword="@_letters" />
+            </MudItem>
+            <MudItem xs="4">
+                <Emoji Keyword="@_new" />
+            </MudItem>
+            <MudItem xs="4">
+                <Emoji Keyword="@_exclamation" />
+            </MudItem>
+        </MudGrid>
+    </MudList>
+</div>
+
+@code {
+    [Parameter]
+    public EventCallback<EmojicodeKeyword>? OnEmojicodeSelected { get; set; }
+
+    private Grape _grape = new();
+    private Watermelon _watermelon = new();
+    private Flag _flag = new();
+    private Letters _letters = new();
+    private New _new = new();
+    private GrinningFace _grinningFace = new();
+    private Exclamation _exclamation = new();
+
+    private async Task EmojicodeSelected(MouseEventArgs e, EmojicodeKeyword emoji)
+    {
+        await OnEmojicodeSelected?.InvokeAsync(emoji);
+    }
+}

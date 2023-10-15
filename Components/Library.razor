@@ -1,0 +1,129 @@
+﻿@using Blazemoji.Models.Library;
+@using Blazemoji.Services.Library;
+@using Blazemoji.Shared.Components;
+@using Blazemoji.Shared.State;
+@inject ILibraryService _libraryService
+@inject IDialogService _dialogService
+@inject LocalStorageFiles _localStorageFiles
+
+<div style="min-height:78vh;">
+<h3>Library</h3>
+
+<p>Click a file to load it to the editor.</p>
+@if (_sampleFiles != null)
+{
+    <MudTreeView T="string" Dense="true">
+        <MudTreeViewItem @bind-Expanded="@_expanded" Value="@("Samples")">
+            @foreach (var sample in _sampleFiles)
+            {
+                <MudTooltip Style="text-align:left;" Placement="Placement.Right">
+                    <ChildContent>
+                        <MudTreeViewItem Class="text-nowrap tree-view-no-arrow" Style="cursor:pointer;" Value="@sample.Name" OnClick="async () => await EmojicFileSelected(sample)" />
+                    </ChildContent>
+                    <TooltipContent>
+                        <pre>
+                            @sample.Code
+                        </pre>
+                    </TooltipContent>
+                </MudTooltip>
+                <MudDivider />
+            }
+        </MudTreeViewItem>
+            <MudTreeViewItem OnClick="ClearLocalStorage" @bind-Expanded="@_localStorageExpanded" title="Clear local storage" Class="mt-4" Style="cursor:pointer;" Value="@("Local Storage 🗑️")">
+                @if (_userFiles != null)
+                {
+                    @foreach (var file in _userFiles)
+                    {
+                        <MudTooltip Style="text-align:left;" Placement="Placement.Right">
+                            <ChildContent>
+                                <MudTreeViewItem Class="text-nowrap tree-view-no-arrow" Style="cursor:pointer;" Value="@file.Name" OnClick="async () => await EmojicFileSelected(file)" />
+                            </ChildContent>
+                            <TooltipContent>
+                                <pre>
+                                    @file.Code
+                                </pre>
+                            </TooltipContent>
+                        </MudTooltip>
+                        <MudDivider />
+                    }
+                }
+        </MudTreeViewItem>
+    </MudTreeView>
+}
+</div>
+
+@code {
+    private List<EmojicFile> _sampleFiles;
+    private List<EmojicFile> _userFiles;
+
+    private bool _expanded = true;
+    private bool _localStorageExpanded = true;
+
+    [Parameter]
+    public EventCallback<EmojicFile> OnEmojicFileSelected { get; set; }
+
+    public EventCallback OnUserFileSaved { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _sampleFiles = await _libraryService.GetAllSamplesAsync();
+        _sampleFiles = _sampleFiles.OrderBy(x => x.Name).ToList();
+
+        _localStorageFiles.LocalStorageStateChanged += LocalFileStateChanged;
+
+        await base.OnInitializedAsync();
+    }
+
+    private async void LocalFileStateChanged(object? sender, EventArgs args)
+    {
+        _userFiles = _localStorageFiles.Files;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if(firstRender)
+        {
+            try
+            {
+                _userFiles = (await _libraryService.GetUserSavedFiles()).OrderBy(x => x.Name).ToList();
+                _localStorageFiles.Files = _userFiles;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+        }
+
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    protected async Task EmojicFileSelected(EmojicFile emojicFile)
+    {
+        await OnEmojicFileSelected.InvokeAsync(emojicFile);
+    }
+
+    private async Task ClearLocalStorage()
+    {
+        var parameters = new DialogParameters<DestructiveDialog>();
+        parameters.Add(x => x.Text, "Do you really want to clear local emojicode .🍇 files?");
+
+        var options = new DialogOptions() { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall };
+
+        var dialogResult = await _dialogService.ShowAsync<DestructiveDialog>("🗑️ Clear Local Storage", parameters, options);
+        var dialog = await dialogResult.Result;
+
+        if(dialog.Canceled)
+        {
+            return;
+        }
+
+        await _libraryService.ClearLocalStorageAsync();
+        _localStorageFiles.Files = await _libraryService.GetUserSavedFiles();
+    }
+
+    public void Dispose()
+    {
+        _localStorageFiles.LocalStorageStateChanged -= LocalFileStateChanged;
+    }
+}

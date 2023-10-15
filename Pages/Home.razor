@@ -1,0 +1,160 @@
+﻿@page "/"
+@inject ICompilerService _compilerService
+@inject ILibraryService _libraryService
+@inject IDialogService _dialogService
+@inject LocalStorageFiles _localStorageFiles
+@using System.Diagnostics;
+@using Blazemoji.Components;
+@using Blazemoji.Models.Library;
+@using Blazemoji.Services.Compiler;
+@using Blazemoji.Services.Library;
+@using Blazemoji.Shared.State;
+@using BlazorMonaco.Editor
+@using MudBlazor
+
+<MudContainer Style="max-height:80vh;overflow-auto;" MaxWidth="MaxWidth.ExtraExtraLarge">
+    <MudGrid Justify="Justify.Center" Spacing="1">
+        <MudItem xs="2">
+            <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" />
+        </MudItem>
+        <MudItem xs="7">
+            <MudPaper Elevation="25" Class="mb-2">
+                <MudToolBar>
+                    <h4>🍇 Emojicode Editor</h4>
+                    <MudSpacer />
+                    <MudTooltip Text="Save Code">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Save" OnClick="SaveEmojicode" />
+                    </MudTooltip>
+                     <MudButton Variant="@Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="RunEmojiCodeClicked" Disabled="_loading" Color="Color.Success">
+                         @if(_loading){
+                            <span class="mr-2">Running...</span>
+                            <MudProgressCircular Indeterminate="true" Style="max-width:1rem;max-height:1rem;" Color="Color.Primary" />
+                        }
+                        else
+                        {
+                            <span>Run Code</span>
+                        }
+
+                     </MudButton>
+                </MudToolBar>
+            </MudPaper>
+            <EmojiCodeEditor @ref="_editor" />
+        </MudItem>
+        <MudItem xs="3">
+            <MudPaper Height="100%" Style="position:relative">
+            <MudOverlay DarkBackground="true"  Absolute="true" Visible="_loading">
+                @if(_loading)
+                {                        
+                    <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
+                }
+            </MudOverlay>
+            <OutputPanel Output="@_output" />
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private EmojiCodeEditor _editor = default!;
+
+    private string _output = "";
+    private bool _loading = false;
+    private Sidebar _sidebar;
+
+    protected async Task RunEmojiCodeClicked()
+    {
+        string code = await _editor.GetCodeAsync();
+
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+
+            var compilerResult = _compilerService.CompileEmojicode(code);
+
+            if(compilerResult.Error)
+            {
+                _output = compilerResult.Message;
+                _loading = false;
+                return;
+            }
+
+            _output = "";
+
+            //RunCompiled Code
+            Process compiledCode = new Process();
+            compiledCode.StartInfo.FileName = compilerResult.Result;
+            compiledCode.StartInfo.UseShellExecute = false;
+            compiledCode.StartInfo.RedirectStandardOutput = true;
+            compiledCode.StartInfo.RedirectStandardError = true;
+            compiledCode.StartInfo.CreateNoWindow = true;
+
+            compiledCode.Start();
+
+            string codeOutput = string.Empty;
+            string codeError = string.Empty;
+
+            compiledCode.OutputDataReceived += (sender, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    codeOutput += e.Data + Environment.NewLine;
+                }
+            };
+
+            compiledCode.ErrorDataReceived += (sender, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    codeError += e.Data + Environment.NewLine;
+                }
+            };
+
+            compiledCode.BeginOutputReadLine();
+            compiledCode.BeginErrorReadLine();
+
+            compiledCode.WaitForExit();
+
+            _output += Environment.NewLine + Environment.NewLine + codeOutput + Environment.NewLine + Environment.NewLine + codeError;
+        }
+        catch(Exception ex)
+        {
+            Console.WriteLine(ex.Message); 
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadEmojicFile(EmojicFile file)
+    {
+        await _editor.SetCodeAsync(file.Code);
+    }
+
+    private async Task SaveEmojicode()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var dialogResponse = await _dialogService.ShowAsync<SaveFileDialog>("Save File As", options);
+        var result = await dialogResponse.Result;
+        if(result.Canceled)
+        {
+            return;
+        }
+
+        var code = await _editor.GetCodeAsync();
+        var emojicode = new EmojicFile()
+            {
+                Name = result.Data.ToString() ?? "Untitled.🍇",
+                Code = code,
+            };
+
+        await _libraryService.SaveFileToLocalStorageAsync(emojicode);
+
+        var newFiles = await _libraryService.GetUserSavedFiles();
+
+        _localStorageFiles.Files = newFiles.OrderBy(x => x.Name).ToList();
+    }
+
+}

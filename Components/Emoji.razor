@@ -1,0 +1,14 @@
+﻿<MudStack Spacing="1">
+    <MudText>@Keyword.Keyword</MudText>
+    <MudDivider />
+    <MudTooltip Text="@Keyword.Description">
+        <MudText Typo="Typo.h4">@Keyword.Emoji</MudText>
+    </MudTooltip>
+
+</MudStack>
+
+@code {
+    [Parameter]
+    public EmojicodeKeyword Keyword { get; set; } = default!;
+
+}

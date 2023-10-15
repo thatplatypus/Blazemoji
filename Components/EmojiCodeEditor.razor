@@ -1,0 +1,30 @@
+﻿@using BlazorMonaco.Editor
+
+<BlazorMonaco.Editor.StandaloneCodeEditor @ref="_editor" CssClass="editor" Id="emojiEditor" ConstructionOptions="EditorConstructionOptions" />
+
+@code {
+    private StandaloneCodeEditor _editor = default!;
+
+    private StandaloneEditorConstructionOptions EditorConstructionOptions(StandaloneCodeEditor editor)
+    {
+
+        return new StandaloneEditorConstructionOptions
+        {
+            AutomaticLayout = false,
+            Language = "emojiscript",
+            Value = "🏁 🍇\n" +
+                    "\t😀 🔤Hello World!🔤❗️\n" +
+                    "🍉"
+        }; 
+    }
+
+    public async Task<string> GetCodeAsync()
+    {
+        return await _editor.GetValue();
+    }
+
+    public async Task SetCodeAsync(string code)
+    {
+        await _editor.SetValue(code);
+    }
+}

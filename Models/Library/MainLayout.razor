@@ -1,0 +1,51 @@
+﻿@using Blazemoji.Layout;
+@using MudBlazor
+@inherits LayoutComponentBase
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudText Typo="Typo.h4">🔥 Blazemoji</MudText>
+        <MudSpacer />
+        @if(_isDarkMode)
+        {
+            <MudTooltip Text="Light Mode">
+                <MudIconButton Icon="@Icons.Material.Outlined.LightMode" Color="Color.Inherit" OnClick="ToggleDarkMode" />
+            </MudTooltip>
+        }
+        else
+        {
+            <MudTooltip Text="Dark Mode">
+                <MudIconButton Icon="@Icons.Material.Outlined.DarkMode" Color="Color.Inherit" OnClick="ToggleDarkMode" />
+            </MudTooltip>
+        }
+        <MudTooltip Text="Settings">
+            <MudIconButton Icon="@Icons.Material.Outlined.Settings" Color="Color.Inherit" />
+        </MudTooltip>
+    </MudAppBar>
+    <MudMainContent>
+        <CascadingValue Name="DarkMode" Value="@_isDarkMode">
+            @Body
+        </CascadingValue>
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">🗙</a>
+</div>
+
+<MudThemeProvider @bind-IsDarkMode="@_isDarkMode" Theme="_theme"/>
+<MudDialogProvider/>
+<MudSnackbarProvider/>
+
+@code {
+    private MudTheme _theme = new Theme();
+    private bool _isDarkMode = false;
+    private string _themeIcon = Icons.Material.Outlined.LightMode;
+
+    private void ToggleDarkMode()
+    {
+        _isDarkMode = !_isDarkMode;
+    }
+}
