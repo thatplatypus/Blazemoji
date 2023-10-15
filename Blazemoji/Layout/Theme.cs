@@ -18,7 +18,7 @@ namespace Blazemoji.Layout
 
             PaletteDark = new PaletteDark()
             {
-                Primary = "#172a4a",
+                Primary = "#1e1e1e",
             };
         }
     }
