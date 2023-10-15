@@ -1,6 +1,6 @@
 ﻿using Blazemoji.Emojicode;
 
-namespace Blazemoji.Models.Library
+namespace Blazemoji.Shared.Models.Library
 {
     public class EmojicFile
     {

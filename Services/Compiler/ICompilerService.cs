@@ -1,4 +1,4 @@
-﻿using Blazemoji.Models.Compiler;
+﻿using Blazemoji.Shared.Models.Compiler;
 
 namespace Blazemoji.Services.Compiler
 {
