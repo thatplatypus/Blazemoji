@@ -16,6 +16,8 @@
 🍉
 ```
 
+![image](https://github.com/thatplatypus/Blazemoji/assets/29233866/9eba0cc9-eea4-466d-98f6-80168e1ab90f)
+
 ## Overview
 
 ## Installation & Build
