@@ -16,6 +16,9 @@
             <MudItem xs="4">
                 <Emoji Keyword="@_grinningFace" />
             </MudItem>
+            <MudItem xs="4">
+                <Emoji Keyword="@_thoughtBubble" />
+            </MudItem>
         </MudGrid>
         <MudListItem><h6>@EmojicodeCategory.ClassesAndValueTypes</h6></MudListItem>
         <MudDivider />
@@ -44,6 +47,7 @@
     private New _new = new();
     private GrinningFace _grinningFace = new();
     private Exclamation _exclamation = new();
+    private ThoughtBubble _thoughtBubble = new();
 
     private async Task EmojicodeSelected(MouseEventArgs e, EmojicodeKeyword emoji)
     {

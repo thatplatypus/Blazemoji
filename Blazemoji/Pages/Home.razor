@@ -3,16 +3,8 @@
 @inject ILibraryService _libraryService
 @inject IDialogService _dialogService
 @inject LocalStorageFiles _localStorageFiles
-@using System.Diagnostics;
-@using Blazemoji.Components;
-@using Blazemoji.Shared.Models.Library;
-@using Blazemoji.Services.Compiler;
-@using Blazemoji.Services.Library;
-@using Blazemoji.Shared.State;
-@using BlazorMonaco.Editor
-@using MudBlazor
 
-<MudContainer Style="max-height:80vh;overflow-auto;" MaxWidth="MaxWidth.ExtraExtraLarge">
+<MudContainer Style="max-height:80vh;overflow:auto;" MaxWidth="MaxWidth.ExtraExtraLarge">
     <MudGrid Justify="Justify.Center" Spacing="1">
         <MudItem xs="2">
             <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" />

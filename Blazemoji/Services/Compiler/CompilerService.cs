@@ -1,7 +1,4 @@
-﻿using System.Diagnostics;
-using Blazemoji.Shared.Models.Compiler;
-
-namespace Blazemoji.Services.Compiler
+﻿namespace Blazemoji.Services.Compiler
 {
     public class CompilerService : ICompilerService
     {
@@ -15,7 +12,7 @@ namespace Blazemoji.Services.Compiler
             File.WriteAllText(tempPath, code);
 
             //Compile file to binaryy
-            Process process = new Process();
+            Process process = new();
             process.StartInfo.FileName = "emojicodec/emojicodec";
             process.StartInfo.Arguments = tempPath + $" -o {outputFileName}";
             process.StartInfo.UseShellExecute = false;

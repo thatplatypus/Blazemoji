@@ -1,8 +1,6 @@
-using Blazemoji.Components;
 using Blazemoji.Services.Compiler;
 using Blazemoji.Services.Library;
 using Blazemoji.Shared.State;
-using Blazored.LocalStorage;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,6 +13,15 @@ builder.Services.AddBlazoredLocalStorage();
 builder.Services.AddTransient<ICompilerService, CompilerService>();
 builder.Services.AddTransient<ILibraryService, LibraryService>();
 builder.Services.AddSingleton(new LocalStorageFiles());
+
+//Register emojicode keyword implementations
+var emojicodeKeywordTypes = typeof(EmojicodeKeyword).Assembly.GetTypes()
+    .Where(t => t.IsSubclassOf(typeof(EmojicodeKeyword)));
+
+foreach (var type in emojicodeKeywordTypes)
+{
+    builder.Services.AddSingleton(typeof(EmojicodeKeyword), type);
+}
 
 
 var app = builder.Build();
