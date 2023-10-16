@@ -9,5 +9,7 @@
         public const string ControlFlow = "Control Flow";
 
         public const string ClassesAndValueTypes = "Classes and Value Types";
+
+        public const string Operators = "Operators";
     }
 }

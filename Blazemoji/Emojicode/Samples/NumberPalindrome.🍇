@@ -1,0 +1,27 @@
+﻿💭 Emojicode solution for solving if a given input number is a palindrome
+💭 The solution does not use string conversion
+💭 https://leetcode.com/problems/palindrome-number/description/
+
+🏁 🍇
+	💭Change the value of X to see if it is a palindrome. 
+	💭Ex, 121 is a palindrome, 120 is not.
+
+	💭input
+	121 ➡️ x
+
+	💭main
+	x ➡️ 🖍🆕 c
+	0 ➡️ 🖍🆕 r
+	
+	🔁 c ▶️ 0 🍇
+	  r ✖️ 10 ➕ c 🚮 10 ➡️ 🖍 r
+      c ➗ 10 ➡️ 🖍 c
+	🍉
+     
+	↪️ r 🙌 x 🍇
+  		😀 🔤Is Palindrome! 😊🔤❗️
+	🍉
+	🙅 🍇
+  		😀 🔤Is not Palindrome 😭🔤❗️
+	🍉
+🍉

@@ -54,16 +54,20 @@
 
         public const string Multiplication = "✖️";
 
-        public const string LessThan = "〰️";
+        public const string LessThan = "◀️";
 
-        public const string GreaterThan = "〰️";
+        public const string GreaterThan = "▶️";
 
-        public const string LessThanOrEqual = "⬇️";
+        public const string LessThanOrEqual = "◀️ 🙌";
 
-        public const string GreaterThanOrEqual = "⬆️";
+        public const string GreaterThanOrEqual = "▶️ 🙌";
 
         public const string CheckMark = "✔️";
 
         public const string CrossMark = "❌";
+
+        public const string ThoughtBubble = "💭";
+
+        public const string Beer = "🍺";
     }
 }

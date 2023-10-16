@@ -1,9 +1,4 @@
-﻿using Blazemoji.Shared.Models.Library;
-using Blazored.LocalStorage;
-using System.Collections.Concurrent;
-using System.Linq;
-
-namespace Blazemoji.Services.Library
+﻿namespace Blazemoji.Services.Library
 {
     public class LibraryService : ILibraryService
     {
