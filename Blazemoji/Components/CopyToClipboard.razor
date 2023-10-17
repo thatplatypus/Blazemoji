@@ -7,6 +7,9 @@
 @code {
     [Parameter] public string ClipboardValue { get; set; } = "";
 
+    [Parameter]
+    public EventCallback CopiedToClipboard { get; set; }
+
     protected async Task CopyToClipboardAsync()
     {
         if(string.IsNullOrWhiteSpace(ClipboardValue))
@@ -16,5 +19,7 @@
         }
 
         await _jsRuntime.InvokeVoidAsync("clipboardCopy.copyText", ClipboardValue);
+
+        await CopiedToClipboard.InvokeAsync();
     }
 }

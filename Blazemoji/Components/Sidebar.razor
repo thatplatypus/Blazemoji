@@ -1,7 +1,7 @@
 ﻿@using Blazemoji.Shared.Models.Library;
 <MudTabs Elevation="2" Rounded="false" ApplyEffectsToContainer="true" Centered="true" PanelClass="pa-2" MinimumTabWidth="120px">
     <MudTabPanel Text="Toolbox" Icon="@Icons.Material.Filled.Handyman">
-       <EmojiToolbox  />
+        <EmojiToolbox OnEmojicodeInserted="@EmojicodeInserted" CopiedToClipboard="CopiedToClipboard" />
     </MudTabPanel>
     <MudTabPanel Text="Library" Icon="@Icons.Material.Filled.LibraryBooks">
         <Library OnEmojicFileSelected="EmojicFileSelected" />
@@ -12,8 +12,19 @@
     [Parameter]
     public EventCallback<EmojicFile> OnEmojicFileSelected { get; set; }
 
+    [Parameter]
+    public EventCallback<EmojicodeKeyword> OnEmojicodeInsertedCallback { get; set; }
+
+    [Parameter]
+    public EventCallback CopiedToClipboard { get; set; }
+
     private async Task EmojicFileSelected(EmojicFile file)
     {
         await OnEmojicFileSelected.InvokeAsync(file);
+    }
+
+    private async Task EmojicodeInserted(EmojicodeKeyword emoji)
+    {
+        await OnEmojicodeInsertedCallback.InvokeAsync(emoji);
     }
 }

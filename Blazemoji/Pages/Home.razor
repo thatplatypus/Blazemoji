@@ -4,10 +4,10 @@
 @inject IDialogService _dialogService
 @inject LocalStorageFiles _localStorageFiles
 
-<MudContainer Style="max-height:80dvh;overflow:hidden;" MaxWidth="MaxWidth.ExtraExtraLarge">
+<MudContainer Style="max-height:90dvh;overflow:hidden;" MaxWidth="MaxWidth.ExtraExtraLarge">
     <MudGrid Justify="Justify.Center" Spacing="1">
         <MudItem xs="3" xl="2">
-            <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" />
+            <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" OnEmojicodeInsertedCallback="@InsertEmojicodeAsync" CopiedToClipboard="OnCopiedToClipboard" />
         </MudItem>
         <MudItem xs="6" xl="7">
             <MudPaper Elevation="25" Class="mb-2">
@@ -120,6 +120,11 @@
         }
     }
 
+    private async Task OnCopiedToClipboard()
+    {
+        await _editor.Editor.Focus();
+    }
+
     private async Task LoadEmojicFile(EmojicFile file)
     {
         await _editor.SetCodeAsync(file.Code);
@@ -147,6 +152,20 @@
         var newFiles = await _libraryService.GetUserSavedFiles();
 
         _localStorageFiles.Files = newFiles.OrderBy(x => x.Name).ToList();
+    }
+
+    private async Task InsertEmojicodeAsync(EmojicodeKeyword emojicode)
+    {
+        var selection = await _editor.Editor.GetSelection();
+        var operation = new IdentifiedSingleEditOperation()
+            {
+                Range = selection,
+                ForceMoveMarkers = true,
+                Text = emojicode.Emoji,
+    };
+        await _editor.Editor.ExecuteEdits("emojiEditor", new List<IdentifiedSingleEditOperation>() { operation }, new List<BlazorMonaco.Selection>() { selection });
+
+        await _editor.Editor.Focus();
     }
 
 }
