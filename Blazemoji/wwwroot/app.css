@@ -34,3 +34,7 @@ h1:focus {
 .tree-view-no-arrow > * > .mud-treeview-item-arrow {
   width:16px;
 }
+
+.emoji-box-hover:hover {
+    background-color: var(--mud-palette-primary-hover); 
+}

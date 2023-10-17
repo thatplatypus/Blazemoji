@@ -2,9 +2,9 @@
 {
     public class Exponent : EmojicodeKeyword
     {
-        public override string Emoji => throw new NotImplementedException();
+        public override string Emoji => Emojis.Exponent;
 
-        public override string Description => "Math power of, exponent";
+        public override string Description => "Power of, exponent";
 
         public override string Keyword => "^";
 

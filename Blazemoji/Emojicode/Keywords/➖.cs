@@ -6,7 +6,7 @@
         public override string Emoji => Emojis.Minus;
 
         ///<inheritdoc />
-        public override string Description => "Subtraction operator";
+        public override string Description => "Subtraction";
 
         ///<inheritdoc />
         public override string Keyword => "-";

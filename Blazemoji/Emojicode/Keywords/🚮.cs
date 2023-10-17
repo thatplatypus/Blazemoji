@@ -2,9 +2,8 @@
 {
     public class Remainder : EmojicodeKeyword
     {
-        public override string Emoji => throw new NotImplementedException();
-
-        public override string Description => "Modulus operator, remainder";
+        public override string Emoji => Emojis.Remainder;
+        public override string Description => "Modulus";
 
         public override string Keyword => "%";
 

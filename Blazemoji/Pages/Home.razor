@@ -4,12 +4,12 @@
 @inject IDialogService _dialogService
 @inject LocalStorageFiles _localStorageFiles
 
-<MudContainer Style="max-height:80vh;overflow:auto;" MaxWidth="MaxWidth.ExtraExtraLarge">
+<MudContainer Style="max-height:80dvh;overflow:hidden;" MaxWidth="MaxWidth.ExtraExtraLarge">
     <MudGrid Justify="Justify.Center" Spacing="1">
-        <MudItem xs="2">
+        <MudItem xs="3" xl="2">
             <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" />
         </MudItem>
-        <MudItem xs="7">
+        <MudItem xs="6" xl="7">
             <MudPaper Elevation="25" Class="mb-2">
                 <MudToolBar>
                     <h4>🍇 Emojicode Editor</h4>

@@ -1,44 +1,130 @@
 ﻿@using Blazemoji.Emojicode.Keywords;
-<div style="min-height:80vh;">
-    <MudList Clickable="false">
+<div class="overflow-auto" style="max-height:78vh;">
+    <MudList Clickable="false" Style="overflow-x:clip;">
     <MudListItem><h6>@EmojicodeCategory.Basics</h6></MudListItem>
         <MudDivider />
         <MudGrid Spacing="1" Justify="Justify.FlexStart">
-            <MudItem xs="4">
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
                 <Emoji Keyword="@_flag" />
             </MudItem>
-            <MudItem xs="4">
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
                 <Emoji Keyword="@_grape" />
             </MudItem>
-            <MudItem xs="4">
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
                 <Emoji Keyword="@_watermelon" />
             </MudItem>
-            <MudItem xs="4">
-                <Emoji Keyword="@_grinningFace" />
-            </MudItem>
-            <MudItem xs="4">
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
                 <Emoji Keyword="@_thoughtBubble" />
             </MudItem>
-        </MudGrid>
-        <MudListItem><h6>@EmojicodeCategory.ClassesAndValueTypes</h6></MudListItem>
-        <MudDivider />
-        <MudGrid Spacing="1" Justify="Justify.Center">
-            <MudItem xs="4">
-                <Emoji Keyword="@_letters" />
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_grinningFace" />
             </MudItem>
-            <MudItem xs="4">
-                <Emoji Keyword="@_new" />
-            </MudItem>
-            <MudItem xs="4">
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
                 <Emoji Keyword="@_exclamation" />
             </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_return" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_escape" />
+            </MudItem>
         </MudGrid>
-    </MudList>
+
+        <MudListItem><h6>@EmojicodeCategory.ClassesAndValueTypes</h6></MudListItem>
+        <MudDivider />
+        <MudGrid Spacing="1" Justify="Justify.FlexStart">
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_numberLiteral" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_letters" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_new" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_thumbsUp" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_thumbsDown" />
+            </MudItem>
+        </MudGrid>
+
+        <MudListItem><h6>@EmojicodeCategory.Operators</h6></MudListItem>
+        <MudDivider />
+        <MudGrid Spacing="1" Justify="Justify.FlexStart">
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_plus" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_minus" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_multiplication" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_divide" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_remainder" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_exponent" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_fistRight" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_fistLeft" />
+            </MudItem>
+        </MudGrid>
+
+        <MudListItem><h6>Equality</h6></MudListItem>
+        <MudDivider />
+        <MudGrid Spacing="1" Justify="Justify.FlexStart">
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_lessThan" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_greaterThan" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_equals" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_not" />
+            </MudItem>
+        </MudGrid>
+
+        <MudListItem><h6>Logic</h6></MudListItem>
+        <MudDivider />
+        <MudGrid Spacing="1" Justify="Justify.FlexStart">
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_if" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_else" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_repeat" />
+            </MudItem>
+            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                <Emoji Keyword="@_forEach" />
+            </MudItem>
+        </MudGrid>
+
+        </MudList>
 </div>
 
 @code {
     [Parameter]
     public EventCallback<EmojicodeKeyword>? OnEmojicodeSelected { get; set; }
+
+    [Parameter]
+    public EventCallback<EmojicodeKeyword> OnEmojicodeInserted { get; set; }
+
+    private const int _itemsPerRow = 4;
+    private Func<int, int> _itemsPerRowFunc = (int i) => i;
 
     private Grape _grape = new();
     private Watermelon _watermelon = new();
@@ -48,9 +134,35 @@
     private GrinningFace _grinningFace = new();
     private Exclamation _exclamation = new();
     private ThoughtBubble _thoughtBubble = new();
+    private Return _return = new();
+    private NumberLiteral _numberLiteral = new();
+    private Plus _plus = new();
+    private Minus _minus = new();
+    private Multiplication _multiplication = new();
+    private Divide _divide = new();
+    private Remainder _remainder = new();
+    private Exponent _exponent = new();
+    private FistRight _fistRight = new();
+    private FistLeft _fistLeft = new();
+    private GreaterThan _greaterThan = new();
+    private LessThan _lessThan = new();
+    private Equals _equals = new();
+    private ThumbsUp _thumbsUp = new();
+    private ThumbsDown _thumbsDown = new();
+    private Not _not = new();
+    private Escape _escape = new();
+    private If _if = new();
+    private Else _else = new();
+    private RepeatWhile _repeat = new();
+    private ForEach _forEach = new();
 
     private async Task EmojicodeSelected(MouseEventArgs e, EmojicodeKeyword emoji)
     {
         await OnEmojicodeSelected?.InvokeAsync(emoji);
+    }
+
+    private async Task EmojicodeInserted(MouseEventArgs e, EmojicodeKeyword emoji)
+    {
+        await OnEmojicodeInserted.InvokeAsync(emoji);
     }
 }
