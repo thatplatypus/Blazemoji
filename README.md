@@ -16,9 +16,19 @@
 🍉
 ```
 
-![image](https://github.com/thatplatypus/Blazemoji/assets/29233866/9eba0cc9-eea4-466d-98f6-80168e1ab90f)
+![image](https://github.com/thatplatypus/Blazemoji/assets/29233866/f63a3fc3-5e02-4753-b309-bc80a98d1963)
+
+![image](https://github.com/thatplatypus/Blazemoji/assets/29233866/1ccffb14-344a-4810-a855-cab21c4ffbff)
 
 ## Overview
+Blazemoji is a modern web application designed specifically for emojicode. It's about time we start building a great editor for a great language.
+
+Features include:
+- Compile and run emojicode right in the browser!
+- Light / Dark theme built in
+- Emojicode quick reference toolbox
+- Library of sample scripts with support for saving scripts in local storage
+- More coming!
 
 ## Installation & Build
 Clone the repo and run 
