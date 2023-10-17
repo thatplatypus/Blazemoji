@@ -28,8 +28,6 @@
 
         public const string Bomb = "💣";
 
-        public const string ThumbsUp = "👍";
-
         public const string Hourglass = "⌛";
 
         public const string MoneyBag = "💰";
@@ -54,9 +52,15 @@
 
         public const string Multiplication = "✖️";
 
+        public const string Remainder = "🚮";
+
+        public const string Exponent = "🔺";
+
         public const string LessThan = "◀️";
 
         public const string GreaterThan = "▶️";
+
+        public const string EqualTo = "🙌";
 
         public const string LessThanOrEqual = "◀️ 🙌";
 
@@ -69,5 +73,23 @@
         public const string ThoughtBubble = "💭";
 
         public const string Beer = "🍺";
+
+        public const string Return = "↩️";
+
+        public const string Popcorn = "🍿";
+
+        public const string NumberLiteral = "123";
+
+        public const string FistRight = "🤜";
+
+        public const string FistLeft = "🤛";
+
+        public const string ThumbsUp = "👍";
+
+        public const string ThumbsDown = "👎";
+
+        public const string CrossMarkButton = "❎";
+
+        public const string IfButton = "↪️";
     }
 }

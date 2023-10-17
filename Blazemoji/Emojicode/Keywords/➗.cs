@@ -6,7 +6,7 @@
         public override string Emoji => Emojis.Division;
 
         ///<inheritdoc />
-        public override string Description => "Division operator";
+        public override string Description => "Division";
 
         ///<inheritdoc />
         public override string Keyword => "/";

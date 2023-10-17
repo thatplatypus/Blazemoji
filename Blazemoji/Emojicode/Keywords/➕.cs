@@ -6,7 +6,7 @@
         public override string Emoji => Emojis.Plus;
 
         ///<inheritdoc />
-        public override string Description => "Addition operator";
+        public override string Description => "Addition";
 
         ///<inheritdoc />
         public override string Keyword => "+";

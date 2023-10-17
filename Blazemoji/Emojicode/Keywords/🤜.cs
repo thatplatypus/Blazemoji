@@ -2,11 +2,11 @@
 {
     public class FistRight : EmojicodeKeyword
     {
-        public override string Emoji => throw new NotImplementedException();
+        public override string Emoji => Emojis.FistRight;
 
-        public override string Description => "Math right grouping operator";
+        public override string Description => "Open grouping";
 
-        public override string Keyword => ")";
+        public override string Keyword => "(";
 
         public override string Category => EmojicodeCategory.Operators;
     }

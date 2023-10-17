@@ -1,14 +1,33 @@
-﻿<MudStack Spacing="1">
-    <MudText>@Keyword.Keyword</MudText>
+﻿<MudTooltip Text="@Keyword.Description" Color="Color.Info" Arrow="true">
+<MudPaper Elevation="1" Square="true" MaxHeight="100px" MaxWidth="100px" Class="pa-1 emoji-box-hover">
+<MudGrid Spacing="2">
+    <MudItem xs="7">
+        <MudText Class="stretch-emoji">@Keyword.Emoji</MudText>
+    </MudItem>
+    <MudItem xs="5">
+     <MudStack Spacing="1">
+        <CopyToClipboard ClipboardValue="@Keyword.Emoji" />
+        <MudDivider />
+        <MudTooltip Text="Insert" Placement="Placement.Right">
+            <MudIconButton Size="Size.Small" Icon="@Icons.Material.Outlined.ContentPasteGo" OnClick="OnEmojiInsertedAsync" />
+        </MudTooltip>
+     </MudStack>
+    </MudItem>
+    </MudGrid>
     <MudDivider />
-    <MudTooltip Text="@Keyword.Description">
-        <MudText Typo="Typo.h4">@Keyword.Emoji</MudText>
-    </MudTooltip>
-
-</MudStack>
-
+    <MudItem xs="12" Style="text-align:center;">
+        <MudText Typo="Typo.h6">@Keyword.Keyword</MudText>
+    </MudItem>
+</MudPaper>
+</MudTooltip>
 @code {
-    [Parameter]
-    public EmojicodeKeyword Keyword { get; set; } = default!;
+    [Parameter] public EmojicodeKeyword Keyword { get; set; } = default!;
 
+    [Parameter] public EventCallback<EmojicodeKeyword> EmojiInserted { get; set; }
+
+    protected async Task OnEmojiInsertedAsync()
+    {
+        await EmojiInserted.InvokeAsync();
+    }
 }
+    

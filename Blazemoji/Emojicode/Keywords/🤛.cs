@@ -2,11 +2,11 @@
 {
     public class FistLeft : EmojicodeKeyword
     {
-        public override string Emoji => throw new NotImplementedException();
+        public override string Emoji => Emojis.FistLeft;
 
-        public override string Description => "Math left grouping operator";
+        public override string Description => "Grouping end";
 
-        public override string Keyword => "(";
+        public override string Keyword => ")";
 
         public override string Category => EmojicodeCategory.Operators;
     }
