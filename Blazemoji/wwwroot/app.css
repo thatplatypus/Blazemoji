@@ -28,7 +28,7 @@ h1:focus {
 }
 
 .editor {
-    height: 80vh;
+    height: 83vh;
 }
 
 .tree-view-no-arrow > * > .mud-treeview-item-arrow {
@@ -37,4 +37,8 @@ h1:focus {
 
 .emoji-box-hover:hover {
     background-color: var(--mud-palette-primary-hover); 
+}
+
+.stretch-emoji {
+    font-size: xx-large !important;
 }

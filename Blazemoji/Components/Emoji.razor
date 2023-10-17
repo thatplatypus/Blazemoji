@@ -6,7 +6,7 @@
     </MudItem>
     <MudItem xs="5">
      <MudStack Spacing="1">
-        <CopyToClipboard ClipboardValue="@Keyword.Emoji" />
+        <CopyToClipboard ClipboardValue="@Keyword.Emoji" CopiedToClipboard="@CopiedToClipboard" />
         <MudDivider />
         <MudTooltip Text="Insert" Placement="Placement.Right">
             <MudIconButton Size="Size.Small" Icon="@Icons.Material.Outlined.ContentPasteGo" OnClick="OnEmojiInsertedAsync" />
@@ -23,11 +23,15 @@
 @code {
     [Parameter] public EmojicodeKeyword Keyword { get; set; } = default!;
 
-    [Parameter] public EventCallback<EmojicodeKeyword> EmojiInserted { get; set; }
+    [Parameter] 
+    public EventCallback<EmojicodeKeyword> EmojiInserted { get; set; }
+
+    [Parameter]
+    public EventCallback CopiedToClipboard { get; set; }
 
     protected async Task OnEmojiInsertedAsync()
     {
-        await EmojiInserted.InvokeAsync();
+        await EmojiInserted.InvokeAsync(Keyword);
     }
 }
     

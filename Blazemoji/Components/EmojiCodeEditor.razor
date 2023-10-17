@@ -1,10 +1,15 @@
 ﻿@using BlazorMonaco.Editor
 @inject IJSRuntime _jsRuntime
 
-<BlazorMonaco.Editor.StandaloneCodeEditor @ref="_editor" CssClass="editor" Id="emojiEditor" ConstructionOptions="EditorConstructionOptions" />
+<BlazorMonaco.Editor.StandaloneCodeEditor @ref="_editor" 
+    CssClass="editor" 
+    Id="emojiEditor" 
+    OnDidBlurEditorText="SetPosition"
+    ConstructionOptions="EditorConstructionOptions" />
 
 @code {
     private StandaloneCodeEditor _editor = default!;
+    private BlazorMonaco.Selection _selection = default!;
 
     private StandaloneEditorConstructionOptions EditorConstructionOptions(StandaloneCodeEditor editor)
     {
@@ -17,6 +22,24 @@
                     "\t😀 🔤Hello World!🔤❗️\n" +
                     "🍉"
         }; 
+    }
+
+    public StandaloneCodeEditor Editor
+    {
+        get
+        {
+            return _editor;
+        }
+    }
+
+    private async Task SetPosition()
+    {
+        _selection = await _editor.GetSelection();
+    }
+
+    public BlazorMonaco.Selection? GetLastPosition()
+    {
+        return _selection;
     }
 
     public async Task<string> GetCodeAsync()
