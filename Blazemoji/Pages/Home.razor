@@ -1,15 +1,17 @@
 ﻿@page "/"
+@using Blazemoji.Services.Execution;
 @inject ICompilerService _compilerService
+@inject ICodeExecutionService _codeExecutionService
 @inject ILibraryService _libraryService
 @inject IDialogService _dialogService
 @inject LocalStorageFiles _localStorageFiles
 
 <MudContainer Style="max-height:90dvh;overflow:hidden;" MaxWidth="MaxWidth.ExtraExtraLarge">
     <MudGrid Justify="Justify.Center" Spacing="1">
-        <MudItem xs="3" xl="2">
+        <MudItem xs="3">
             <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" OnEmojicodeInsertedCallback="@InsertEmojicodeAsync" CopiedToClipboard="OnCopiedToClipboard" />
         </MudItem>
-        <MudItem xs="6" xl="7">
+        <MudItem xs="6">
             <MudPaper Elevation="25" Class="mb-2">
                 <MudToolBar>
                     <h4>🍇 Emojicode Editor</h4>
@@ -74,44 +76,13 @@
             _output = "";
 
             //RunCompiled Code
-            Process compiledCode = new Process();
-            compiledCode.StartInfo.FileName = compilerResult.Result;
-            compiledCode.StartInfo.UseShellExecute = false;
-            compiledCode.StartInfo.RedirectStandardOutput = true;
-            compiledCode.StartInfo.RedirectStandardError = true;
-            compiledCode.StartInfo.CreateNoWindow = true;
+            var result = await _codeExecutionService.ProcessCodeAsync(compilerResult.Result);
 
-            compiledCode.Start();
-
-            string codeOutput = string.Empty;
-            string codeError = string.Empty;
-
-            compiledCode.OutputDataReceived += (sender, e) =>
-            {
-                if (!string.IsNullOrEmpty(e.Data))
-                {
-                    codeOutput += e.Data + Environment.NewLine;
-                }
-            };
-
-            compiledCode.ErrorDataReceived += (sender, e) =>
-            {
-                if (!string.IsNullOrEmpty(e.Data))
-                {
-                    codeError += e.Data + Environment.NewLine;
-                }
-            };
-
-            compiledCode.BeginOutputReadLine();
-            compiledCode.BeginErrorReadLine();
-
-            compiledCode.WaitForExit();
-
-            _output += Environment.NewLine + Environment.NewLine + codeOutput + Environment.NewLine + Environment.NewLine + codeError;
+            _output += "Run time: " + result.ExecutionTime.TotalSeconds + " seconds" + Environment.NewLine + Environment.NewLine + (result.Error ? result.Message + Environment.NewLine + Environment.NewLine : Environment.NewLine + Environment.NewLine) + result.Result;
         }
         catch(Exception ex)
         {
-            Console.WriteLine(ex.Message); 
+            _output = ex.Message;
         }
         finally
         {
@@ -164,6 +135,11 @@
                 Text = emojicode.Emoji,
     };
         await _editor.Editor.ExecuteEdits("emojiEditor", new List<IdentifiedSingleEditOperation>() { operation }, new List<BlazorMonaco.Selection>() { selection });
+
+        var position = await _editor.Editor.GetPosition();
+        position.Column = position.Column + emojicode.Emoji.Length;
+
+        await _editor.Editor.SetPosition(position, "emojiEditor");
 
         await _editor.Editor.Focus();
     }
