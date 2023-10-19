@@ -1,9 +1,11 @@
 ﻿@using BlazorMonaco.Editor
+@using BlazorMonaco;
 @inject IJSRuntime _jsRuntime
 
 <BlazorMonaco.Editor.StandaloneCodeEditor @ref="_editor" 
     CssClass="editor" 
     Id="emojiEditor" 
+    OnDidInit="InitEditor"
     OnDidBlurEditorText="SetPosition"
     ConstructionOptions="EditorConstructionOptions" />
 
@@ -32,6 +34,57 @@
         }
     }
 
+    private async Task InitEditor()
+    {
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.BracketLeft, "🍇");
+
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.BracketRight, "🍉");
+
+        await AddCommand((int)KeyMod.CtrlCmd | (int)KeyCode.Slash, "💭");
+
+        await AddCommand((int)KeyMod.CtrlCmd | (int)KeyCode.KeyP, "😀");
+
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit1, "❗️");
+
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Quote, "🔤");
+
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit5, "🚮");
+
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit6, "🔺");
+
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit8, "✖️");
+
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit9, "🤜");
+
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit0, "🤛");
+
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Equal, "➕");
+
+        await AddCommand((int)KeyMod.CtrlCmd | (int)KeyCode.Minus, "➖");
+
+        await AddCommand((int)KeyMod.CtrlCmd | (int)KeyMod.Alt | (int)KeyCode.Slash, "➗");
+
+        await AddCommand((int)KeyCode.NumpadMultiply, "✖️");
+
+        await AddCommand((int)KeyCode.NumpadDivide, "➗");
+
+        await AddCommand((int)KeyCode.NumpadAdd, "➕");
+
+        await AddCommand((int)KeyCode.NumpadSubtract, "➖");
+
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Period, "▶️");
+
+        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Comma, "◀️");
+    }
+
+    private async Task AddCommand(int keybinding, string text)
+    {
+        await _editor.AddCommand(keybinding, async (args) =>
+        {
+            await InsertTextAsync(text);
+        });
+    }
+
     private async Task SetPosition()
     {
         _selection = await _editor.GetSelection();
@@ -50,5 +103,29 @@
     public async Task SetCodeAsync(string code)
     {
         await _editor.SetValue(code);
+    }
+
+    public async Task InsertTextAsync(string text)
+    {
+        var selection = await _editor.GetSelection();
+        var operation = new IdentifiedSingleEditOperation()
+            {
+                Range = selection,
+                ForceMoveMarkers = true,
+                Text = text,
+            };
+        await _editor.ExecuteEdits("emojiEditor", new List<IdentifiedSingleEditOperation>() { operation }, new List<BlazorMonaco.Selection>() { selection });
+
+        await ChangePosition(text.Length);
+    }
+
+    private async Task ChangePosition(int length)
+    {
+        var position = await _editor.GetPosition();
+        position.Column = position.Column + length;
+
+        await _editor.SetPosition(position, "emojiEditor");
+
+        await _editor.Focus();
     }
 }
