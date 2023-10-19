@@ -1,4 +1,5 @@
 using Blazemoji.Services.Compiler;
+using Blazemoji.Services.Execution;
 using Blazemoji.Services.Library;
 using Blazemoji.Shared.State;
 using MudBlazor.Services;
@@ -11,6 +12,7 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddMudServices();
 builder.Services.AddBlazoredLocalStorage();
 builder.Services.AddTransient<ICompilerService, CompilerService>();
+builder.Services.AddTransient<ICodeExecutionService, CodeExecutionService>();
 builder.Services.AddTransient<ILibraryService, LibraryService>();
 builder.Services.AddSingleton(new LocalStorageFiles());
 

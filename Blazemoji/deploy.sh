@@ -1,0 +1,1 @@
+﻿apt-get update; apt-get install libncurses5 g++ -y
