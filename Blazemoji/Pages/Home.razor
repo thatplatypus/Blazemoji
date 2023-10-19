@@ -127,21 +127,7 @@
 
     private async Task InsertEmojicodeAsync(EmojicodeKeyword emojicode)
     {
-        var selection = await _editor.Editor.GetSelection();
-        var operation = new IdentifiedSingleEditOperation()
-            {
-                Range = selection,
-                ForceMoveMarkers = true,
-                Text = emojicode.Emoji,
-    };
-        await _editor.Editor.ExecuteEdits("emojiEditor", new List<IdentifiedSingleEditOperation>() { operation }, new List<BlazorMonaco.Selection>() { selection });
-
-        var position = await _editor.Editor.GetPosition();
-        position.Column = position.Column + emojicode.Emoji.Length;
-
-        await _editor.Editor.SetPosition(position, "emojiEditor");
-
-        await _editor.Editor.Focus();
+        await _editor.InsertTextAsync(emojicode.Emoji);
     }
 
 }

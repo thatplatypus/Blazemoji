@@ -27,6 +27,7 @@ Features include:
 - Compile and run emojicode right in the browser!
 - Light / Dark theme built in
 - Emojicode quick reference toolbox
+- Code editor keybindings for common emojis like `shift`+`"` turns into `🔤`
 - Library of sample scripts with support for saving scripts in local storage
 - More coming!
 
