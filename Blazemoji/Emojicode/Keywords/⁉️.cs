@@ -3,7 +3,7 @@
     public class ExclamationQuestionMark : EmojicodeKeyword
     {
         ///<inheritdoc />
-        public override string Emoji => throw new NotImplementedException();
+        public override string Emoji => Emojis.ExclamationQuestionMark;
 
         ///<inheritdoc />
         public override string Description => throw new NotImplementedException();

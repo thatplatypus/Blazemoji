@@ -1,0 +1,25 @@
+﻿﻿@using MudBlazor.Internal
+@inject IEnumerable<EmojicodeKeyword> _emojicodes
+@inherits MudPicker<string>
+
+@Render
+
+@code{
+
+    protected override RenderFragment PickerContent => 
+    @<CascadingValue Value="@this" IsFixed="true">
+        <MudPickerToolbar Class="@ToolbarClass" Style="@Style" DisableToolbar="@DisableToolbar" Orientation="@Orientation" PickerVariant="@PickerVariant" Color="@Color">
+            <h4>↪️ Emoji Picker ❗️</h4>
+        </MudPickerToolbar>
+        <MudPickerContent>
+            <MudGrid Spacing="2" Class="text-align-center m-auto p-2" Justify="Justify.FlexStart" Style="max-width:310px;">
+            @foreach(var emoji in _emojicodes)
+            {
+                <MudItem style="height:3rem;width:3rem;padding:0px;" Class="emoji-box-hover" @onclick="(() => OnEmojiSelected(emoji))" xs="2">
+                    <MudText Class="stretch-emoji">@emoji.Emoji</MudText>
+                </MudItem>
+            }
+            </MudGrid>
+        </MudPickerContent>
+    </CascadingValue>;  
+}

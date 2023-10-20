@@ -13,6 +13,9 @@
     private StandaloneCodeEditor _editor = default!;
     private BlazorMonaco.Selection _selection = default!;
 
+    [Parameter]
+    public EventCallback EmojiPickerOpened { get; set; }
+
     private StandaloneEditorConstructionOptions EditorConstructionOptions(StandaloneCodeEditor editor)
     {
 
@@ -75,6 +78,11 @@
         await AddCommand((int)KeyMod.Shift | (int)KeyCode.Period, "▶️");
 
         await AddCommand((int)KeyMod.Shift | (int)KeyCode.Comma, "◀️");
+
+        await _editor.AddCommand((int)KeyMod.CtrlCmd | (int)KeyCode.KeyE, async (args) =>
+        {
+            await EmojiPickerOpened.InvokeAsync();
+        });
     }
 
     private async Task AddCommand(int keybinding, string text)
@@ -114,15 +122,27 @@
                 ForceMoveMarkers = true,
                 Text = text,
             };
+
         await _editor.ExecuteEdits("emojiEditor", new List<IdentifiedSingleEditOperation>() { operation }, new List<BlazorMonaco.Selection>() { selection });
 
-        await ChangePosition(text.Length);
+        await ChangePosition(text.Length, selection);
     }
 
-    private async Task ChangePosition(int length)
+    private async Task ChangePosition(int length, Selection? selection = default)
     {
-        var position = await _editor.GetPosition();
-        position.Column = position.Column + length;
+        BlazorMonaco.Position position;
+
+        if(selection != null)
+        {
+            position = new BlazorMonaco.Position();
+            position.Column = selection.PositionColumn + length;
+            position.LineNumber = selection.PositionLineNumber;
+        }
+        else
+        {
+            position = await _editor.GetPosition();
+            position.Column += length;
+        }
 
         await _editor.SetPosition(position, "emojiEditor");
 

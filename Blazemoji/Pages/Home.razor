@@ -1,4 +1,5 @@
 ﻿@page "/"
+@using Blazemoji.Components.EmojiPicker;
 @using Blazemoji.Services.Execution;
 @inject ICompilerService _compilerService
 @inject ICodeExecutionService _codeExecutionService
@@ -16,6 +17,13 @@
                 <MudToolBar>
                     <h4>🍇 Emojicode Editor</h4>
                     <MudSpacer />
+                    <Blazemoji.Components.EmojiPicker.EmojiPicker
+                        @ref="_emojiPicker"
+                        DisableUnderLine="true"
+                        Class="emoji-picker"
+                        OnEmojiPicked="@InsertEmojiAsync"
+                    />
+
                     <MudTooltip Text="Save Code">
                         <MudIconButton Icon="@Icons.Material.Outlined.Save" OnClick="SaveEmojicode" />
                     </MudTooltip>
@@ -32,7 +40,7 @@
                      </MudButton>
                 </MudToolBar>
             </MudPaper>
-            <EmojiCodeEditor @ref="_editor" />
+            <EmojiCodeEditor EmojiPickerOpened="@OpenEmojiPickerAsync" @ref="_editor" />
         </MudItem>
         <MudItem xs="3">
             <MudPaper Height="100%" Style="position:relative">
@@ -54,6 +62,7 @@
     private string _output = "";
     private bool _loading = false;
     private Sidebar _sidebar;
+    private EmojiPicker _emojiPicker;
 
     protected async Task RunEmojiCodeClicked()
     {
@@ -125,9 +134,20 @@
         _localStorageFiles.Files = newFiles.OrderBy(x => x.Name).ToList();
     }
 
+    private async Task InsertEmojiAsync(string emoji)
+    {
+        await _editor.InsertTextAsync(emoji);
+    }
+
     private async Task InsertEmojicodeAsync(EmojicodeKeyword emojicode)
     {
         await _editor.InsertTextAsync(emojicode.Emoji);
+    }
+
+    private async Task OpenEmojiPickerAsync()
+    {
+        _emojiPicker.Open();
+        await Task.CompletedTask;
     }
 
 }

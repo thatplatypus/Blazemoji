@@ -2,7 +2,7 @@
 {
     public class EmptySquare : EmojicodeKeyword
     {
-        public override string Emoji => throw new NotImplementedException();
+        public override string Emoji => Emojis.EmptySquare;
 
         public override string Description => throw new NotImplementedException();
 
