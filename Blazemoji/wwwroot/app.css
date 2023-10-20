@@ -36,9 +36,28 @@ h1:focus {
 }
 
 .emoji-box-hover:hover {
-    background-color: var(--mud-palette-primary-hover); 
+    background-color: var(--mud-palette-primary-hover);
+    cursor:pointer;
 }
 
 .stretch-emoji {
     font-size: xx-large !important;
+    line-height: 3rem;
+}
+
+.emoji-picker > .mud-input-control {
+    margin-top: 0!important;
+}
+
+.emoji-picker > .mud-input-control > .mud-input-control-input-container > div.mud-input.mud-input-text {
+    margin-top: 0!important;
+}
+
+.text-align-center {
+    text-align: center!important;
+}
+
+.m-auto {
+    margin-left: auto!important;
+    margin-right: auto!important;
 }

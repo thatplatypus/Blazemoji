@@ -2,7 +2,7 @@
 {
     public class WinkyFace : EmojicodeKeyword
     {
-        public override string Emoji => throw new NotImplementedException();
+        public override string Emoji => Emojis.WinkyFace;
 
         public override string Description => throw new NotImplementedException();
 

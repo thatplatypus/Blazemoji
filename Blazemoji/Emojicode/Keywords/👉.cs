@@ -2,7 +2,7 @@
 {
     public class PointRight : EmojicodeKeyword
     {
-        public override string Emoji => throw new NotImplementedException();
+        public override string Emoji => Emojis.PointRight;
 
         public override string Description => throw new NotImplementedException();
 

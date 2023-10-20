@@ -6,7 +6,7 @@
 
         public override string Description => "Number";
 
-        public override string Keyword => "123";
+        public override string Keyword => "1";
 
         public override string Category => EmojicodeCategory.ClassesAndValueTypes;
     }

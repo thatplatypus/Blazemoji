@@ -78,7 +78,7 @@
 
         public const string Popcorn = "🍿";
 
-        public const string NumberLiteral = "123";
+        public const string NumberLiteral = "1";
 
         public const string FistRight = "🤜";
 
@@ -91,5 +91,15 @@
         public const string CrossMarkButton = "❎";
 
         public const string IfButton = "↪️";
+
+        public const string ExclamationQuestionMark = "⁉️";
+
+        public const string PointRight = "👉";
+
+        public const string PointLeft = "👈";
+
+        public const string EmptySquare = "🔲";
+
+        public const string WinkyFace = "😜";
     }
 }
