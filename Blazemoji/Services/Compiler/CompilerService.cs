@@ -3,22 +3,29 @@
     public class CompilerService : ICompilerService
     {
         public EmojicodecResult CompileEmojicode(string code)
-        {
+        { 
             var result = new EmojicodecResult();
-            string outputFileName = "temp";
+            string outputFileName = "temp.o";
 
             //Save code to temp emojicode file
-            string tempPath = Path.GetTempFileName() + ".🍇";
+            string tempPath = Directory.GetCurrentDirectory() + "/" + "temp." + Path.GetRandomFileName() + ".🍇";
             File.WriteAllText(tempPath, code);
 
-            //Compile file to binaryy
-            Process process = new();
-            process.StartInfo.FileName = "emojicodec/emojicodec";
-            process.StartInfo.Arguments = tempPath + $" -o {outputFileName}";
-            process.StartInfo.UseShellExecute = false;
-            process.StartInfo.RedirectStandardOutput = true;
-            process.StartInfo.RedirectStandardError = true;
-            process.StartInfo.CreateNoWindow = true;
+            var processStartInfo = new ProcessStartInfo("emojicodec/emojicodec")
+            {
+                Arguments = tempPath + $" -o {outputFileName}",
+                WorkingDirectory = Directory.GetCurrentDirectory(),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+
+            //Compile file to binary
+            Process process = new()
+            {
+                StartInfo = processStartInfo
+            };
 
             process.Start();
 
@@ -50,10 +57,18 @@
             process.WaitForExit();
 
             if(!result.Error)
-            {
                 result.Result = outputFileName;
-            }
 
+            try
+            {
+                File.Delete(tempPath);
+                Console.WriteLine("Deleted file: " + tempPath);
+            }
+            catch
+            {
+                //File already gone
+            }
+        
             return result;
         }
     }

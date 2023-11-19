@@ -1,4 +1,5 @@
-﻿namespace Blazemoji.Services.Library
+﻿
+namespace Blazemoji.Services.Library
 {
     public class LibraryService : ILibraryService
     {
@@ -20,12 +21,7 @@
             string directoryPath = "Emojicode/Samples";
             IEnumerable<string> files = Directory.EnumerateFiles(directoryPath);
 
-            List<Task> tasks = new();
-
-            foreach (string file in files)
-            {
-                tasks.Add(ProcessFileAsync(file));
-            }
+            List<Task> tasks = files.Select(ProcessFileAsync).ToList();
 
             await Task.WhenAll(tasks);
             
@@ -38,7 +34,9 @@
         {
             var files = new ConcurrentBag<EmojicFile>();
             var keys = await _localStorageService.KeysAsync();
-            foreach (var key in keys)
+            var emojicodeKeys = keys.Where(x => x.Contains(".🍇") || x.Contains(".emojic"));
+
+            foreach (var key in emojicodeKeys)
             {
                 try
                 {

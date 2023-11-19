@@ -48,6 +48,9 @@
     <None Update="Emojicode\Samples\DownAndUpLoop.🍇">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Emojicode\Samples\Fizzbuzz.🍇">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Emojicode\Samples\ForInLoop.🍇">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

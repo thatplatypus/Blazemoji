@@ -1,7 +1,9 @@
+using Blazemoji.Emojicode;
 using Blazemoji.Services.Compiler;
 using Blazemoji.Services.Execution;
 using Blazemoji.Services.Library;
 using Blazemoji.Shared.State;
+using Blazored.LocalStorage;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);

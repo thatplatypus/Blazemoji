@@ -1,4 +1,5 @@
-﻿using Blazemoji.Shared.Models.Execution;
+﻿using System.Diagnostics;
+using Blazemoji.Shared.Models.Execution;
 
 namespace Blazemoji.Services.Execution
 {

@@ -6,6 +6,8 @@
 *.user
 *.sln.docstates
 *.tmp.o
+temp.*.o
+temp.o
 temp
 Blazemoji/Properties/ServiceDependencies/
 
