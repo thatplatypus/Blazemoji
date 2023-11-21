@@ -17,7 +17,7 @@
             {
                 <MudTooltip Style="text-align:left;" Placement="Placement.Right">
                     <ChildContent>
-                        <MudTreeViewItem Class="text-nowrap tree-view-no-arrow" Style="cursor:pointer;" Value="@sample.Name" OnClick="async () => await EmojicFileSelected(sample)" />
+                        <MudTreeViewItem Class="text-nowrap tree-view-no-arrow" Style="cursor:pointer;" Value="@sample.Name.Replace("Samples\\", "")" OnClick="async () => await EmojicFileSelected(sample)" />
                     </ChildContent>
                     <TooltipContent>
                         <pre>
