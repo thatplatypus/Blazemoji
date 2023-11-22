@@ -1,11 +1,17 @@
 ﻿@page "/"
-@using Blazemoji.Components.EmojiPicker;
-@using Blazemoji.Services.Execution;
-@inject ICompilerService _compilerService
-@inject ICodeExecutionService _codeExecutionService
+@using Blazemoji.Components.EmojiPicker
+@using Blazemoji.Contracts.Messages
+@using Blazemoji.Contracts.Models
+@using Blazemoji.Services
+@using Blazemoji.Services.Compiler
+@using MassTransit
+@using System.Text.Json
+
+@inject IRequestClient<IExecuteCodeRequest> _requestClient
 @inject ILibraryService _libraryService
 @inject IDialogService _dialogService
 @inject LocalStorageFiles _localStorageFiles
+@inject ICodeRunner _codeRunner
 
 <MudContainer Style="max-height:90dvh;overflow:hidden;" MaxWidth="MaxWidth.ExtraExtraLarge">
     <MudGrid Justify="Justify.Center" Spacing="1">
@@ -73,21 +79,11 @@
             _loading = true;
             StateHasChanged();
 
-            var compilerResult = _compilerService.CompileEmojicode(code);
+            var compilerApiResult = await _codeRunner.ExecuteAsync(code);
 
-            if(compilerResult.Error)
-            {
-                _output = compilerResult.Message;
-                _loading = false;
-                return;
-            }
+            var result = compilerApiResult;
 
-            _output = "";
-
-            //RunCompiled Code
-            var result = await _codeExecutionService.ProcessCodeAsync(compilerResult.Result);
-
-            _output += "Run time: " + result.ExecutionTime.TotalSeconds + " seconds" + Environment.NewLine + Environment.NewLine + (result.Error ? result.Message + Environment.NewLine + Environment.NewLine : Environment.NewLine + Environment.NewLine) + result.Result;
+            _output = "Run time: " + result.ExecutionTime?.TotalSeconds + " seconds" + Environment.NewLine + (result.Error ? result.Message + Environment.NewLine + Environment.NewLine : Environment.NewLine + Environment.NewLine) + result.Result + Environment.NewLine;
         }
         catch(Exception ex)
         {
