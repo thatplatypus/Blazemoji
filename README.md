@@ -33,12 +33,15 @@ Features include:
   - Researching syntax highlighting in monaco for ☁️ and 🔤
 
 ## Prerquisites
-- dotnet 7 installed
+- Visual Studio 2022 17.9 or later
+- dotnet 8 installed
+- Aspire workload for dotnet 8 (optional, recommended for fast setup)
 - C# installed
 - Visual Studio installed, recommended 2022+
 - [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) installed, windows only
 - Ubuntu 18.04 or later if WSL
-- C++ compiler and linker, such as `clang++` or `g++`, `libncurses5` 
+- C++ compiler and linker, such as `clang++` or `g++`, `libncurses5`
+- Docker
 
 ## Installation & Build
 Clone the repo and run 
@@ -56,7 +59,9 @@ apt-get install g++ -y
 ```
 
 ## Setup & Configuration
-Blazemoji depends on being launched in a host environment that can execute the `emojicodec` compiler. Blazor can be launched in a WSL environment targetting Linux from Windows, so this is what we'll need to do in order to compile and run the emojicode correctly. To run everything correctly in WSL, you will have to go through the WSL setup and install steps.
+Blazemoji depends on being launched in a host environment that can execute the `emojicodec` compiler. Blazor can be launched in a WSL environment targetting Linux from Windows, so this is what we'll need to do in order to compile and run the emojicode correctly. To run everything correctly in WSL, you will have to go through the WSL setup and install steps. For some users, this is not an option so we can use a container instead. Blazemoji has a Dockerfile for the `Blazemoji.Compiler` project that will build to the correct OS architecture with dependencies. To communicate with the container from blazemoji, an instance of `rabbitmq` with the management plugin enabled is required.
+
+To make all of that easier, there is a .Net 8 Aspire project that can orchestrate all of the above. Simply launch the http setting from `Blazemoji.AppHost` and it should build and run the compiler container, the blazemoji web app, as well as pull and run rabbitmq with management enabled. This should be the fastest way to get started across any OS. The aspire workload is requuired for this.
 
 ## Running Tests
 ```csharp
