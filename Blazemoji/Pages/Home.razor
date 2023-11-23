@@ -79,11 +79,10 @@
             _loading = true;
             StateHasChanged();
 
-            var compilerApiResult = await _codeRunner.ExecuteAsync(code);
+            var result = await _codeRunner.ExecuteAsync(code);
 
-            var result = compilerApiResult;
-
-            _output = "Run time: " + result.ExecutionTime?.TotalSeconds + " seconds" + Environment.NewLine + (result.Error ? result.Message + Environment.NewLine + Environment.NewLine : Environment.NewLine + Environment.NewLine) + result.Result + Environment.NewLine;
+            _output = "Run time: " + result.ExecutionTime?.TotalSeconds + " seconds" + Environment.NewLine; 
+            _output += result.Error ? result.Message : result.Result + Environment.NewLine;
         }
         catch(Exception ex)
         {

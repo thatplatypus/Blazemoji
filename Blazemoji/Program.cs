@@ -1,9 +1,7 @@
 using Blazemoji;
 using Blazemoji.Components;
 using Blazemoji.Contracts.Messages;
-using Blazemoji.Services;
 using Blazemoji.Services.Compiler;
-using Blazemoji.Services.Execution;
 using Blazemoji.Services.Library;
 using Blazemoji.Shared.State;
 using MassTransit;
@@ -22,9 +20,8 @@ builder.Services.AddRazorComponents()
 builder.Services.AddMudServices();
 builder.Services.AddBlazoredLocalStorage();
 builder.Services.AddTransient<ILibraryService, LibraryService>();
-builder.Services.AddTransient<ICompilerService, CompilerService>();
-builder.Services.AddTransient<ICodeExecutionService, CodeExecutionService>();
-builder.Services.AddTransient<ICodeRunner, CodeRunner>();
+builder.Services.AddScoped<ICompilerService, CompilerService>();
+builder.Services.AddScoped<ICodeRunner, CodeRunner>();
 builder.Services.AddSingleton(new LocalStorageFiles());
 
 //Register emojicode keyword implementations
@@ -44,13 +41,6 @@ if(!builder.Environment.IsProduction())
 
         x.UsingRabbitMq((context, cfg) =>
         {
-            cfg.ConfigureJsonSerializerOptions(options =>
-            {
-                options.Encoder = JavaScriptEncoder.Create(UnicodeRanges.All);
-                options.WriteIndented = true;
-                return options;
-            });
-
             cfg.Host("localhost", "/", h => {
                 {
                     h.Username("guest");
