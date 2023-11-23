@@ -10,19 +10,19 @@ namespace Blazemoji.Services
     {
         private readonly HttpClient _httpClient = httpClient;
 
-        public async Task<ExecuteCodeResult> ExecuteCodeAsync(string code)
+        public async Task<EmojicodeResult> ExecuteCodeAsync(string code)
         {
             try
             {
                 var res = await _httpClient.PostAsync("execute", new StringContent(code, Encoding.Unicode, "application/text"));
                 Console.WriteLine(await res.Content.ReadAsStringAsync());
                 res.EnsureSuccessStatusCode();
-                var result = JsonSerializer.Deserialize<ExecuteCodeResult>(await res.Content.ReadAsStringAsync());
+                var result = JsonSerializer.Deserialize<EmojicodeResult>(await res.Content.ReadAsStringAsync());
                 return result;
             }
             catch(Exception ex)
             {
-                return new ExecuteCodeResult
+                return new EmojicodeResult
                 {
                     Error = true,
                     Result = ex.Message,

@@ -1,48 +1,33 @@
-﻿using Blazemoji.Contracts.Models;
+﻿using Blazemoji.Compiler.Services.Compiler;
+using Blazemoji.Contracts.Models;
 using System.Diagnostics;
 
 namespace Blazemoji.Services.Compiler
 {
     public class CompilerService : ICompilerService
     {
-        public ExecuteCodeResult CompileEmojicode(string code)
-        { 
-            var result = new ExecuteCodeResult();
-            string outputFileName = "temp.o";
+        private readonly int _timeoutThreshhold = 30_000;
 
-            //Save code to temp emojicode file
+        public EmojicodeResult CompileEmojicode(string code)
+        {
+            var result = new EmojicodeResult();
+            string outputFileName = "temp.o";
+            string stdOutput = string.Empty;
+            string stdError = string.Empty;
             string tempPath = Directory.GetCurrentDirectory() + "/" + "temp." + Path.GetRandomFileName() + ".🍇";
+
             try
             {
                 File.WriteAllText(tempPath, code);
 
-                var processStartInfo = new ProcessStartInfo("emojicodec/emojicodec")
-                {
-                    Arguments = tempPath + $" -o {outputFileName}",
-                    WorkingDirectory = Directory.GetCurrentDirectory(),
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                };
-
                 //Compile file to binary
-                Process process = new()
-                {
-                    StartInfo = processStartInfo
-                };
-
-                process.Start();
-
-                string standardOutput = string.Empty;
-                string standardError = string.Empty;
+                Process process = EmojicodeProcessFactory.Create("emojicodec/emojicodec", tempPath + $" -o {outputFileName}");
 
                 process.OutputDataReceived += (sender, e) =>
                 {
                     if (!string.IsNullOrEmpty(e.Data))
                     {
-                        standardOutput += e.Data + Environment.NewLine;
-                        result.Message = standardOutput;
+                        stdOutput += e?.Data + Environment.NewLine;
                     }
                 };
 
@@ -50,41 +35,89 @@ namespace Blazemoji.Services.Compiler
                 {
                     if (!string.IsNullOrEmpty(e.Data))
                     {
-                        standardError += e.Data + Environment.NewLine;
-                        result.Error = true;
-                        result.Message = standardError;
+                        stdError += e?.Data + Environment.NewLine;
                     }
                 };
+
+                process.Start();
 
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
 
                 process.WaitForExit();
             }
-
-            catch(Exception ex) {
+            catch (Exception ex)
+            {
                 result.Error = true;
-                result.Message = ex.Message; 
+                result.Message = ex.Message;
             }
-            finally {
+            finally
+            {
                 File.Delete(tempPath);
                 Console.WriteLine("Deleted file: " + tempPath);
             }
 
-
-            if(!result.Error)
+            if (!result.Error)
                 result.Result = outputFileName;
 
-            try
-            {
-                
-            }
-            catch
-            {
-                //File already gone
-            }
-        
             return result;
+        }
+
+        public EmojicodeResult ExecuteCode(string filename)
+        {
+            var timer = new Stopwatch();
+            var codeResult = new EmojicodeResult();
+            string stdOutput = string.Empty;
+            string stdError = string.Empty;
+
+            timer.Start();
+            Process emojicode = EmojicodeProcessFactory.Create(filename);
+
+            emojicode.OutputDataReceived += (sender, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    stdOutput += e?.Data + Environment.NewLine;
+                }
+            };
+
+            emojicode.ErrorDataReceived += (sender, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    stdError += e?.Data + Environment.NewLine;
+                }
+            };
+
+            emojicode.Start();
+
+            emojicode.BeginOutputReadLine();
+            emojicode.BeginErrorReadLine();
+
+            var exited = emojicode.WaitForExit(_timeoutThreshhold);
+            if (!exited)
+            {
+                emojicode.Kill();
+                codeResult.Error = true;
+                codeResult.Message = $"Process exited due to timeout of {_timeoutThreshhold / 1000} seconds";
+                codeResult.Result = stdOutput;
+            }
+            else
+            {
+                codeResult.Error = !string.IsNullOrWhiteSpace(stdError);
+                codeResult.Message = stdError;
+                codeResult.Result = stdOutput;
+            }
+
+            timer.Stop();
+            codeResult.ExecutionTime = timer.Elapsed;
+
+            return codeResult;
+        }
+
+        public async Task<EmojicodeResult> ExecuteCodeAsync(string filename)
+        {
+            return await Task.Run(() => ExecuteCode(filename));
         }
     }
 }

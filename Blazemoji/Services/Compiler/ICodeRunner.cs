@@ -4,6 +4,6 @@ namespace Blazemoji.Services.Compiler
 {
     public interface ICodeRunner
     {
-        public Task<ExecuteCodeResult> ExecuteAsync(string code);
+        public Task<EmojicodeResult> ExecuteAsync(string code);
     }
 }
