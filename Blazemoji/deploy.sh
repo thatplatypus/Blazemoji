@@ -1,3 +1,4 @@
 apt-get update
-apt-get install libncurses5 g++ --yes
+apt-get install -y libncurses5 
+apt-get install -y g++
 dotnet Blazemoji.dll

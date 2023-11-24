@@ -1,15 +1,14 @@
 using Blazemoji;
 using Blazemoji.Components;
-using Blazemoji.Contracts.Messages;
 using Blazemoji.Services.Compiler;
 using Blazemoji.Services.Library;
 using Blazemoji.Shared.State;
-using MassTransit;
 using MudBlazor.Services;
+using System;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddServiceDefaults();
+//builder.AddServiceDefaults();
 
 // Add services to the container.
 builder.Services.AddRazorPages();
@@ -31,29 +30,7 @@ foreach (var type in emojicodeKeywordTypes)
     builder.Services.AddSingleton(typeof(EmojicodeKeyword), type);
 }
 
-if(!builder.Environment.IsProduction())
-{
-    builder.Services.AddMassTransit(x =>
-    {
-        x.AddRequestClient<IExecuteCodeRequest>();
-
-        x.UsingRabbitMq((context, cfg) =>
-        {
-            cfg.Host("localhost", "/", h => {
-                {
-                    h.Username("guest");
-                    h.Password("guest");
-                }
-            });
-
-            cfg.ConfigureEndpoints(context);
-        });
-    });
-}
-
 var app = builder.Build();
-
-app.MapDefaultEndpoints();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

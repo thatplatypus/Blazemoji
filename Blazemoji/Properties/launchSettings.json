@@ -47,6 +47,16 @@
       },
       "distributionName": ""
     },
+    "WSL - Prod": {
+      "commandName": "WSL2",
+      "launchBrowser": true,
+      "launchUrl": "https://localhost:7147",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "ASPNETCORE_URLS": "https://localhost:7147;http://localhost:5212"
+      },
+      "distributionName": ""
+    },
     "Docker": {
       "commandName": "Docker",
       "launchBrowser": true,
