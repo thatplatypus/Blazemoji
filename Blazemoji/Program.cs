@@ -6,8 +6,6 @@ using Blazemoji.Services.Library;
 using Blazemoji.Shared.State;
 using MassTransit;
 using MudBlazor.Services;
-using System.Text.Encodings.Web;
-using System.Text.Unicode;
 
 var builder = WebApplication.CreateBuilder(args);
 
