@@ -94,8 +94,7 @@ namespace Blazemoji.Services.Compiler
             emojicode.BeginOutputReadLine();
             emojicode.BeginErrorReadLine();
 
-            var exited = emojicode.WaitForExit(_timeoutThreshhold);
-            if (!exited)
+            if (!emojicode.WaitForExit(_timeoutThreshhold))
             {
                 emojicode.Kill();
                 codeResult.Error = true;

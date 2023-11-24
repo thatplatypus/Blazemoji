@@ -24,5 +24,10 @@
         /// How long the request took to execute, if applicable
         /// </summary>
         public TimeSpan? ExecutionTime { get; set; } = TimeSpan.Zero;
+
+        public override string ToString()
+    {
+        return System.Text.Json.JsonSerializer.Serialize(this);
+    }
     }
 }

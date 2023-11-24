@@ -26,16 +26,7 @@ builder.Services.AddMassTransit(x =>
 
         cfg.ConfigureEndpoints(context);
     });
-
-    //x.UsingAzureServiceBus((context, cfg) =>
-    //{
-    //    cfg.Host(builder.Configuration.GetConnectionString("AzureServiceBus"));
-    //
-    //    cfg.ConfigureEndpoints(context);
-    //});
 });
-
-//builder.Services.AddHostedService<CodeExecutionConsumer>();
 
 var host = builder.Build();
 host.Run();

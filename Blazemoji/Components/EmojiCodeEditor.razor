@@ -83,6 +83,28 @@
         {
             await EmojiPickerOpened.InvokeAsync();
         });
+
+        //Setup Monarch for emojicode
+        await _jsRuntime.InvokeVoidAsync("monaco.languages.register", new { id = "emojiscript" });
+
+        await _jsRuntime.InvokeVoidAsync("monaco.languages.setMonarchTokensProvider", "emojiscript", new
+        {
+            tokenizer = new
+            {
+                root = new object[]
+                {
+                    new object[] { @"🔤.*🔤", "string" },
+                    new object[] { @"💭🔜", "comment", "@comment" },
+                    new object[] { @"💭.*", "comment" },
+
+                },
+                comment = new object[]
+                {
+                    new object[] { @"🔚💭", "comment", "@pop" }, 
+                    new object[] { @".", "comment" }, 
+                }
+            }          
+        });
     }
 
     private async Task AddCommand(int keybinding, string text)

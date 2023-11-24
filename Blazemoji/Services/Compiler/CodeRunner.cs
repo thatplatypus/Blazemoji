@@ -1,7 +1,6 @@
 ﻿using Blazemoji.Contracts.Messages;
 using Blazemoji.Contracts.Models;
 using MassTransit;
-using EnvironmentName = Microsoft.AspNetCore.Hosting.EnvironmentName;
 
 namespace Blazemoji.Services.Compiler
 {
@@ -25,13 +24,13 @@ namespace Blazemoji.Services.Compiler
 
             if (_hostEnvironment.IsProduction())
             {
-                _logger.LogInformation("Registering {Delegate} as execution delegate", nameof(ExecuteInternalAsync));
+                _logger.LogDelegateAssignment(nameof(ExecuteInternalAsync));
                 _emojicodeCompilerDelegate = ExecuteInternalAsync;
             }
             else
             {
-                _logger.LogInformation("Registering {Delegate} as execution delegate", nameof(ExecuteExternalAsync));
-                _emojicodeCompilerDelegate = ExecuteExternalAsync; 
+                _logger.LogDelegateAssignment(nameof(RequestAsync));
+                _emojicodeCompilerDelegate = RequestAsync; 
             }
         }
 
@@ -42,16 +41,44 @@ namespace Blazemoji.Services.Compiler
 
         private async Task<EmojicodeResult> ExecuteInternalAsync(string code)
         {
-            _logger.LogInformation("Executing internal code request for {Code}", code);
+            _logger.LogExecutingCode("internal", code);
             return await _compilerService.CompileAndExecuteAsync(code);
         }
 
-        private async Task<EmojicodeResult> ExecuteExternalAsync(string code)
+        private async Task<EmojicodeResult> RequestAsync(string code)
         {
-            _logger.LogInformation("Executing external code request for {Code}", code);
-            var compilerApiResult = await _requestClient.GetResponse<EmojicodeResult>(new { EmojicodeProgram = code }, CancellationToken.None);
-
-            return compilerApiResult.Message;
+            _logger.LogRequestingCode("external", code);
+            var response = await _requestClient.GetResponse<EmojicodeResult>(new { EmojicodeProgram = code }, CancellationToken.None, timeout: RequestTimeout.After(s: 61));
+            
+            _logger.LogEmojicodeResponseReceived(response.Message);
+            return response.Message;
         }
     }
+    public static partial class CodeRunnerLogTemplates
+    {
+        [LoggerMessage(
+            Level = LogLevel.Information, 
+            Message = "Registering `{Delegate}` as execution delegate")]
+        public static partial void LogDelegateAssignment(this ILogger logger, string Delegate);
+
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = @"Executing {destination} code request:
+                  {code}")]
+        public static partial void LogExecutingCode(this ILogger logger, string destination, string code);
+
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = @"Requesting {destination} code result:
+                  {code}")]
+        public static partial void LogRequestingCode(this ILogger logger, string destination, string code);
+
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "Received emojicode response: {emojicodeResult}")]
+        public static partial void LogEmojicodeResponseReceived(this ILogger logger, EmojicodeResult emojicodeResult);
+    }
+
+
+
 }
