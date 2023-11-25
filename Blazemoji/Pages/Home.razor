@@ -1,13 +1,9 @@
 ﻿@page "/"
 @using Blazemoji.Components.EmojiPicker
-@using Blazemoji.Contracts.Messages
-@using Blazemoji.Contracts.Models
 @using Blazemoji.Services
 @using Blazemoji.Services.Compiler
-@using MassTransit
 @using System.Text.Json
 
-@inject IRequestClient<IExecuteCodeRequest> _requestClient
 @inject ILibraryService _libraryService
 @inject IDialogService _dialogService
 @inject LocalStorageFiles _localStorageFiles

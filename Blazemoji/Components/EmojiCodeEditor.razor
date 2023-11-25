@@ -39,45 +39,10 @@
 
     private async Task InitEditor()
     {
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.BracketLeft, "🍇");
-
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.BracketRight, "🍉");
-
-        await AddCommand((int)KeyMod.CtrlCmd | (int)KeyCode.Slash, "💭");
-
-        await AddCommand((int)KeyMod.CtrlCmd | (int)KeyCode.KeyP, "😀");
-
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit1, "❗️");
-
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Quote, "🔤");
-
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit5, "🚮");
-
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit6, "🔺");
-
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit8, "✖️");
-
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit9, "🤜");
-
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Digit0, "🤛");
-
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Equal, "➕");
-
-        await AddCommand((int)KeyMod.CtrlCmd | (int)KeyCode.Minus, "➖");
-
-        await AddCommand((int)KeyMod.CtrlCmd | (int)KeyMod.Alt | (int)KeyCode.Slash, "➗");
-
-        await AddCommand((int)KeyCode.NumpadMultiply, "✖️");
-
-        await AddCommand((int)KeyCode.NumpadDivide, "➗");
-
-        await AddCommand((int)KeyCode.NumpadAdd, "➕");
-
-        await AddCommand((int)KeyCode.NumpadSubtract, "➖");
-
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Period, "▶️");
-
-        await AddCommand((int)KeyMod.Shift | (int)KeyCode.Comma, "◀️");
+        foreach(var keybinding in EmojicodeKeybindings.Keybindings)
+        {
+            await AddCommand(keybinding.Key, keybinding.Value);
+        }
 
         await _editor.AddCommand((int)KeyMod.CtrlCmd | (int)KeyCode.KeyE, async (args) =>
         {
