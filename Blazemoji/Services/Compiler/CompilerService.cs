@@ -1,5 +1,4 @@
 ﻿using Blazemoji.Contracts.Models;
-using System.Diagnostics;
 
 namespace Blazemoji.Services.Compiler
 {
@@ -10,25 +9,27 @@ namespace Blazemoji.Services.Compiler
 
         public EmojicodeResult CompileEmojicode(string code)
         {
-            var result = new EmojicodeResult();
-            string outputFileName = "temp.o";
-            string stdOutput = string.Empty;
-            string stdError = string.Empty;
-            string tempPath = Path.GetTempPath() + "temp." + Path.GetRandomFileName() + ".🍇";
             var directory = Directory.GetCurrentDirectory();
+            var result = new EmojicodeResult();
+            string tempPath = Path.GetTempPath() + EmojiStringGenerator.GetRandomEmojis(5) + ".🍇";
+            string error = string.Empty;
+            var outputFile = new CompiledEmojicodeFile
+            {
+                Path = directory,
+                Filename = "temp.o"
+            };
 
             try
             {
                 File.WriteAllText(tempPath, code);
 
-                //Compile file to binary
-                Process process = EmojicodeProcessFactory.Create("emojicodec/emojicodec", tempPath + $" -o {Path.Combine(directory, outputFileName)}");
+                Process process = EmojicodeProcessFactory.Create("emojicodec/emojicodec", tempPath + $" -o {Path.Combine(directory, outputFile.Filename)}");
 
                 process.ErrorDataReceived += (sender, e) =>
                 {
                     if (!string.IsNullOrEmpty(e.Data))
                     {
-                        stdError += e?.Data + Environment.NewLine;
+                        error += e?.Data + Environment.NewLine;
                     }
                 };
 
@@ -38,20 +39,9 @@ namespace Blazemoji.Services.Compiler
 
                 process.WaitForExit();
 
-                stdOutput = process.StandardOutput.ReadToEnd();
-
-                result.Error = !string.IsNullOrWhiteSpace(stdError);
-
-                if (!result.Error)
-                {
-                    result.Result = directory + ":" + outputFileName;
-                    result.Message = stdOutput;
-                }
-                else
-                {
-                    _logger.LogInformation("Compiler error {stdError}", stdError);
-                    result.Message = stdError;
-                }
+                HandleProcessResults(process, result, error);
+                
+                result.CompiledFile = outputFile;
             }
             catch (Exception ex)
             {
@@ -61,13 +51,17 @@ namespace Blazemoji.Services.Compiler
             }
             finally
             {
-                try
-                {
-                    File.Delete(tempPath);
-                    Console.WriteLine("Deleted file: " + tempPath);
-                }
-                catch { }
+                TryDeleteFile(tempPath);
             }
+
+            return result;
+        }
+
+        public EmojicodeResult ExecuteCode(CompiledEmojicodeFile file)
+        {
+            var result = ExecuteCode($"{file.Path}:{file.Filename}");
+
+            TryDeleteFile(Path.Combine(file.Path, file.Filename));
 
             return result;
         }
@@ -108,10 +102,7 @@ namespace Blazemoji.Services.Compiler
                 }
                 else
                 {
-                    stdOutput = emojicode.StandardOutput.ReadToEnd();
-                    codeResult.Error = !string.IsNullOrWhiteSpace(stdError);
-                    codeResult.Message = stdError;
-                    codeResult.Result = stdOutput;
+                    HandleProcessResults(emojicode, codeResult, stdError);
                 }
 
                 timer.Stop();
@@ -133,6 +124,37 @@ namespace Blazemoji.Services.Compiler
         public async Task<EmojicodeResult> ExecuteCodeAsync(string filename)
         {
             return await Task.Run(() => ExecuteCode(filename));
+        }
+
+        private void HandleProcessResults(Process process, EmojicodeResult result, string? error)
+        {
+            string output = process.StandardOutput.ReadToEnd();
+
+            result.Error = !string.IsNullOrWhiteSpace(error);
+
+            if (!result.Error)
+            {
+                result.Result = output;
+                result.Message = process.StandardOutput.ReadToEnd();
+            }
+            else
+            {
+                _logger.LogInformation("Process error {error}", error);
+                result.Message = error ?? "Process error";
+            }
+        }
+
+        private void TryDeleteFile(string path)
+        {
+            try
+            {
+                File.Delete(path);
+                _logger.LogInformation("Deleted file {path}", path);
+            }
+            catch(Exception ex) 
+            { 
+                _logger.LogError(ex, "Failed to delete file {path}", path);  
+            }
         }
     }
 }

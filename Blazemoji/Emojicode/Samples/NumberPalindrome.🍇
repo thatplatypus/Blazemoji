@@ -1,6 +1,8 @@
-﻿💭 Emojicode solution for solving if a given input number is a palindrome
-💭 The solution does not use string conversion
-💭 https://leetcode.com/problems/palindrome-number/description/
+﻿💭🔜
+Emojicode solution for solving if a given input number is a palindrome
+The solution does not use string conversion and instead uses modulo and division to solve the problem.
+https://leetcode.com/problems/palindrome-number/description/
+🔚💭
 
 🏁 🍇
 	💭Change the value of X to see if it is a palindrome. 

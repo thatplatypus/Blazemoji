@@ -1,3 +1,7 @@
 {
-    "dotnet.defaultSolution": "Blazemoji.sln"
+    "dotnet.defaultSolution": "Blazemoji.sln",
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    },
+    "editor.formatOnSave": true
 }

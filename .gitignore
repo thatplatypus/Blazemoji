@@ -5,6 +5,7 @@
 *.suo
 *.user
 *.sln.docstates
+*.o
 *.tmp.o
 temp.*.o
 temp.o
