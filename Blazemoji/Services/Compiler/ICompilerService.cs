@@ -15,6 +15,11 @@ namespace Blazemoji.Services.Compiler
         /// <summary>
         /// Executes compiled emojicode from a binary
         /// </summary>
+        public EmojicodeResult ExecuteCode(CompiledEmojicodeFile file);
+
+        /// <summary>
+        /// Executes compiled emojicode from a binary
+        /// </summary>
         public EmojicodeResult ExecuteCode(string filename);
 
         /// <summary>
@@ -35,7 +40,17 @@ namespace Blazemoji.Services.Compiler
             if (compilerResult.Error)
                 return compilerResult;
 
-            return await Task.Run(() => compilerService.ExecuteCode(compilerResult.Result));
+            return await Task.Run(() =>
+            {
+                if (compilerResult.CompiledFile != null)
+                {
+                    return compilerService.ExecuteCode(compilerResult.CompiledFile);
+                }
+                else
+                {
+                    return compilerService.ExecuteCode(compilerResult.Result);
+                }
+            });
         }
     }
 }

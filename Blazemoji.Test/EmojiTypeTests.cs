@@ -13,6 +13,11 @@
         [InlineData(typeof(Beer), "Beer", "🍺", "!")]
         [InlineData(typeof(Magnet), "Magnet", "🧲", "@")]
         [InlineData(typeof(Exponent), "Exponent", "🔺", "^")]
+        [InlineData(typeof(Plus), "Plus", "➕", "+")]
+        [InlineData(typeof(Minus), "Minus", "➖", "-")]
+        [InlineData(typeof(Multiplication), "Multiplication", "✖️", "*")]
+        [InlineData(typeof(Divide), "Divide", "➗", "/")]
+        [InlineData(typeof(Remainder), "Remainder", "🚮", "%")]
 
         public void Emoji_Type_Is_Expected_To_Match_Emojicode(
             Type emojiType, 

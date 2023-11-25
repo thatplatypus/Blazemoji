@@ -25,7 +25,11 @@
             Language = "emojiscript",
             Value = "🏁 🍇\n" +
                     "\t😀 🔤Hello World!🔤❗️\n" +
-                    "🍉"
+                    "🍉",
+            UnicodeHighlight = new UnicodeHighlightOptions{
+                InvisibleCharacters = false,
+                AmbiguousCharacters = false,
+            },
         }; 
     }
 
@@ -49,7 +53,11 @@
             await EmojiPickerOpened.InvokeAsync();
         });
 
-        //Setup Monarch for emojicode
+        await SetMonarchsTokenProviderAsync();
+    }
+
+    private async Task SetMonarchsTokenProviderAsync()
+    {
         await _jsRuntime.InvokeVoidAsync("monaco.languages.register", new { id = "emojiscript" });
 
         await _jsRuntime.InvokeVoidAsync("monaco.languages.setMonarchTokensProvider", "emojiscript", new
@@ -58,17 +66,22 @@
             {
                 root = new object[]
                 {
-                    new object[] { @"🔤.*🔤", "string" },
+                    new object[] { @"🔤", "string", "@string" },
                     new object[] { @"💭🔜", "comment", "@comment" },
                     new object[] { @"💭.*", "comment" },
-
+                },
+                @string = new object[]
+                {
+                    new object[] { @"🧲.*🧲", "variable" },
+                    new object[] { @"🔤", "string", "@pop" },
+                    new object[] { @".", "string" },
                 },
                 comment = new object[]
                 {
-                    new object[] { @"🔚💭", "comment", "@pop" }, 
-                    new object[] { @".", "comment" }, 
+                    new object[] { @"🔚💭", "comment", "@pop" },
+                    new object[] { @".", "comment" },
                 }
-            }          
+            }
         });
     }
 
