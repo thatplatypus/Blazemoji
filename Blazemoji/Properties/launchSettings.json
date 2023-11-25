@@ -60,12 +60,13 @@
     "Docker": {
       "commandName": "Docker",
       "launchBrowser": true,
-      "launchUrl": "{Scheme}://0.0.0.0:80",
+      "launchUrl": "http://localhost:5000",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
-      "useSSL": false,
-      "publishAllPorts": true
+      "useSSL": true,
+      "publishAllPorts": true,
+      "httpPort": 5000
     }
   }
 }
