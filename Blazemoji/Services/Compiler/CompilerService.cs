@@ -100,7 +100,6 @@ namespace Blazemoji.Services.Compiler
 
                 if (!emojicode.WaitForExit(_timeoutThreshhold))
                 {
-
                     emojicode.Kill();
                     stdOutput = emojicode.StandardOutput.ReadToEnd();
                     codeResult.Error = true;
