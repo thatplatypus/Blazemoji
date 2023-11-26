@@ -25,7 +25,8 @@ var emojicodeKeywordTypes = typeof(EmojicodeKeyword).Assembly.GetTypes()
 
 foreach (var type in emojicodeKeywordTypes)
 {
-    builder.Services.AddSingleton(typeof(EmojicodeKeyword), type);
+    if (Activator.CreateInstance(type) is EmojicodeKeyword keyword && keyword.Emoji != null)
+        builder.Services.AddSingleton(typeof(EmojicodeKeyword), type);
 }
 
 var app = builder.Build();

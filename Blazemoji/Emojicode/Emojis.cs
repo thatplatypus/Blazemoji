@@ -14,7 +14,7 @@
 
         public const string Letters = "🔤";
 
-        public const string Exclamation = "❗️";
+        public const string Exclamation = "❗";
 
         public const string Magnet = "🧲";
 
@@ -101,5 +101,21 @@
         public const string EmptySquare = "🔲";
 
         public const string WinkyFace = "😜";
+
+        public const string Crayon = "🖍";
+
+        public const string ForEach = "🔂";
+
+        public const string If = "↪️";
+
+        public const string Else = "🙅";
+
+        public const string While = "🔁";
+
+        public const string ArrowBlock = "➡️";
+
+        public const string PigNose = "🐽";
+
+        public const string Eggplant = "🍆";
     }
 }
