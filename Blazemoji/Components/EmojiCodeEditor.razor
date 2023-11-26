@@ -2,9 +2,15 @@
 @using BlazorMonaco;
 @inject IJSRuntime _jsRuntime
 
+<div class="@("text-align-center " + (_initializing ? "d-block" : "d-none"))">
+    <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
+    <div>Initializing editor...</div>
+</div>
+
+
 <BlazorMonaco.Editor.StandaloneCodeEditor @ref="_editor" 
-    CssClass="editor" 
-    Id="emojiEditor" 
+    CssClass="@("editor " + (_initializing ? "invisible" : ""))" 
+    Id="emojiEditor"
     OnDidInit="InitEditor"
     OnDidBlurEditorText="SetPosition"
     ConstructionOptions="EditorConstructionOptions" />
@@ -12,6 +18,7 @@
 @code {
     private StandaloneCodeEditor _editor = default!;
     private BlazorMonaco.Selection _selection = default!;
+    private bool _initializing = true;
 
     [Parameter]
     public EventCallback EmojiPickerOpened { get; set; }
@@ -29,6 +36,7 @@
             UnicodeHighlight = new UnicodeHighlightOptions{
                 InvisibleCharacters = false,
                 AmbiguousCharacters = false,
+                NonBasicASCII = false,
             },
         }; 
     }
@@ -43,7 +51,16 @@
 
     private async Task InitEditor()
     {
-        foreach(var keybinding in EmojicodeKeybindings.Keybindings)
+        await SetEditorCommands();
+
+        await SetMonarchsTokenProviderAsync();
+
+        _initializing = false;
+    }
+
+    private async Task SetEditorCommands()
+    {
+        foreach (var keybinding in EmojicodeKeybindings.Keybindings)
         {
             await AddCommand(keybinding.Key, keybinding.Value);
         }
@@ -52,8 +69,6 @@
         {
             await EmojiPickerOpened.InvokeAsync();
         });
-
-        await SetMonarchsTokenProviderAsync();
     }
 
     private async Task SetMonarchsTokenProviderAsync()

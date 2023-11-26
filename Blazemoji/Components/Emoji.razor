@@ -1,4 +1,17 @@
-﻿<MudTooltip Text="@Keyword.Description" Color="Color.Info" Arrow="true">
+﻿<MudTooltip Color="Color.Info" Arrow="true">
+    <TooltipContent>
+        @Keyword.Description
+
+        @if(!string.IsNullOrWhiteSpace(Keyword.Example))
+        {
+            <code>
+                @foreach(string example in Keyword.Example.Split("\r\n")) {
+                    <HintText>@example</HintText>
+                }
+            </code>
+        }
+    </TooltipContent>
+    <ChildContent>
 <MudPaper Elevation="1" Square="true" MaxHeight="100px" MaxWidth="100px" Class="pa-1 emoji-box-hover" Style="min-width:90px;">
 <MudGrid Spacing="2">
     <MudItem xs="7">
@@ -19,6 +32,7 @@
         <MudText Typo="Typo.h6">@Keyword.Keyword</MudText>
     </MudItem>
 </MudPaper>
+</ChildContent>
 </MudTooltip>
 @code {
     [Parameter] public EmojicodeKeyword Keyword { get; set; } = default!;

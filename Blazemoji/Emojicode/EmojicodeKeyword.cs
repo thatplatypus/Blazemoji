@@ -13,7 +13,7 @@
         /// <summary>
         /// Short description of what the keyword is.
         /// </summary>
-        public abstract string Description { get; } 
+        public abstract string Description { get; }
 
         /// <summary>
         /// Similar keyword/concept in a normal language
@@ -48,5 +48,10 @@
                 return GetType().Name;
             }
         }
+
+        /// <summary>
+        /// Provides an example how to use the keyword
+        /// </summary>
+        public virtual string? Example { get; init; }
     }
 }

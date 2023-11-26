@@ -1,118 +1,27 @@
 ﻿@using Blazemoji.Emojicode.Keywords;
-    <MudList Clickable="false" Style="overflow-x:clip;overflow-y:auto;max-height:84vh;">
-    <MudListItem><h6>@EmojicodeCategory.Basics</h6></MudListItem>
-        <MudDivider />
-        <MudGrid Spacing="1" Justify="Justify.FlexStart">
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-            <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_flag" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_grape" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_watermelon" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_thoughtBubble" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_grinningFace" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_exclamation" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_return" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_escape" />
-            </MudItem>
-        </MudGrid>
 
-        <MudListItem><h6>@EmojicodeCategory.ClassesAndValueTypes</h6></MudListItem>
-        <MudDivider />
-        <MudGrid Spacing="1" Justify="Justify.FlexStart">
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_numberLiteral" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_letters" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_new" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_thumbsUp" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_thumbsDown" />
-            </MudItem>
-        </MudGrid>
-
-        <MudListItem><h6>@EmojicodeCategory.Operators</h6></MudListItem>
-        <MudDivider />
-        <MudGrid Spacing="1" Justify="Justify.FlexStart">
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_plus" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_minus" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_multiplication" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_divide" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_remainder" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_exponent" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_fistRight" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_fistLeft" />
-            </MudItem>
-        </MudGrid>
-
-        <MudListItem><h6>Equality</h6></MudListItem>
-        <MudDivider />
-        <MudGrid Spacing="1" Justify="Justify.FlexStart">
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-            <Emoji CopiedToClipboard="@CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_lessThan" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_greaterThan" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_equals" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_not" />
-            </MudItem>
-        </MudGrid>
-
-        <MudListItem><h6>Logic</h6></MudListItem>
-        <MudDivider />
-        <MudGrid Spacing="1" Justify="Justify.FlexStart">
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_if" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_else" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_repeat" />
-            </MudItem>
-            <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
-                <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@_forEach" />
-            </MudItem>
-        </MudGrid>
-
-        </MudList>
+<MudList Clickable="false" Style="overflow-x:clip;overflow-y:auto;max-height:84vh;">
+    @if (_emojisByCategory != null)
+    {
+        @foreach (var category in _emojisByCategory.Keys)
+        {
+            <MudListItem><h6>@category
+                </h6></MudListItem>
+            <MudDivider />
+            <MudGrid Spacing="1" Justify="Justify.FlexStart">
+            @foreach (var keyword in _emojisByCategory[category])
+            {
+                    <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                        <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@keyword" />
+                    </MudItem>
+            }
+            </MudGrid>
+        }
+    }
+    else {
+        <div>Loading...</div>
+    }
+</MudList>
 
 @code {
     [Parameter]
@@ -122,44 +31,82 @@
     public EventCallback<EmojicodeKeyword> OnEmojicodeInserted { get; set; }
 
     [Parameter]
-    public EventCallback CopiedToClipboard {get; set;}
+    public EventCallback CopiedToClipboard { get; set; }
+
+    [Inject]
+    public IEnumerable<EmojicodeKeyword> EmojicodeKeywords { get; set; } = default!;
 
     private const int _itemsPerRow = 4;
     private Func<int, int> _itemsPerRowFunc = (int i) => i;
+    private Dictionary<string, List<EmojicodeKeyword>> _emojisByCategory = default!;
 
-    private Grape _grape = new();
-    private Watermelon _watermelon = new();
-    private Flag _flag = new();
-    private Letters _letters = new();
-    private New _new = new();
-    private GrinningFace _grinningFace = new();
-    private Exclamation _exclamation = new();
-    private ThoughtBubble _thoughtBubble = new();
-    private Return _return = new();
-    private NumberLiteral _numberLiteral = new();
-    private Plus _plus = new();
-    private Minus _minus = new();
-    private Multiplication _multiplication = new();
-    private Divide _divide = new();
-    private Remainder _remainder = new();
-    private Exponent _exponent = new();
-    private FistRight _fistRight = new();
-    private FistLeft _fistLeft = new();
-    private GreaterThan _greaterThan = new();
-    private LessThan _lessThan = new();
-    private Equals _equals = new();
-    private ThumbsUp _thumbsUp = new();
-    private ThumbsDown _thumbsDown = new();
-    private Not _not = new();
-    private Escape _escape = new();
-    private If _if = new();
-    private Else _else = new();
-    private RepeatWhile _repeat = new();
-    private ForEach _forEach = new();
+    protected override void OnInitialized()
+    {
+        _emojisByCategory = new Dictionary<string, List<EmojicodeKeyword>>
+        {
+            {
+                EmojicodeCategory.Basics, new List<EmojicodeKeyword>
+                {
+                    EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.ChequeredFlag)),
+                    EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Grape)),
+                    EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Watermelon)),
+                    EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.ThoughtBubble)),
+                    EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.GrinningFace)),
+                    EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Exclamation)),
+                    EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Return)),
+                    EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.CrossMark)),
+                    EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.ArrowBlock)),
+            }
+        },
+        {
+            EmojicodeCategory.ClassesAndValueTypes, new List<EmojicodeKeyword>
+            {
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.NumberLiteral)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Letters)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.NewButton)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.ThumbsUp)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.ThumbsDown)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Crayon)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Magnet)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.PigNose)),
+            }
+        },
+        {
+            EmojicodeCategory.Operators, new List<EmojicodeKeyword>
+            {
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Plus)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Minus)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Multiplication)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Division)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Exponent)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Remainder)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.FistRight)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.FistLeft)),
+            }
+        },
+        {
+            EmojicodeCategory.Equality, new List<EmojicodeKeyword>
+            {
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.LessThan)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.GreaterThan)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.EqualTo)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.CrossMarkButton)),
+            }
+        },
+        {
+            EmojicodeCategory.Logic, new List<EmojicodeKeyword>
+            {
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.If)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.Else)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.While)),
+                EmojicodeKeywords.First(x => x.Emoji.Equals(Emojis.ForEach)),
+            }
+        }};
+    }
 
     private async Task EmojicodeSelected(MouseEventArgs e, EmojicodeKeyword emoji)
     {
-        await OnEmojicodeSelected?.InvokeAsync(emoji);
+        await OnEmojicodeSelected?.InvokeAsync(emoji)!;
     }
 
     private async Task EmojicodeInserted(EmojicodeKeyword emoji)

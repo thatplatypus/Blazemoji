@@ -4,7 +4,7 @@
     {
         public override string Emoji => Emojis.FistLeft;
 
-        public override string Description => "Grouping end";
+        public override string Description => "End grouping";
 
         public override string Keyword => ")";
 

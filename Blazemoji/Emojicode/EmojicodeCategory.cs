@@ -13,5 +13,7 @@
         public const string Operators = "Operators";
 
         public const string Logic = "Logic";
+
+        public const string Equality = "Equality";
     }
 }
