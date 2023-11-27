@@ -21,9 +21,7 @@
      <MudStack Spacing="1">
         <CopyToClipboard ClipboardValue="@Keyword.Emoji" CopiedToClipboard="@CopiedToClipboard" />
         <MudDivider />
-        <MudTooltip Text="Insert" Placement="Placement.Right">
-            <MudIconButton Size="Size.Small" Icon="@Icons.Material.Outlined.ContentPasteGo" OnClick="OnEmojiInsertedAsync" />
-        </MudTooltip>
+            <MudIconButton Title="Insert" Size="Size.Small" Icon="@Icons.Material.Outlined.ContentPasteGo" OnClick="OnEmojiInsertedAsync" />
      </MudStack>
     </MudItem>
     </MudGrid>

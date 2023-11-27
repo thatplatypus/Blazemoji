@@ -1,8 +1,6 @@
 ﻿@inject IJSRuntime _jsRuntime
 
-<MudTooltip Text="Copy" Placement="Placement.Right">
-    <MudIconButton Size="Size.Small" Icon="@Icons.Material.Outlined.ContentCopy" OnClick="CopyToClipboardAsync"/>
-</MudTooltip>
+<MudIconButton Title="Copy" Size="Size.Small" Icon="@Icons.Material.Outlined.ContentCopy" OnClick="CopyToClipboardAsync"/>
 
 @code {
     [Parameter] public string ClipboardValue { get; set; } = "";

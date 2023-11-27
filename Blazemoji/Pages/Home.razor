@@ -9,6 +9,7 @@
 @inject LocalStorageFiles _localStorageFiles
 @inject ICodeRunner _codeRunner
 
+
 <MudContainer Style="max-height:90dvh;overflow:hidden;" MaxWidth="MaxWidth.ExtraExtraLarge">
     <MudGrid Justify="Justify.Center" Spacing="1">
         <MudItem xs="3">
@@ -17,18 +18,23 @@
         <MudItem xs="6">
             <MudPaper Elevation="25" Class="mb-2">
                 <MudToolBar>
-                    <h4>🍇 Emojicode Editor</h4>
+                    <h4 class="text-nowrap">🍇 Emojicode Editor</h4>
                     <MudSpacer />
                     <Blazemoji.Components.EmojiPicker.EmojiPicker
                         @ref="_emojiPicker"
                         DisableUnderLine="true"
-                        Class="emoji-picker"
+                        Class="emoji-picker mr-3"
                         OnEmojiPicked="@InsertEmojiAsync"
                     />
+
+                    <MudTooltip Text="Editor Commands">
+                        <MudIconButton Icon="@Icons.Material.Outlined.KeyboardCommandKey" OnClick="OpenEditorCommands" />
+                    </MudTooltip>
 
                     <MudTooltip Text="Save Code">
                         <MudIconButton Icon="@Icons.Material.Outlined.Save" OnClick="SaveEmojicode" />
                     </MudTooltip>
+
                      <MudButton Variant="@Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="RunEmojiCodeClicked" Disabled="_loading" Color="Color.Success">
                          @if(_loading){
                             <span class="mr-2">Running...</span>
@@ -139,6 +145,12 @@
     {
         _emojiPicker.Open();
         await Task.CompletedTask;
+    }
+
+    private async Task OpenEditorCommands()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, CloseButton = true, FullWidth = true };
+        _dialogService.Show<KeycommandsDialog>("Editor Keycommands", options);
     }
 
 }
