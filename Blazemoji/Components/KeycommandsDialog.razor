@@ -1,0 +1,34 @@
+﻿<MudDialog>
+    <DialogContent>
+        @foreach(var keybinding in EmojicodeKeybindings.Keybindings)
+        {
+            <MudGrid>
+                    <MudItem xs="8">
+                        @{
+                        var components = EmojicodeKeybindings.GetKeybindingComponents(keybinding.Key);
+                            <MudText>
+                            @foreach (var modifier in components.Item1)
+                            {
+                                @(modifier + " + ")
+                            }
+                            @components.Item2
+                            </MudText>
+                        }
+                    </MudItem>
+                <MudItem xs="4">
+                    <MudText>@keybinding.Value</MudText>
+                </MudItem>
+            </MudGrid>
+
+            <MudDivider />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
+
+    void Cancel() => MudDialog.Cancel();
+}

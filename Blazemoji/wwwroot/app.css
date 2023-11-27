@@ -45,6 +45,10 @@ h1:focus {
     line-height: 3rem;
 }
 
+.emoji-picker {
+    margin-right: 0px!important;
+}
+
 .emoji-picker > .mud-input-control {
     margin-top: 0!important;
 }

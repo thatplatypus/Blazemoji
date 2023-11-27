@@ -10,6 +10,8 @@
 
         public const string ClassesAndValueTypes = "Types and Values";
 
+        public const string Objects = "Objects";
+
         public const string Operators = "Operators";
 
         public const string Logic = "Logic";
