@@ -28,5 +28,12 @@ namespace Blazemoji.Emojicode
             var random = new Random();
             return string.Concat(Enumerable.Range(0, length).Select(_ => _emojis[random.Next(_emojis.Length)]));
         }
+
+        public static string GetEmojiKey()
+        {
+            var random = new Random();
+            var guidFormat = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx";
+            return string.Concat(guidFormat.Select(c => c == '-' ? "-" : _emojis[random.Next(_emojis.Length)]));
+        }
     }
 }

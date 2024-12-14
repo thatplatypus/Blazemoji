@@ -47,6 +47,7 @@ h1:focus {
 
 .emoji-picker {
     margin-right: 0px!important;
+    width: 1rem;
 }
 
 .emoji-picker > .mud-input-control {

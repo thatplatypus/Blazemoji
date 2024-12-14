@@ -11,7 +11,7 @@
             <MudGrid Spacing="1" Justify="Justify.FlexStart">
             @foreach (var keyword in _emojisByCategory[category])
             {
-                    <MudItem xs="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
+                    <MudItem xs="@_itemsPerRowFunc(_itemsPerRow+8)" sm="@_itemsPerRowFunc(_itemsPerRow+2)" lg="@_itemsPerRowFunc(_itemsPerRow)" xl="@_itemsPerRowFunc(_itemsPerRow-1)">
                         <Emoji CopiedToClipboard="CopiedToClipboard" EmojiInserted="EmojicodeInserted" Keyword="@keyword" />
                     </MudItem>
             }

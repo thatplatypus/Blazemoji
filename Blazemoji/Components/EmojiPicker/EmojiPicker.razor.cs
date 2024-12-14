@@ -51,6 +51,7 @@ namespace Blazemoji.Components.EmojiPicker
 
         protected string ToolbarClass =>
         new CssBuilder("mud-picker-timepicker-toolbar")
+          .AddClass("mud-width-full")
           .AddClass($"mud-picker-timepicker-toolbar-landscape", Orientation == Orientation.Landscape && PickerVariant == PickerVariant.Static)
           .AddClass(Class)
         .Build();

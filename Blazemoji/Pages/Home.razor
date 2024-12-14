@@ -15,7 +15,7 @@
         <MudItem xs="3">
             <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" OnEmojicodeInsertedCallback="@InsertEmojicodeAsync" CopiedToClipboard="OnCopiedToClipboard" />
         </MudItem>
-        <MudItem xs="6">
+        <MudItem xs="7" lg="6">
             <MudPaper Elevation="25" Class="mb-2">
                 <MudToolBar>
                     <h4 class="text-nowrap">🍇 Emojicode Editor</h4>
@@ -35,7 +35,7 @@
                         <MudIconButton Icon="@Icons.Material.Outlined.Save" OnClick="SaveEmojicode" />
                     </MudTooltip>
 
-                     <MudButton Variant="@Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="RunEmojiCodeClicked" Disabled="_loading" Color="Color.Success">
+                     <MudButton Class="text-nowrap" Variant="@Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="RunEmojiCodeClicked" Disabled="_loading" Color="Color.Success">
                          @if(_loading){
                             <span class="mr-2">Running...</span>
                             <MudProgressCircular Indeterminate="true" Style="max-width:1rem;max-height:1rem;" Color="Color.Primary" />
@@ -50,7 +50,7 @@
             </MudPaper>
             <EmojiCodeEditor EmojiPickerOpened="@OpenEmojiPickerAsync" @ref="_editor" />
         </MudItem>
-        <MudItem xs="3">
+        <MudItem xs="2" lg="3">
             <MudPaper Height="100%" Style="position:relative">
             <MudOverlay DarkBackground="true"  Absolute="true" Visible="_loading">
                 @if(_loading)
