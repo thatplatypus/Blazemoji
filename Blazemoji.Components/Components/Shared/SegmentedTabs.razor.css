@@ -1,0 +1,98 @@
+/* Tabs as one rounded strip: the tabs lie in a track the colour of the page, and the open
+   one is a pill the colour of the panel it sits in. Every colour, the corner and the text
+   come from the theme. */
+.segmented-tabs {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.segmented-tabs-strip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.segmented-tabs-list {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    border-radius: var(--mud-default-borderradius);
+    background-color: var(--mud-palette-background);
+}
+
+/* Tabs share the strip evenly. A name too long for its share is cut short, so a tab never
+   pushes its neighbours or wraps the strip taller. */
+.segmented-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: calc(var(--mud-default-borderradius) * 0.7);
+    background-color: transparent;
+    color: var(--mud-palette-text-secondary);
+    font-family: var(--mud-typography-button-family);
+    font-size: var(--mud-typography-button-size);
+    font-weight: var(--mud-typography-button-weight);
+    line-height: var(--mud-typography-button-lineheight);
+    letter-spacing: var(--mud-typography-button-letterspacing);
+    text-transform: var(--mud-typography-button-text-transform);
+    cursor: pointer;
+    transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.segmented-tab:hover {
+    background-color: var(--mud-palette-action-default-hover);
+    color: var(--mud-palette-text-primary);
+}
+
+/* The open tab is marked by colour and a hairline drawn inside it, which add nothing to its size. */
+.segmented-tab-active,
+.segmented-tab-active:hover {
+    background-color: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+    box-shadow: inset 0 0 0 1px var(--mud-palette-lines-default);
+}
+
+.segmented-tab:focus-visible {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: 1px;
+}
+
+.segmented-tab-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.segmented-tab-count {
+    flex: none;
+    display: inline-flex;
+}
+
+/* Where a tab's count is drawn: wide enough for three digits, and there whether or not there is a number. */
+.segmented-tab-count-place {
+    display: inline-block;
+    width: 28px;
+    height: 20px;
+}
+
+.segmented-tabs-panel {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .segmented-tab {
+        transition: none;
+    }
+}

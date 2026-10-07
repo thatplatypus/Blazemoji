@@ -1,0 +1,49 @@
+@using Blazemoji.Toolchain
+
+@if (Diagnostics.Count == 0)
+{
+    <MudText Typo="Typo.body2" Class="pa-2">No problems.</MudText>
+}
+else
+{
+    <MudList T="Diagnostic" Dense="true">
+        @for (var index = 0; index < Diagnostics.Count; index++)
+        {
+            var diagnostic = Diagnostics[index];
+            <MudListItem T="Diagnostic"
+                         @key="index"
+                         data-testid="problem"
+                         Icon="@IconFor(diagnostic)"
+                         IconColor="@ColorFor(diagnostic)"
+                         OnClick="@(() => ProblemSelected.InvokeAsync(diagnostic))">
+                <span class="problem-message">@diagnostic.Message</span>
+                @if (diagnostic.Line > 0)
+                {
+                    <span class="problem-position" data-testid="problem-position">@Position(diagnostic)</span>
+                }
+            </MudListItem>
+        }
+    </MudList>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<Diagnostic> Diagnostics { get; set; } = [];
+
+    /// <summary>Put the file's path in front of each position.</summary>
+    [Parameter]
+    public bool ShowFiles { get; set; }
+
+    [Parameter]
+    public EventCallback<Diagnostic> ProblemSelected { get; set; }
+
+    private string Position(Diagnostic diagnostic) => ShowFiles && diagnostic.File.Length > 0
+        ? $"{diagnostic.File} {diagnostic.Line}:{diagnostic.Character}"
+        : $"{diagnostic.Line}:{diagnostic.Character}";
+
+    private static string IconFor(Diagnostic diagnostic) =>
+        diagnostic.Severity == DiagnosticSeverity.Error ? BlazemojiIcons.Error : BlazemojiIcons.Warning;
+
+    private static Color ColorFor(Diagnostic diagnostic) =>
+        diagnostic.Severity == DiagnosticSeverity.Error ? Color.Error : Color.Warning;
+}

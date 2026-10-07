@@ -1,0 +1,151 @@
+@using System.Globalization
+@using Blazemoji.Toolchain
+@implements IDisposable
+@inject RunState Run
+@inject RequestState Requests
+
+<div class="request-panel pa-2">
+    @if (!Run.ServerRunning)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" data-testid="no-server">
+            Run a project that is set to run as a web server, then send it requests from here.
+        </MudAlert>
+    }
+
+    <div class="request-line">
+        <MudSelect T="string" @bind-Value="_method" Label="Method" Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined" Class="request-method" data-testid="request-method">
+            @foreach (var method in Methods)
+            {
+                <MudSelectItem T="string" @key="method" Value="@method">@method</MudSelectItem>
+            }
+        </MudSelect>
+        <MudTextField T="string" @bind-Value="_path" Label="Path" Margin="Margin.Dense" Variant="Variant.Outlined" Immediate="true" OnKeyDown="OnPathKeyDown" data-testid="request-path" />
+    </div>
+    <MudTextField T="string" @bind-Value="_headers" Label="Headers" HelperText="One per line, as Name: value" Lines="2" Margin="Margin.Dense" Variant="Variant.Outlined" Immediate="true" data-testid="request-headers" />
+    <MudTextField T="string" @bind-Value="_body" Label="Body" Lines="4" Margin="Margin.Dense" Variant="Variant.Outlined" Immediate="true" data-testid="request-body" />
+
+    <div class="request-actions">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@BlazemojiIcons.Send" Disabled="@(!Run.ServerRunning || Requests.Sending)" OnClick="SendAsync" data-testid="request-send">
+            Send
+        </MudButton>
+        <span class="request-problem mud-error-text" data-testid="request-problem">@_problem</span>
+    </div>
+
+    @if (Requests.Selected is { } exchange)
+    {
+        <MudDivider />
+        <div class="response" data-testid="response">
+            <div class="response-summary">
+                <span class="response-request" data-testid="response-request">@exchange.Method @exchange.Path</span>
+                @if (exchange.Response.Outcome == ProgramResponseOutcome.Answered)
+                {
+                    <span class="@StatusClass(exchange.Response.StatusCode)" data-testid="response-status">@StatusLine(exchange.Response)</span>
+                    <span class="response-facts" data-testid="response-facts">@Facts(exchange.Response)</span>
+                }
+            </div>
+            @if (RequestState.Describe(exchange.Response.Outcome) is { } unanswered)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" data-testid="response-problem">@unanswered</MudAlert>
+            }
+            else
+            {
+                <div class="response-headers" data-testid="response-headers">
+                    @foreach (var (header, index) in exchange.Response.Headers.Select((header, index) => (header, index)))
+                    {
+                        <div @key="index"><span class="response-header-name">@header.Key:</span> @header.Value</div>
+                    }
+                </div>
+                <pre class="response-body" data-testid="response-body">@RequestState.BodyText(exchange.Response)</pre>
+            }
+        </div>
+    }
+
+    @if (Requests.Exchanges.Count > 1)
+    {
+        <MudDivider />
+        <MudText Typo="Typo.subtitle2">Earlier requests</MudText>
+        <MudList T="int" Dense="true">
+            @foreach (var earlier in Requests.Exchanges)
+            {
+                <MudListItem T="int" @key="earlier.Number" OnClick="@(() => Show(earlier))" data-testid="request-history">
+                    <span class="history-request">@earlier.Method @earlier.Path</span>
+                    <span class="history-status">@(earlier.Response.Outcome == ProgramResponseOutcome.Answered ? earlier.Response.StatusCode.ToString(CultureInfo.InvariantCulture) : "no answer")</span>
+                </MudListItem>
+            }
+        </MudList>
+    }
+</div>
+
+@code {
+    private static readonly string[] Methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+
+    private string _method = "GET";
+    private string _path = "/";
+    private string _headers = "Content-Type: application/json";
+    private string _body = string.Empty;
+    private string? _problem;
+
+    protected override void OnInitialized()
+    {
+        Run.StateChanged += OnRunStateChanged;
+        Requests.StateChanged += OnRequestsChanged;
+        _serverRunning = Run.ServerRunning;
+    }
+
+    public void Dispose()
+    {
+        Run.StateChanged -= OnRunStateChanged;
+        Requests.StateChanged -= OnRequestsChanged;
+    }
+
+    private bool _serverRunning;
+
+    private void OnRunStateChanged()
+    {
+        // The run state announces every batch of output. Only a server starting or stopping matters here.
+        if (Run.ServerRunning == _serverRunning)
+            return;
+
+        _serverRunning = Run.ServerRunning;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnRequestsChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task OnPathKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && Run.ServerRunning && !Requests.Sending)
+            await SendAsync();
+    }
+
+    private async Task SendAsync()
+    {
+        _problem = await Requests.SendAsync(_method, _path, _headers, _body);
+    }
+
+    private void Show(Exchange exchange)
+    {
+        _method = exchange.Method;
+        _path = exchange.Path;
+        _headers = exchange.Headers;
+        _body = exchange.Body;
+        _problem = null;
+        Requests.Select(exchange.Number);
+    }
+
+    private static string StatusLine(ProgramResponse response)
+    {
+        var reason = string.IsNullOrEmpty(response.ReasonPhrase) ? RequestState.ReasonPhrase(response.StatusCode) : response.ReasonPhrase;
+        return $"{response.StatusCode} {reason}".TrimEnd();
+    }
+
+    private static string StatusClass(int statusCode) => statusCode switch
+    {
+        >= 200 and < 300 => "response-status mud-success-text",
+        >= 400 => "response-status mud-error-text",
+        _ => "response-status",
+    };
+
+    private static string Facts(ProgramResponse response) =>
+        $"{response.Duration.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)} ms, {response.Body.Length.ToString("N0", CultureInfo.InvariantCulture)} bytes";
+}

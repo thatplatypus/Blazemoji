@@ -1,0 +1,39 @@
+@using Blazemoji.Shared.Models.Library;
+<MudPaper Elevation="0" Outlined="true" Class="pa-2">
+    <SegmentedTabs AriaLabel="Files, toolbox and library" CompactBelow="280" PanelClass="pt-2">
+        <SegmentedTab Id="files" Text="Files" Icon="@BlazemojiIcons.Files">
+            <ProjectPanel BeforeChange="BeforeProjectChange" />
+        </SegmentedTab>
+        <SegmentedTab Id="toolbox" Text="Toolbox" Icon="@BlazemojiIcons.Toolbox">
+            <EmojiToolbox OnEmojicodeInserted="@EmojicodeInserted" CopiedToClipboard="CopiedToClipboard" />
+        </SegmentedTab>
+        <SegmentedTab Id="library" Text="Library" Icon="@BlazemojiIcons.Library">
+            <Library OnEmojicFileSelected="EmojicFileSelected" />
+        </SegmentedTab>
+    </SegmentedTabs>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public EventCallback<EmojicFile> OnEmojicFileSelected { get; set; }
+
+    [Parameter]
+    public EventCallback<EmojicodeKeyword> OnEmojicodeInsertedCallback { get; set; }
+
+    [Parameter]
+    public EventCallback CopiedToClipboard { get; set; }
+
+    /// <summary>Raised before the Files tab changes the project. See <see cref="ProjectPanel.BeforeChange"/>.</summary>
+    [Parameter]
+    public EventCallback BeforeProjectChange { get; set; }
+
+    private async Task EmojicFileSelected(EmojicFile file)
+    {
+        await OnEmojicFileSelected.InvokeAsync(file);
+    }
+
+    private async Task EmojicodeInserted(EmojicodeKeyword emoji)
+    {
+        await OnEmojicodeInsertedCallback.InvokeAsync(emoji);
+    }
+}

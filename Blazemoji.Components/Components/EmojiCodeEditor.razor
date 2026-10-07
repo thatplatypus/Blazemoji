@@ -1,0 +1,323 @@
+﻿@using BlazorMonaco.Editor
+@using BlazorMonaco;
+@using Blazemoji.Toolchain
+@using Blazemoji.Emojicode.Intelligence
+@using Blazemoji.Interop
+@implements IDisposable
+@inject IJSRuntime _jsRuntime
+@inject EmojicodeLanguageInterop _language
+
+<div class="@("text-align-center " + (_initializing ? "d-block" : "d-none"))">
+    <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
+    <div>Initializing editor...</div>
+</div>
+
+
+<BlazorMonaco.Editor.StandaloneCodeEditor @ref="_editor" 
+    CssClass="@("editor " + (_initializing ? "invisible" : ""))" 
+    Id="@EditorId"
+    OnDidInit="InitEditor"
+    OnDidBlurEditorText="SetPosition"
+    OnDidChangeModelContent="OnContentChanged"
+    ConstructionOptions="EditorConstructionOptions" />
+
+@code {
+    private const string MarkerOwner = "emojicodec";
+    private const string LanguageId = "emojiscript";
+    private const string EditorId = "emojiEditor";
+
+    // How long typing has to pause before the text is handed on to be kept.
+    private static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(400);
+
+    // One Monaco model per open file, so each keeps its own text, undo history and markers.
+    private readonly Dictionary<string, TextModel> _models = [];
+
+    private StandaloneCodeEditor _editor = default!;
+    private BlazorMonaco.Selection _selection = default!;
+    private bool _initializing = true;
+    private int _modelsCreated;
+    private CancellationTokenSource? _settling;
+
+    [Parameter]
+    public EventCallback EmojiPickerOpened { get; set; }
+
+    /// <summary>Raised once the editor can be given files to show.</summary>
+    [Parameter]
+    public EventCallback Ready { get; set; }
+
+    /// <summary>Raised when the text has changed and typing has paused.</summary>
+    [Parameter]
+    public EventCallback ContentSettled { get; set; }
+
+    private StandaloneEditorConstructionOptions EditorConstructionOptions(StandaloneCodeEditor editor)
+    {
+
+        return new StandaloneEditorConstructionOptions
+        {
+            AutomaticLayout = false,
+            Language = LanguageId,
+            Value = string.Empty,
+
+            // Plain words are how emoji are looked up by name, so a suggestion is nearly always
+            // showing while a name is typed. Enter must still mean a new line; Tab accepts.
+            AcceptSuggestionOnEnter = "off",
+            UnicodeHighlight = new UnicodeHighlightOptions{
+                InvisibleCharacters = false,
+                AmbiguousCharacters = false,
+                NonBasicASCII = false,
+            },
+        }; 
+    }
+
+    public StandaloneCodeEditor Editor
+    {
+        get
+        {
+            return _editor;
+        }
+    }
+
+    private async Task InitEditor()
+    {
+        await SetEditorCommands();
+
+        await SetMonarchsTokenProviderAsync();
+        await _language.RegisterAsync(LanguageId);
+
+        _initializing = false;
+        await Ready.InvokeAsync();
+    }
+
+    public void Dispose()
+    {
+        _settling?.Cancel();
+        _settling?.Dispose();
+    }
+
+    private async Task OnContentChanged(ModelContentChangedEvent change)
+    {
+        if (_settling is { } previous)
+        {
+            await previous.CancelAsync();
+            previous.Dispose();
+        }
+
+        var settling = _settling = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(SettleTime, settling.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        await ContentSettled.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Shows a file. The first time a key is seen a model is made for it with
+    /// <paramref name="content"/>; after that the model already holds what was typed.
+    /// </summary>
+    public async Task OpenFileAsync(string key, string content)
+    {
+        if (_initializing)
+            return;
+
+        if (!_models.TryGetValue(key, out var model))
+        {
+            model = await Global.CreateModel(_jsRuntime, content, LanguageId, $"inmemory://blazemoji/{++_modelsCreated}");
+            _models[key] = model;
+        }
+
+        await _editor.SetModel(model);
+    }
+
+    /// <summary>
+    /// Forgets every file whose key is not listed: files that were deleted or renamed, and
+    /// the files of a project that is no longer open.
+    /// </summary>
+    public async Task CloseFilesExceptAsync(IReadOnlySet<string> keys)
+    {
+        foreach (var key in _models.Keys.Where(key => !keys.Contains(key)).ToList())
+        {
+            await _models[key].DisposeModel();
+            _models.Remove(key);
+        }
+    }
+
+    private async Task SetEditorCommands()
+    {
+        foreach (var keybinding in EmojicodeKeybindings.Keybindings)
+        {
+            await AddCommand(keybinding.Key);
+        }
+
+        await _editor.AddCommand((int)KeyMod.CtrlCmd | (int)KeyCode.KeyE, async (args) =>
+        {
+            await EmojiPickerOpened.InvokeAsync();
+        });
+    }
+
+    private async Task SetMonarchsTokenProviderAsync()
+    {
+        await _jsRuntime.InvokeVoidAsync("monaco.languages.register", new { id = "emojiscript" });
+
+        await _jsRuntime.InvokeVoidAsync("monaco.languages.setMonarchTokensProvider", "emojiscript", new
+        {
+            tokenizer = new
+            {
+                root = new object[]
+                {
+                    new object[] { @"🔤", "string", "@string" },
+                    new object[] { @"💭🔜", "comment", "@comment" },
+                    new object[] { @"💭.*", "comment" },
+                },
+                @string = new object[]
+                {
+                    new object[] { @"🧲.*🧲", "variable" },
+                    new object[] { @"🔤", "string", "@pop" },
+                    new object[] { @".", "string" },
+                },
+                comment = new object[]
+                {
+                    new object[] { @"🔚💭", "comment", "@pop" },
+                    new object[] { @".", "comment" },
+                }
+            }
+        });
+    }
+
+    private async Task AddCommand(int keybinding)
+    {
+        await _editor.AddCommand(keybinding, async (args) =>
+        {
+            await InsertTextAsync(await TextForKeyAsync(keybinding));
+        });
+    }
+
+    /// <summary>
+    /// A key that stands for an emoji in code types what is printed on it inside a string or
+    /// a comment. Only those keys need to know where the cursor is.
+    /// </summary>
+    private async Task<string> TextForKeyAsync(int keybinding)
+    {
+        var context = EmojicodeKeybindings.CanDependOnContext(keybinding)
+            ? SourceReader.ContextAtEnd(await _language.TextBeforeCursorAsync(EditorId))
+            : TextContext.Code;
+
+        return EmojicodeKeybindings.TextFor(keybinding, context);
+    }
+
+    private async Task SetPosition()
+    {
+        _selection = await _editor.GetSelection();
+    }
+
+    public BlazorMonaco.Selection? GetLastPosition()
+    {
+        return _selection;
+    }
+
+    public async Task<string> GetCodeAsync()
+    {
+        return await _editor.GetValue();
+    }
+
+    /// <summary>
+    /// The text of one file, read from that file's own model. Asking the editor instead
+    /// answers with whichever file it happens to be showing, which for a moment after a
+    /// switch is the previous one.
+    /// </summary>
+    /// <returns>Null for a file the editor has no model for.</returns>
+    public async Task<string?> GetCodeAsync(string key) =>
+        _models.TryGetValue(key, out var model) ? await model.GetValue(EndOfLinePreference.TextDefined, false) : null;
+
+    public async Task SetCodeAsync(string code)
+    {
+        await _editor.SetValue(code);
+    }
+
+    /// <summary>
+    /// Replaces the compiler markers in every open file. Diagnostics without a location get none.
+    /// </summary>
+    /// <param name="keyOf">The key of the file a diagnostic is in, as given to <see cref="OpenFileAsync"/>.</param>
+    /// <param name="sourceOf">The text a diagnostic's position refers to.</param>
+    public async Task SetMarkersAsync(IReadOnlyList<Diagnostic> diagnostics, Func<Diagnostic, string> keyOf, Func<Diagnostic, string> sourceOf)
+    {
+        if (_initializing)
+            return;
+
+        var markersByKey = new Dictionary<string, List<MarkerData>>();
+        foreach (var diagnostic in diagnostics)
+        {
+            if (DiagnosticPositions.ToEditorRange(diagnostic, sourceOf(diagnostic)) is not { } range)
+                continue;
+
+            var key = keyOf(diagnostic);
+            if (!markersByKey.TryGetValue(key, out var markers))
+                markersByKey[key] = markers = [];
+
+            markers.Add(new MarkerData
+            {
+                Severity = diagnostic.Severity == DiagnosticSeverity.Error ? MarkerSeverity.Error : MarkerSeverity.Warning,
+                Message = diagnostic.Message,
+                Source = MarkerOwner,
+                StartLineNumber = range.StartLine,
+                StartColumn = range.StartColumn,
+                EndLineNumber = range.EndLine,
+                EndColumn = range.EndColumn,
+            });
+        }
+
+        // A file can be opened or closed while these calls are on their way.
+        foreach (var (key, model) in _models.ToList())
+        {
+            if (_models.ContainsKey(key))
+                await Global.SetModelMarkers(_jsRuntime, model, MarkerOwner, markersByKey.GetValueOrDefault(key) ?? []);
+        }
+    }
+
+    public async Task RevealAsync(int line, int column)
+    {
+        await _editor.RevealLineInCenter(line);
+        await _editor.SetPosition(new BlazorMonaco.Position { LineNumber = line, Column = column }, MarkerOwner);
+        await _editor.Focus();
+    }
+
+    public async Task InsertTextAsync(string text)
+    {
+        var selection = await _editor.GetSelection();
+        var operation = new IdentifiedSingleEditOperation()
+            {
+                Range = selection,
+                ForceMoveMarkers = true,
+                Text = text,
+            };
+
+        await _editor.ExecuteEdits("emojiEditor", new List<IdentifiedSingleEditOperation>() { operation }, new List<BlazorMonaco.Selection>() { selection });
+
+        await ChangePosition(text.Length, selection);
+    }
+
+    private async Task ChangePosition(int length, Selection? selection = default)
+    {
+        BlazorMonaco.Position position;
+
+        if(selection != null)
+        {
+            position = new BlazorMonaco.Position();
+            position.Column = selection.PositionColumn + length;
+            position.LineNumber = selection.PositionLineNumber;
+        }
+        else
+        {
+            position = await _editor.GetPosition();
+            position.Column += length;
+        }
+
+        await _editor.SetPosition(position, "emojiEditor");
+
+        await _editor.Focus();
+    }
+}

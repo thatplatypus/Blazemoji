@@ -1,0 +1,57 @@
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudTextField T="string"
+                          @bind-Value="_name"
+                          Label="Project name"
+                          Error="@(Problem is not null)"
+                          ErrorText="@Problem"
+                          Immediate="true"
+                          AutoFocus="true"
+                          data-testid="new-project-name" />
+            <MudRadioGroup T="string" @bind-Value="_templateId">
+                @foreach (var template in Templates)
+                {
+                    <MudRadio T="string" @key="template.Id" Value="@template.Id" Color="Color.Primary" data-testid="@("template-" + template.Id)">
+                        <div class="d-flex flex-column py-1">
+                            <MudText Typo="Typo.body1">@template.Name</MudText>
+                            <MudText Typo="Typo.caption">@template.Description</MudText>
+                        </div>
+                    </MudRadio>
+                }
+            </MudRadioGroup>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit" data-testid="new-project-create">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _name = string.Empty;
+    private string _templateId = string.Empty;
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ProjectTemplate> Templates { get; set; } = [];
+
+    [Parameter]
+    public NewProjectRequest? Previous { get; set; }
+
+    /// <summary>Why the previous answer was refused, when this is a second attempt.</summary>
+    [Parameter]
+    public string? Problem { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _name = Previous?.Name ?? string.Empty;
+        _templateId = Previous?.TemplateId ?? Templates[0].Id;
+    }
+
+    private void Submit() => Dialog.Close(DialogResult.Ok(new NewProjectRequest(_name, _templateId)));
+
+    private void Cancel() => Dialog.Cancel();
+}

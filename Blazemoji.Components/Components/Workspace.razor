@@ -1,0 +1,308 @@
+@using Blazemoji.Components.EmojiPicker
+@using Blazemoji.Services
+@using Blazemoji.Toolchain
+@using System.Text.Json
+@implements IDisposable
+
+@inject ILibraryService _libraryService
+@inject IDialogService _dialogService
+@inject LocalStorageFiles _localStorageFiles
+@inject RunState _runState
+@inject ProjectState _projectState
+
+
+<MudContainer Style="max-height:90dvh;overflow:hidden;" MaxWidth="MaxWidth.ExtraExtraLarge">
+    <MudGrid Justify="Justify.Center" Spacing="1">
+        <MudItem xs="3">
+            <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" OnEmojicodeInsertedCallback="@InsertEmojicodeAsync" CopiedToClipboard="OnCopiedToClipboard" BeforeProjectChange="SyncOpenFileAsync" />
+        </MudItem>
+        <MudItem xs="6">
+            <MudPaper Elevation="0" Outlined="true" Class="mb-2">
+                <MudToolBar>
+                    <h4 class="text-nowrap">🍇 Emojicode Editor</h4>
+                    <MudSpacer />
+                    <Blazemoji.Components.EmojiPicker.EmojiPicker
+                        @ref="_emojiPicker"
+                        Underline="false"
+                        Class="emoji-picker mr-3"
+                        OnEmojiPicked="@InsertEmojiAsync"
+                    />
+
+                    <MudTooltip Text="Editor Commands">
+                        <MudIconButton Icon="@BlazemojiIcons.KeyCommands" OnClick="OpenEditorCommands" />
+                    </MudTooltip>
+
+                    <MudTooltip Text="Save Code">
+                        <MudIconButton Icon="@BlazemojiIcons.Save" OnClick="SaveEmojicode" />
+                    </MudTooltip>
+
+                    <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle)" Color="Color.Success" data-testid="run-button">
+                        Run Code
+                    </MudButton>
+
+                    <MudButton Class="text-nowrap" Variant="@Variant.Outlined" StartIcon="@BlazemojiIcons.Stop" OnClick="StopClicked" Disabled="@IsIdle" Color="Color.Error" data-testid="stop-button">
+                        Stop
+                    </MudButton>
+                </MudToolBar>
+                <div class="open-file" data-testid="open-file">@_projectState.Current.Name / @_projectState.OpenPath</div>
+            </MudPaper>
+            <EmojiCodeEditor EmojiPickerOpened="@OpenEmojiPickerAsync" Ready="OnEditorReady" ContentSettled="OnContentSettledAsync" @ref="_editor" />
+        </MudItem>
+        <MudItem xs="3">
+            <MudPaper Elevation="0" Outlined="true" Height="100%" Class="pa-2">
+                <OutputPanel ProblemSelected="@RevealProblemAsync" ShowProblemFiles="@(_projectState.Current.Files.Count > 1)" />
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private EmojiCodeEditor _editor = default!;
+
+    private Sidebar _sidebar;
+    private Blazemoji.Components.EmojiPicker.EmojiPicker _emojiPicker;
+    private IReadOnlyList<Diagnostic>? _markedDiagnostics;
+    private RunStatus _renderedStatus = RunStatus.Idle;
+    private bool _editorReady;
+    private (string ProjectId, string Path)? _shown;
+    private HashSet<string> _openKeys = [];
+    private string _compiledProjectId = string.Empty;
+    private Diagnostic? _problemToReveal;
+
+    // Everything that drives the editor or reads from it takes a turn here. Each step is a
+    // round trip to the browser, and a second click or render can arrive between two of them.
+    private readonly SemaphoreSlim _editorTurn = new(1, 1);
+
+    private bool IsIdle => _runState.Status == RunStatus.Idle;
+
+    protected override void OnInitialized()
+    {
+        _runState.StateChanged += OnRunStateChanged;
+        _runState.DiagnosticsChanged += OnDiagnosticsChanged;
+        _projectState.StateChanged += OnProjectChanged;
+    }
+
+    private void OnRunStateChanged()
+    {
+        // The state announces every batch of output. This page only shows whether something
+        // is running, so it re-renders when that changes and leaves the rest to the output panel.
+        if (_runState.Status == _renderedStatus)
+            return;
+
+        _renderedStatus = _runState.Status;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnDiagnosticsChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnProjectChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnEditorReady()
+    {
+        _editorReady = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Saved projects live in the browser, which can only be asked once the page is there.
+        if (firstRender)
+            await _projectState.LoadAsync();
+
+        if (!_editorReady)
+            return;
+
+        await _editorTurn.WaitAsync();
+        try
+        {
+            await BringEditorInLineAsync();
+        }
+        finally
+        {
+            _editorTurn.Release();
+        }
+    }
+
+    /// <summary>
+    /// The editor is driven through JS interop, so it is brought into line with the state
+    /// after a render instead of from the state's own events.
+    /// </summary>
+    private async Task BringEditorInLineAsync()
+    {
+        await ShowOpenFileAsync();
+
+        if (!ReferenceEquals(_markedDiagnostics, _runState.Diagnostics))
+        {
+            _markedDiagnostics = _runState.Diagnostics;
+            await _editor.SetMarkersAsync(_runState.Diagnostics, diagnostic => Key(_compiledProjectId, PathOf(diagnostic)), _runState.SourceOf);
+        }
+
+        if (_problemToReveal is { } problem)
+        {
+            _problemToReveal = null;
+            if (DiagnosticPositions.ToEditorRange(problem, _runState.SourceOf(problem)) is { } range)
+                await _editor.RevealAsync(range.StartLine, range.StartColumn);
+        }
+    }
+
+    private static string Key(string projectId, string path) => projectId + "/" + path;
+
+    private string PathOf(Diagnostic diagnostic) => diagnostic.File.Length > 0 ? diagnostic.File : _runState.DiagnosticsEntry;
+
+    private async Task ShowOpenFileAsync()
+    {
+        var project = _projectState.Current;
+
+        // A deleted or renamed file must not leave its text behind for a later file of the same name.
+        var keys = project.Files.Select(file => Key(project.Id, file.Path)).ToHashSet();
+        if (!keys.SetEquals(_openKeys))
+        {
+            _openKeys = keys;
+            await _editor.CloseFilesExceptAsync(keys);
+        }
+
+        var open = (project.Id, _projectState.OpenPath);
+        if (_shown == open)
+            return;
+
+        await _editor.OpenFileAsync(Key(project.Id, open.OpenPath), _projectState.OpenFile.Content);
+        _shown = open;
+
+        // A file opened for the first time has had no markers yet.
+        _markedDiagnostics = null;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Hands the editor's text for the open file to the project. Typing reaches the project
+    /// when it pauses; this is for the moments that cannot wait for a pause.
+    /// </summary>
+    private async Task SyncOpenFileAsync()
+    {
+        if (!_editorReady)
+            return;
+
+        await _editorTurn.WaitAsync();
+        try
+        {
+            if (_shown is not { } shown || shown.ProjectId != _projectState.Current.Id)
+                return;
+
+            if (await _editor.GetCodeAsync(Key(shown.ProjectId, shown.Path)) is { } text)
+                await _projectState.UpdateContentAsync(shown.Path, text);
+        }
+        finally
+        {
+            _editorTurn.Release();
+        }
+    }
+
+    protected async Task RunEmojiCodeClicked()
+    {
+        await SyncOpenFileAsync();
+        await _runState.RunAsync(CurrentTarget());
+    }
+
+    /// <summary>
+    /// Typing has paused: keep what was typed, and ask the compiler what it makes of it.
+    /// </summary>
+    private async Task OnContentSettledAsync()
+    {
+        await SyncOpenFileAsync();
+        await _runState.CheckAsync(CurrentTarget());
+    }
+
+    private RunTarget CurrentTarget()
+    {
+        var project = _projectState.Current;
+        _compiledProjectId = project.Id;
+        var files = project.Files.ToDictionary(file => file.Path, file => file.Content);
+        return new RunTarget(files, project.Entry, project.Kind == ProjectKind.Server);
+    }
+
+    private async Task StopClicked()
+    {
+        await _runState.StopAsync();
+    }
+
+    private async Task RevealProblemAsync(Diagnostic diagnostic)
+    {
+        var path = PathOf(diagnostic);
+        if (_compiledProjectId != _projectState.Current.Id || _projectState.Current.Find(path) is null)
+            return;
+
+        await SyncOpenFileAsync();
+        _problemToReveal = diagnostic;
+        _projectState.SelectFile(path);
+        StateHasChanged();
+    }
+
+    private async Task OnCopiedToClipboard()
+    {
+        await _editor.Editor.Focus();
+    }
+
+    private async Task LoadEmojicFile(EmojicFile file)
+    {
+        await _editor.SetCodeAsync(file.Code);
+        _runState.ClearDiagnostics();
+    }
+
+    private async Task SaveEmojicode()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var dialogResponse = await _dialogService.ShowAsync<SaveFileDialog>("Save File As", options);
+        var result = await dialogResponse.Result;
+        if (result is null || result.Canceled)
+        {
+            return;
+        }
+
+        var code = await _editor.GetCodeAsync();
+        var emojicode = new EmojicFile()
+            {
+                Name = result.Data?.ToString() ?? "Untitled.🍇",
+                Code = code,
+            };
+
+        await _libraryService.SaveFileToLocalStorageAsync(emojicode);
+
+        var newFiles = await _libraryService.GetUserSavedFiles();
+
+        _localStorageFiles.Files = newFiles.OrderBy(x => x.Name).ToList();
+    }
+
+    private async Task InsertEmojiAsync(string emoji)
+    {
+        await _editor.InsertTextAsync(emoji);
+    }
+
+    private async Task InsertEmojicodeAsync(EmojicodeKeyword emojicode)
+    {
+        await _editor.InsertTextAsync(emojicode.Emoji);
+    }
+
+    private async Task OpenEmojiPickerAsync()
+    {
+        await _emojiPicker.OpenAsync();
+    }
+
+    private async Task OpenEditorCommands()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, CloseButton = true, FullWidth = true };
+        await _dialogService.ShowAsync<KeycommandsDialog>("Editor Keycommands", options);
+    }
+
+    public void Dispose()
+    {
+        _runState.StateChanged -= OnRunStateChanged;
+        _runState.DiagnosticsChanged -= OnDiagnosticsChanged;
+        _projectState.StateChanged -= OnProjectChanged;
+    }
+
+}

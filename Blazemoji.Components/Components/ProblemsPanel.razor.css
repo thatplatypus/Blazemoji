@@ -1,0 +1,10 @@
+.problem-message {
+    overflow-wrap: anywhere;
+}
+
+.problem-position {
+    margin-left: 0.5rem;
+    color: var(--mud-palette-text-secondary);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}

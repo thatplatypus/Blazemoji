@@ -1,0 +1,44 @@
+<MudTooltip Arrow="true" Inline="false">
+    <TooltipContent>
+        @Keyword.Description
+
+        @if(!string.IsNullOrWhiteSpace(Keyword.Example))
+        {
+            <code>
+                @foreach(string example in Keyword.Example.Split("\r\n")) {
+                    <HintText>@example</HintText>
+                }
+            </code>
+        }
+    </TooltipContent>
+    <ChildContent>
+        <div class="emoji-tile">
+            <MudPaper Elevation="0" Outlined="true" Class="emoji-box-hover">
+                <MudButton Class="emoji-tile-insert" FullWidth="true" OnClick="OnEmojiInsertedAsync" title="Insert" aria-label="@("Insert " + Keyword.Keyword)">
+                    <span class="emoji-tile-face">
+                        <span class="emoji-tile-emoji">@Keyword.Emoji</span>
+                        <span class="emoji-tile-label">@Keyword.Keyword</span>
+                    </span>
+                </MudButton>
+            </MudPaper>
+            <div class="emoji-tile-copy">
+                <CopyToClipboard ClipboardValue="@Keyword.Emoji" CopiedToClipboard="@CopiedToClipboard" />
+            </div>
+        </div>
+    </ChildContent>
+</MudTooltip>
+@code {
+    [Parameter] public EmojicodeKeyword Keyword { get; set; } = default!;
+
+    [Parameter] 
+    public EventCallback<EmojicodeKeyword> EmojiInserted { get; set; }
+
+    [Parameter]
+    public EventCallback CopiedToClipboard { get; set; }
+
+    protected async Task OnEmojiInsertedAsync()
+    {
+        await EmojiInserted.InvokeAsync(Keyword);
+    }
+}
+    

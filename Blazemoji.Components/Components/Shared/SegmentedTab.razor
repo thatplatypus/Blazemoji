@@ -1,0 +1,57 @@
+@implements IDisposable
+
+@code {
+    private (string Id, string Text, string? Icon, int? Count, Color CountColor)? _shown;
+
+    [CascadingParameter]
+    private SegmentedTabs? Strip { get; set; }
+
+    /// <summary>What the strip's <see cref="SegmentedTabs.Active"/> names this tab by.</summary>
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Text { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Icon { get; set; }
+
+    /// <summary>
+    /// A number shown after the tab's name when it is above zero. A tab given a count, even a
+    /// count of zero, keeps room for it, so the tabs after it stay where they are when the
+    /// number arrives. Null for a tab that never counts anything.
+    /// </summary>
+    [Parameter]
+    public int? Count { get; set; }
+
+    [Parameter]
+    public Color CountColor { get; set; } = Color.Primary;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Put on the tab itself: a test id, a title.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Strip is null)
+            throw new InvalidOperationException($"A {nameof(SegmentedTab)} belongs inside a {nameof(SegmentedTabs)}.");
+
+        Strip.Add(this);
+    }
+
+    protected override void OnParametersSet()
+    {
+        // The strip draws this tab, and it drew it before these parameters arrived. It is
+        // told only when what it draws has changed, or each would redraw the other for ever.
+        var header = (Id, Text, Icon, Count, CountColor);
+        if (_shown is { } shown && shown != header)
+            Strip?.TabChanged();
+
+        _shown = header;
+    }
+
+    public void Dispose() => Strip?.Remove(this);
+}

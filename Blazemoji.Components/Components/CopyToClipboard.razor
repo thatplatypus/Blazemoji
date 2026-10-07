@@ -1,0 +1,24 @@
+@using Blazemoji.Interop
+@inject ClipboardInterop _clipboard
+
+<MudIconButton title="Copy" Size="Size.Small" Icon="@BlazemojiIcons.Copy" OnClick="CopyToClipboardAsync"/>
+
+@code {
+    [Parameter] public string ClipboardValue { get; set; } = "";
+
+    [Parameter]
+    public EventCallback CopiedToClipboard { get; set; }
+
+    protected async Task CopyToClipboardAsync()
+    {
+        if(string.IsNullOrWhiteSpace(ClipboardValue))
+        {
+            await Task.CompletedTask;
+            return;
+        }
+
+        await _clipboard.CopyAsync(ClipboardValue);
+
+        await CopiedToClipboard.InvokeAsync();
+    }
+}

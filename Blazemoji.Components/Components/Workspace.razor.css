@@ -1,0 +1,9 @@
+/* Which file the editor is showing. One line, cut short before it would wrap the toolbar taller. */
+.open-file {
+    padding: 0 16px 6px;
+    color: var(--mud-palette-text-secondary);
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

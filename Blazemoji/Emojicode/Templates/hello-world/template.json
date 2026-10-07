@@ -1,0 +1,7 @@
+{
+  "name": "Hello World",
+  "description": "One file that prints a greeting.",
+  "kind": "program",
+  "entry": "main.🍇",
+  "order": 10
+}

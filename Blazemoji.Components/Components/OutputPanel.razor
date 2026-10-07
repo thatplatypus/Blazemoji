@@ -1,0 +1,118 @@
+@using System.Globalization
+@using Blazemoji.Toolchain
+@implements IDisposable
+@inject RunState State
+
+<SegmentedTabs @bind-Active="_activeTab" AriaLabel="Output, problems and requests" CompactBelow="240" PanelClass="pt-2">
+    <SegmentedTab Id="@OutputTab" Text="Output">
+        <div class="output-panel pa-2">
+            <div class="output-status">
+                <span data-testid="run-status">@StatusText</span>
+                @if (State.TotalLines > State.Lines.Count)
+                {
+                    <span data-testid="output-dropped">Showing the last @Count(State.Lines.Count) of @Count(State.TotalLines) lines.</span>
+                }
+            </div>
+            <div class="@ProgressClass">
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            </div>
+            <div class="output-scroll">
+                <div class="output-lines">
+                    @foreach (var line in State.Lines)
+                    {
+                        <div @key="line.Number" class="@LineClass(line)" data-testid="output-line">@line.Text</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </SegmentedTab>
+    <SegmentedTab Id="@ProblemsTab" Text="Problems" Count="@State.Diagnostics.Count" CountColor="@ProblemBadgeColor">
+        <ProblemsPanel Diagnostics="@State.Diagnostics" ShowFiles="@ShowProblemFiles" ProblemSelected="@ProblemSelected" />
+    </SegmentedTab>
+    <SegmentedTab Id="requests" Text="Requests">
+        <RequestPanel />
+    </SegmentedTab>
+</SegmentedTabs>
+
+@code {
+    private const string OutputTab = "output";
+    private const string ProblemsTab = "problems";
+
+    private string? _activeTab = OutputTab;
+    private RunStatus _lastStatus = RunStatus.Idle;
+
+    [Parameter]
+    public EventCallback<Diagnostic> ProblemSelected { get; set; }
+
+    /// <summary>Say which file each problem is in. Wanted once a project has more than one.</summary>
+    [Parameter]
+    public bool ShowProblemFiles { get; set; }
+
+    private bool HasErrors => State.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+
+    private Color ProblemBadgeColor => HasErrors ? Color.Error : Color.Warning;
+
+    private string ProgressClass => State.Status == RunStatus.Idle ? "output-progress output-progress-idle" : "output-progress";
+
+    private string StatusText => State.Status switch
+    {
+        RunStatus.Compiling => "Compiling",
+        RunStatus.Running => "Running",
+        _ when State.LastRun is { } run => Describe(run),
+        _ when HasErrors && State.DiagnosticsAreFromARun => "Build failed",
+        _ => "Ready",
+    };
+
+    protected override void OnInitialized()
+    {
+        State.StateChanged += OnStateChanged;
+        State.DiagnosticsChanged += OnDiagnosticsChanged;
+    }
+
+    private void OnStateChanged()
+    {
+        if (State.Status == RunStatus.Running && _lastStatus != RunStatus.Running)
+            _activeTab = OutputTab;
+
+        _lastStatus = State.Status;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnDiagnosticsChanged()
+    {
+        // A run that failed has nothing else to show. A mistake noticed while someone is still
+        // typing only updates the count on the tab, and leaves them looking at what they chose.
+        if (HasErrors && State.DiagnosticsAreFromARun)
+            _activeTab = ProblemsTab;
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private static string Describe(RunSummary run) => run.Reason switch
+    {
+        RunEndReason.Stopped => $"Stopped after {Seconds(run.Duration)}",
+        RunEndReason.TimedOut => $"Time limit reached after {Seconds(run.Duration)}",
+        RunEndReason.OutputLimit => $"Output limit reached after {Seconds(run.Duration)}",
+        RunEndReason.FailedToStart => "Could not start",
+        RunEndReason.Idle => $"Stopped when idle after {Seconds(run.Duration)}",
+        _ => $"Exited with code {run.ExitCode} after {Seconds(run.Duration)}",
+    };
+
+    private static string Seconds(TimeSpan duration) =>
+        duration.TotalSeconds.ToString("0.00", CultureInfo.InvariantCulture) + " s";
+
+    private static string Count(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
+
+    private static string LineClass(OutputLine line) => line.Stream switch
+    {
+        OutputStream.Stderr => "output-line output-line-stderr",
+        OutputStream.System => "output-line output-line-system",
+        _ => "output-line",
+    };
+
+    public void Dispose()
+    {
+        State.StateChanged -= OnStateChanged;
+        State.DiagnosticsChanged -= OnDiagnosticsChanged;
+    }
+}

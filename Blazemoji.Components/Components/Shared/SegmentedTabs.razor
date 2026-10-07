@@ -1,0 +1,210 @@
+@using MudBlazor.Interop
+@using MudBlazor.Services
+@using MudBlazor.State
+@inherits MudComponentBase
+@implements IAsyncDisposable
+@inject IResizeObserver ResizeObserver
+
+<CascadingValue Value="this" IsFixed="true">
+    @ChildContent
+</CascadingValue>
+
+<div class="@($"segmented-tabs {Class}")" style="@Style" @attributes="UserAttributes">
+    <div class="segmented-tabs-strip" @ref="_strip">
+        <div class="segmented-tabs-list" role="tablist" aria-label="@AriaLabel">
+            @foreach (var tab in ShownInTheStrip)
+            {
+                var isActive = tab == ActiveTab;
+                <button @key="tab.Id"
+                        @ref="_buttons[tab.Id]"
+                        type="button"
+                        role="tab"
+                        id="@TabId(tab)"
+                        class="@(isActive ? "segmented-tab segmented-tab-active" : "segmented-tab")"
+                        aria-selected="@(isActive ? "true" : "false")"
+                        aria-controls="@PanelId"
+                        tabindex="@(isActive ? 0 : -1)"
+                        @onclick="@(() => ActivateAsync(tab, thenFocus: false))"
+                        @onkeydown="@(pressed => OnKeyDownAsync(pressed, tab))"
+                        @attributes="tab.AdditionalAttributes">
+                    @if (!string.IsNullOrEmpty(tab.Icon))
+                    {
+                        <MudIcon Icon="@tab.Icon" Size="Size.Small" />
+                    }
+                    <span class="segmented-tab-text">@tab.Text</span>
+                    @if (tab.Count is { } count)
+                    {
+                        <span class="segmented-tab-count">
+                            <MudBadge Content="@count" Color="@tab.CountColor" Visible="@(count > 0)" Origin="Origin.CenterCenter" Overlap="true">
+                                <span class="segmented-tab-count-place"></span>
+                            </MudBadge>
+                        </span>
+                    }
+                </button>
+            }
+        </div>
+        @if (_compact)
+        {
+            <MudMenu Icon="@BlazemojiIcons.MoreActions" Size="Size.Small" Dense="true" AriaLabel="All tabs" data-testid="more-tabs">
+                @foreach (var tab in _tabs)
+                {
+                    <MudMenuItem @key="tab.Id" Icon="@tab.Icon" Disabled="@(tab == ActiveTab)" OnClick="@(() => ActivateAsync(tab, thenFocus: false))">@tab.Text</MudMenuItem>
+                }
+            </MudMenu>
+        }
+    </div>
+    @if (ActiveTab is { } active)
+    {
+        <div @key="active.Id" class="@($"segmented-tabs-panel {PanelClass}")" role="tabpanel" id="@PanelId" aria-labelledby="@TabId(active)" tabindex="0">
+            @active.ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    private readonly ParameterState<string?> _active;
+    private readonly List<SegmentedTab> _tabs = [];
+    private readonly Dictionary<string, ElementReference> _buttons = [];
+    private readonly string _id = "tabs-" + Guid.NewGuid().ToString("N")[..8];
+
+    private ElementReference _strip;
+    private string? _toFocus;
+    private bool _compact;
+    private bool _watchingWidth;
+    private bool _disposed;
+
+    public SegmentedTabs()
+    {
+        using var registerScope = CreateRegisterScope();
+        _active = registerScope.RegisterParameter<string?>(nameof(Active))
+            .WithParameter(() => Active)
+            .WithEventCallback(() => ActiveChanged);
+    }
+
+    /// <summary>The <see cref="SegmentedTab.Id"/> of the tab to show. Without one, or with one no tab has, the first is shown.</summary>
+    [Parameter]
+    public string? Active { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ActiveChanged { get; set; }
+
+    /// <summary>The tabs, each a <see cref="SegmentedTab"/>.</summary>
+    [Parameter, EditorRequired]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>What the set of tabs is, for someone who cannot see it.</summary>
+    [Parameter]
+    public string? AriaLabel { get; set; }
+
+    /// <summary>
+    /// Narrower than this many pixels, the strip shows only the open tab and a menu of all of
+    /// them. Zero means never, and then the strip's width is not watched at all.
+    /// </summary>
+    [Parameter]
+    public int CompactBelow { get; set; }
+
+    /// <summary>Classes for the element around the open tab's content.</summary>
+    [Parameter]
+    public string? PanelClass { get; set; }
+
+    private SegmentedTab? ActiveTab => _tabs.FirstOrDefault(tab => tab.Id == _active.Value) ?? _tabs.FirstOrDefault();
+
+    private IEnumerable<SegmentedTab> ShownInTheStrip => _compact && ActiveTab is { } active ? [active] : _tabs;
+
+    private string PanelId => _id + "-panel";
+
+    private string TabId(SegmentedTab tab) => $"{_id}-tab-{tab.Id}";
+
+    internal void Add(SegmentedTab tab)
+    {
+        _tabs.Add(tab);
+        StateHasChanged();
+    }
+
+    internal void Remove(SegmentedTab tab)
+    {
+        _tabs.Remove(tab);
+        _buttons.Remove(tab.Id);
+
+        // Tabs leave one by one when the whole strip is going, and then there is nothing to redraw.
+        if (!_disposed)
+            StateHasChanged();
+    }
+
+    internal void TabChanged() => StateHasChanged();
+
+    private async Task ActivateAsync(SegmentedTab tab, bool thenFocus)
+    {
+        _toFocus = thenFocus ? tab.Id : null;
+        await _active.SetValueAsync(tab.Id);
+    }
+
+    /// <summary>The keys a set of tabs is expected to answer to: the arrows go round, Home and End go to the ends.</summary>
+    private async Task OnKeyDownAsync(KeyboardEventArgs pressed, SegmentedTab from)
+    {
+        var index = _tabs.IndexOf(from);
+        var target = pressed.Key switch
+        {
+            "ArrowRight" => (index + 1) % _tabs.Count,
+            "ArrowLeft" => (index - 1 + _tabs.Count) % _tabs.Count,
+            "Home" => 0,
+            "End" => _tabs.Count - 1,
+            _ => -1,
+        };
+
+        if (index >= 0 && target >= 0)
+            await ActivateAsync(_tabs[target], thenFocus: true);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (CompactBelow > 0 && !_watchingWidth)
+        {
+            _watchingWidth = true;
+            ResizeObserver.OnResized += OnResized;
+            if (await ResizeObserver.Observe(_strip) is { } size && Measured(size.Width))
+                StateHasChanged();
+        }
+
+        // A tab reached with the keyboard takes the focus with it, as the keys go on from there.
+        if (_toFocus is { } id && _buttons.TryGetValue(id, out var button))
+        {
+            _toFocus = null;
+            await button.FocusAsync();
+        }
+    }
+
+    private void OnResized(IDictionary<ElementReference, BoundingClientRect> changes)
+    {
+        if (changes.TryGetValue(_strip, out var size) && Measured(size.Width))
+            InvokeAsync(StateHasChanged);
+    }
+
+    /// <returns>True when the strip has just become too narrow for its tabs, or wide enough again.</returns>
+    private bool Measured(double width)
+    {
+        var compact = width > 0 && width < CompactBelow;
+        if (compact == _compact)
+            return false;
+
+        _compact = compact;
+        return true;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (!_watchingWidth)
+            return;
+
+        ResizeObserver.OnResized -= OnResized;
+        try
+        {
+            await ResizeObserver.Unobserve(_strip);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page has gone, and what was watching the strip with it.
+        }
+    }
+}

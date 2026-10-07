@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 
 namespace Blazemoji.Test
 {
+    [Collection(RunsAloneCollection.Name)]
     public class EmojiStringGeneratorTests
     {
         [Fact]
@@ -16,7 +17,7 @@ namespace Blazemoji.Test
         {
             var emojiString = EmojiStringGenerator.GetEmojiKey();
             var regex = new Regex(@"^.{16}-.{8}-.{8}-.{8}-.{24}$");
-            Assert.Matches(regex, emojiString);
+            emojiString.ShouldMatch(regex.ToString());
         }
 
         [Theory]
@@ -36,7 +37,7 @@ namespace Blazemoji.Test
 
             }
 
-            Assert.False(collision);
+            collision.ShouldBeFalse();
 
         }
     }

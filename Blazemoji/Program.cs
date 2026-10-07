@@ -1,33 +1,30 @@
 using Blazemoji;
 using Blazemoji.Components;
-using Blazemoji.Services.Compiler;
 using Blazemoji.Services.Library;
-using Blazemoji.Shared.State;
+using Blazemoji.Services.Projects;
+using Blazemoji.Toolchain.Http;
 using MudBlazor.Services;
-using System;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 builder.Services.AddRazorPages();
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    // The editor hands a file's whole text to the server, and a saved file is read back
+    // from the browser in one piece. The default limit of 32 KB is smaller than one of
+    // Grapevine's source files, and a message over the limit ends the session. 4 MiB is
+    // what the toolchain service accepts for a whole project.
+    .AddHubOptions(options => options.MaximumReceiveMessageSize = 4 * 1024 * 1024);
+
+// What any host of the editor registers. docs/hosting.md explains each line.
 builder.Services.AddMudServices();
+builder.Services.AddToolchainClient(builder.Configuration);
+builder.Services.AddBlazemojiEditor(builder.Configuration);
+
+// What this host supplies because it runs in a browser: projects and snippets in local storage.
 builder.Services.AddBlazoredLocalStorage();
+builder.Services.AddScoped<IProjectStore, LocalStorageProjectStore>();
 builder.Services.AddTransient<ILibraryService, LibraryService>();
-builder.Services.AddScoped<ICompilerService, CompilerService>();
-builder.Services.AddScoped<ICodeRunner, CodeRunner>();
-builder.Services.AddSingleton(new LocalStorageFiles());
-
-//Register emojicode keyword implementations
-var emojicodeKeywordTypes = typeof(EmojicodeKeyword).Assembly.GetTypes()
-    .Where(t => t.IsSubclassOf(typeof(EmojicodeKeyword)));
-
-foreach (var type in emojicodeKeywordTypes)
-{
-    if (Activator.CreateInstance(type) is EmojicodeKeyword keyword && keyword.Emoji != null)
-        builder.Services.AddSingleton(typeof(EmojicodeKeyword), type);
-}
 
 var app = builder.Build();
 

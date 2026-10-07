@@ -1,0 +1,63 @@
+/* A toolbox tile: the emoji large in the middle, what it stands for under it. Pressing the
+   tile puts the emoji in the editor; the small button in the corner copies it. */
+.emoji-tile {
+    position: relative;
+}
+
+.emoji-tile ::deep .emoji-tile-insert {
+    padding: 10px 4px 8px;
+}
+
+.emoji-tile-face {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    width: 100%;
+}
+
+/* The emoji sits on a round plate that is light in both themes. Several emoji are drawn in
+   dark grey (➕ ➖ ✖️ ➗) and would vanish on a dark tile.
+   The press is shown by the plate giving a little. A transform moves nothing around it. */
+.emoji-tile-emoji {
+    display: grid;
+    place-items: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    background-color: color-mix(in srgb, var(--mud-palette-white) 93%, var(--mud-palette-black));
+    /* For the entries that are plain characters (1), which take the text colour. */
+    color: var(--mud-palette-black);
+    font-size: 2rem;
+    line-height: 1;
+    transition: transform 120ms ease-out;
+}
+
+.emoji-tile ::deep .emoji-tile-insert:active .emoji-tile-emoji {
+    transform: scale(0.86);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .emoji-tile-emoji {
+        transition: none;
+    }
+}
+
+/* Keywords are written the way they are typed (main(), print), whatever buttons do with their text. */
+.emoji-tile-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-transform: none;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--mud-palette-text-secondary);
+}
+
+.emoji-tile-copy {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+}

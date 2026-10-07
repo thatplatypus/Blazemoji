@@ -32,41 +32,131 @@ Features include:
 - More coming soon
   - Researching syntax highlighting in monaco for ☁️ and 🔤
 
-## Prerquisites
-- Visual Studio 2022 17.9 or later
-- dotnet 8 installed
-- Aspire workload for dotnet 8 (optional, recommended for fast setup)
-- C# installed
-- Visual Studio installed, recommended 2022+
-- [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) installed, windows only
-- Ubuntu 18.04 or later if WSL
-- C++ compiler and linker, such as `clang++` or `g++`, `libncurses5`
-- Docker
+## Prerequisites
+- .NET 10 SDK
+- Docker, for anything that compiles or runs Emojicode
 
-## Installation & Build
-Clone the repo and run 
+The Emojicode compiler bundled in this repo is the x86_64 Linux build of 1.0 beta 2, so it runs in a `linux/amd64` container. On Apple Silicon, Docker Desktop emulates it.
 
-```csharp
-dotnet build
-```
-### Unix
-Depending on permissions you may need to add `sudo` infront of these commands.
+## How it fits together
+
+| Project | What it is |
+| --- | --- |
+| `Blazemoji` | The web host: a Blazor Server app that shows the editor and keeps projects in the browser. It holds no compiler. |
+| `Blazemoji.Components` | The editor as Razor components, with the state behind them: projects, editor, toolbox, output, problems and requests. |
+| `Blazemoji.Core` | The keyword catalog, the code intelligence and the project model. No UI. |
+| `Blazemoji.Toolchain` | The toolchain contract (`IToolchain`) and `HttpToolchain`, its client. |
+| `Blazemoji.Toolchain.Local` | Compiles and runs programs as local processes. Holds the compiler and stock packages. |
+| `Blazemoji.Toolchain.Service` | A small HTTP service in front of the local toolchain. |
+
+The web app reaches the toolchain service at `ToolchainClient:BaseUrl` (default `http://localhost:5290`). Any host that can make HTTP requests can use the same service; that setting is the only thing it needs. [docs/hosting.md](docs/hosting.md) lists what a second host, such as a desktop app, has to supply to show the same editor.
+
+## Run the app
 
 ```bash
-apt-get update
-apt-get install libncurses5 -y
-apt-get install g++ -y
+docker compose up --build
 ```
 
-## Setup & Configuration
-Blazemoji depends on being launched in a host environment that can execute the `emojicodec` compiler. Blazor can be launched in a WSL environment targetting Linux from Windows, so this is what we'll need to do in order to compile and run the emojicode correctly. To run everything correctly in WSL, you will have to go through the WSL setup and install steps. For some users, this is not an option so we can use a container instead. Blazemoji has a Dockerfile for the `Blazemoji.Compiler` project that will build to the correct OS architecture with dependencies. To communicate with the container from blazemoji, an instance of `rabbitmq` with the management plugin enabled is required.
+Then open http://localhost:5080.
 
-To make all of that easier, there is a .Net 8 Aspire project that can orchestrate all of the above. Simply launch the http setting from `Blazemoji.AppHost` and it should build and run the compiler container, the blazemoji web app, as well as pull and run rabbitmq with management enabled. This should be the fastest way to get started across any OS. The aspire workload is requuired for this.
+This starts two containers. `web` is published on this machine only. `toolchain` publishes no port and sits on an internal Docker network, so the programs it runs have no route to the internet or to your network.
+
+The app compiles and runs whatever code it is given, with no sign-in, and every program shares the one toolchain container. Do not expose it beyond your own machine.
+
+### From an IDE
+
+The web app does not hold the compiler: it asks the toolchain service, which can only run on x86_64 Linux. That leaves two ways to run from an IDE, and both work on a Mac.
+
+**Build and run the Dockerfile.** With no target named, `Blazemoji/Dockerfile` builds an image that holds the web app and the toolchain service together, so an IDE's "run in Docker" gives a working app in one container:
+
+```bash
+docker build -f Blazemoji/Dockerfile -t blazemoji .
+docker run -p 5000:8080 blazemoji
+```
+
+**Run the web project itself,** to debug it. Start the toolchain service in a container, then run the project as usual (the `http` launch profile, or `dotnet run --project Blazemoji`). The app looks for the service at `http://localhost:5290`, which is where the script puts it:
+
+```bash
+scripts/dev-toolchain.sh        # start; "scripts/dev-toolchain.sh stop" stops it
+```
+
+Either way the programs you run can reach the network, which `docker compose up` does not allow, so keep both to your own machine. For Grapevine to be there, run `scripts/build-grapevine.sh` once in this checkout first.
+
+## Projects
+
+A project is a set of files that are compiled together, a name, and one file marked as the entry: the file handed to the compiler. Other files join in when a file includes them with `📜`, by a path from the including file. The **Files** tab lists them as a tree, and each file has a menu to rename it, make it the entry, or delete it. A name with slashes puts a file in folders (`lib/greeter.🍇`).
+
+Projects are kept in the browser's local storage, so they are still there after a reload and are not shared between browsers. New projects start from a template: a folder under `Blazemoji/Emojicode/Templates` with a `template.json` and the files.
+
+A project runs either as a **Program**, which runs to the end and stops, or as a **Web server**, which keeps running until it is stopped or has had no request for ten minutes. A web server is told which port to listen on through the `PORT` environment variable. While it runs, the **Requests** tab sends it HTTP requests (method, path, headers, body) and shows the status, headers and body that come back.
+
+## Help while typing
+
+The editor has no language server. Three small Monaco providers hand the text and the cursor's position to plain C# (`Blazemoji.Core/Emojicode/Intelligence`), which answers from the keyword catalog, a list of emoji names, and the compiler's documentation report for each package the project imports.
+
+- **Type a name to find an emoji.** `inbox` or `:inbox` offers 📥. Methods of the variables in scope come first, then keywords, then every other emoji. Tab accepts; Enter is always a new line.
+- **Type the receiver and a dot to find a method.** Emojicode puts the method first (`📥 app 🔤/🔤 handler❗️`), so there is nothing to complete against when you start typing a call. `app.` lists the methods of `app`'s type, and accepting one rewrites it into `📥 app `. The editor works out a variable's type from the text: an initializer, a literal, a documented call, or a declared parameter.
+- **Parameters appear once the receiver is there,** with the one you are on marked.
+- **Hover** over a keyword, a type, a method or a variable to see what it is.
+- **Problems show up while you type.** About half a second after a pause the project is compiled without linking, and errors are marked in the editor and counted on the Problems tab. Only Run brings that tab forward.
+
+The provider code is TypeScript in `Blazemoji.Components/Scripts`. Its compiled JavaScript is committed, so building the app needs no Node; `scripts/build-js.sh` recompiles it after a change.
+
+## Grapevine
+
+Grapevine is an HTTP framework written in Emojicode. It has its own repository, so its package and its Todo sample are not committed here. One script builds them from a local checkout:
+
+```bash
+scripts/build-grapevine.sh
+```
+
+It reads the commit to build from `grapevine.pin`, takes that commit from `~/Code/grapevine` (or `GRAPEVINE_REPO`), builds the package in the toolchain container, and puts three things in place, all ignored by git: the package among the toolchain's packages, its documentation among the package documentation, and the Todo sample as the "Grapevine Todo API" project template. To move to a newer Grapevine, change the commit in `grapevine.pin` and run the script again. `scripts/test-in-docker.sh` and `scripts/e2e.sh` run it for you when the pin has changed.
+
+Without it everything else works: `📦 grapevine 🏠` does not compile and the template is not offered.
+
+## The toolchain service
+
+Plain HTTP/1.1 and server-sent events, so that it can be reimplemented elsewhere.
+
+| Request | Answer |
+| --- | --- |
+| `POST /compile` with `{ "files": { "main.🍇": "..." }, "entry": "main.🍇", "packages": [], "check": false }` | `{ "ok", "diagnostics": [], "buildId" }`. A failed build is still a 200. With `"check": true` nothing is linked or kept and there is no `buildId`: it is for diagnostics alone. |
+| `POST /runs` with `{ "buildId", "env": {}, "http": false }` | `201` and `{ "runId" }`. With `"http": true` the program is run as a server: it is given a port in `PORT`, has no wall-clock limit, and is ended when it has had no request for the idle time. |
+| `GET /runs/{id}/events` | An event stream of `stdout`, `stderr` and one final `exit`. Replays from the start, or from after `Last-Event-ID`. |
+| `POST /runs/{id}/stdin` | Appends the body to the program's input; `?eof=true` ends it. |
+| `DELETE /runs/{id}` | Stops the program. |
+| Any method on `/runs/{id}/http/{path}` | Passes the request to a server program and returns its response. A response that comes from the service and not the program (no such run, not a server, ended, not listening yet, timed out) carries an `X-Toolchain-Proxy` header saying which. |
+| `GET /packages`, `GET /packages/{name}/documentation.json` | The bundled packages and the compiler's documentation report for each. |
+
+The compiler only produces an object file. The service links it itself against every bundled package, because the compiler's own link step fails when one package uses another.
+
+Each run gets its own working directory and limits on wall-clock time, processor time, memory, file size and output. `Blazemoji.Toolchain.ContractTests` describes the contract from the outside: point `TOOLCHAIN_BASE_URL` at any implementation and run it.
 
 ## Running Tests
-```csharp
-dotnet test
+
+```bash
+dotnet test --solution Blazemoji.sln
 ```
+
+runs everything that can run on your machine. Tests that need the Emojicode compiler skip themselves anywhere other than x86_64 Linux (there they run, and need `g++` and `libtinfo5`). The contract tests and the browser tests skip unless they are told where a running service or app is.
+
+```bash
+scripts/test-in-docker.sh
+```
+
+runs the unit and compiler tests in a throwaway `linux/amd64` container with the real compiler, then starts the toolchain service there and runs the contract tests against it. It leaves nothing behind. This is the one to use day to day.
+
+```bash
+scripts/e2e.sh
+```
+
+builds both images, starts them with `docker compose`, checks that the toolchain container has no route out, and drives the app in a real browser (Playwright): running and stopping programs, live output, compiler errors as editor markers, projects with several files, and Grapevine's Todo sample answering requests from the Requests tab. The first run downloads Chromium.
+
+```bash
+docker build -f Blazemoji/Dockerfile --target test --output type=cacheonly --progress=plain .
+```
+
+runs the unit and compiler tests as part of an image build, which is what a build server would do. `--output type=cacheonly` stops Docker from keeping a 1.7 GB untagged image every time. Docker caches the stage, so a repeat run with unchanged sources prints nothing; add `--no-cache-filter test` to run the tests again.
 
 ## Emojicode
 See the official [docs](https://www.emojicode.org/docs/) for more information on emojicode. The [language reference](https://www.emojicode.org/docs/reference/) will be very handy for writing emojicode.

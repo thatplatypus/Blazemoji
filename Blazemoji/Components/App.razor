@@ -1,4 +1,4 @@
-﻿@inject IHostEnvironment Env
+@inject IHostEnvironment Env
 
 <!DOCTYPE html>
 <html lang="en">
@@ -8,10 +8,10 @@
     <base href="/" />
     <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
     <link href="app.css" rel="stylesheet" />
+    <link href="_content/Blazemoji.Components/blazemoji.css" rel="stylesheet" />
     <link href="Blazemoji.styles.css" rel="stylesheet" />
     <link rel="icon" type="image/png" href="favicon.png"/>
     <HeadOutlet @rendermode="InteractiveServer" />
-    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
 </head>
 <body>
@@ -34,22 +34,22 @@
         <a class="dismiss">🗙</a>
     </div>
 
-    <script src="_framework/blazor.server.js"></script>
     <script src="_content/BlazorMonaco/jsInterop.js"></script>
     <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
     <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    @* Blazor asks Monaco to create the editor on its first render. Monaco defines its global
+       a little after its scripts have run, so Blazor is started only once Monaco's loader says
+       the editor module is ready. Started earlier, the editor is never created. If Monaco
+       cannot be loaded at all, Blazor still starts, so the page reports the failure instead of
+       sitting inert. *@
+    <script src="_framework/blazor.server.js" autostart="false"></script>
     <script>
-        window.clipboardCopy = {
-            copyText: function (text) {
-                navigator.clipboard.writeText(text).then(function () {
-                    return true;
-                })
-                .catch(function (error) {
-                    return false;
-                });
-            }
-        };
+        require(['vs/editor/editor.main'], function () {
+            Blazor.start();
+        }, function () {
+            Blazor.start();
+        });
     </script>
 </body>
 </html>

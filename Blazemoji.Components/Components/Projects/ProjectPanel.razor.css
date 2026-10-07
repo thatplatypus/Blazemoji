@@ -1,0 +1,39 @@
+.project-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.project-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.files-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.file-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    width: 100%;
+}
+
+/* The name gives way first, so a long one never pushes the flag or the menu off the row. */
+.file-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Every row keeps room for the flag, so making another file the entry moves nothing. */
+.file-row ::deep .entry-flag-absent {
+    visibility: hidden;
+}
