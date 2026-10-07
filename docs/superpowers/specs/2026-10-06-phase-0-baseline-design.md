@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-06
 - **Branch:** `phase-0-baseline`, from `main` at `fb0a3d8`
-- **Status:** awaiting Tom's review
+- **Status:** approved by Tom on 2026-10-06; amended the same day after the planning spike (see the last section)
 
 ## Context
 
@@ -155,3 +155,15 @@ Reported to Tom with output and screenshots:
 ## Branching
 
 Work happens on `phase-0-baseline` in the main checkout and is pushed when done. No merge and no pull request. Phase 1 branches from `phase-0-baseline` unless it has been merged to `main` by then.
+
+## Amendments after the planning spike
+
+The whole upgrade was tried in a throwaway copy before the plan was written. It confirmed the design and added these points.
+
+1. **Test runner.** On the .NET 10 SDK, xunit.v3 will not run under the old VSTest target. `global.json` therefore also sets `"test": { "runner": "Microsoft.Testing.Platform" }`, as Tom's other repos do, and the test command is `dotnet test --solution Blazemoji.sln`.
+2. **Blazor framework script missing from the image.** In .NET 10 `blazor.server.js` is delivered by a NuGet package that the SDK references only when it sees `.razor` files at restore time. A Dockerfile that restores before copying sources drops it, and the published page never becomes interactive. `Blazemoji.csproj` sets `RequiresAspNetWebAssets` explicitly, and the `publish` stage fails the build if the script is absent. This is the "breakage the compiler cannot see" row in Risks, found by the browser run.
+3. **`libtinfo5` version.** The jammy release-pocket build `6.3-2` is used. Builds in jammy-updates are deleted from the archive when superseded (`6.3-2ubuntu0.1` already returns 404), so only the release-pocket URL is stable.
+4. **MudBlazor changes found by the compiler.** `Sidebar.razor` needs `PanelClass` renamed to `TabPanelsClass`. `Library.razor` needs no tree view change. Three null checks are added where the new package versions made results nullable.
+5. **Unused secret in `appsettings.json`.** The file carries an Azure Service Bus connection string with a shared access key, left from the messaging-based compiler removed in `ac024c6`. Nothing reads it. Phase 0 removes the setting. Removing it does not clear git history or revoke the key; rotating or deleting that key is Tom's action.
+6. **Before screenshots.** They come from a container built from `main` with its existing Dockerfile forced to `linux/amd64`, started with a `chmod` on the compiler so that a sample can run at all.
+7. **Browser run covers two more flows** than the spec listed: closing a dialog with Escape, and saving a file then loading it back from the Library.
