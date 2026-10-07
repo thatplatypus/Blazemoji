@@ -101,6 +101,7 @@ namespace Blazemoji.E2E
             await problem.WaitForAsync();
             (await problem.InnerTextAsync()).ShouldContain("Variable \"nope\" not defined.");
             (await problem.InnerTextAsync()).ShouldContain("2:5");
+            await editor.WaitForMarkerCountAsync(1);
             (await editor.MarkersAsync()).ShouldBe(
                 [new EditorMarker(2, 6, 2, 10, "Variable \"nope\" not defined.", 8)]);
             await editor.Page.Locator(".monaco-editor .squiggly-error").First.WaitForAsync();
@@ -119,12 +120,13 @@ namespace Blazemoji.E2E
             await using var editor = await EditorPage.OpenAsync(browser);
             await editor.RunAsync(Programs.UndefinedVariable);
             await editor.Problems.WaitForAsync();
+            await editor.WaitForMarkerCountAsync(1);
 
             await editor.RunAsync(Programs.Hello);
 
             await editor.WaitForStatusAsync("Exited with code 0");
             (await editor.OutputLines.AllInnerTextsAsync()).ShouldBe(["Hello World!"]);
-            (await editor.MarkersAsync()).ShouldBeEmpty();
+            await editor.WaitForMarkerCountAsync(0);
         }
 
         [Fact]

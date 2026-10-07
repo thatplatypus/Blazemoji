@@ -50,8 +50,14 @@
             }
         };
     </script>
-    @* Blazor starts last. Started earlier, it can ask Monaco to create the editor before
-       Monaco's script has loaded, and the editor then never appears. *@
-    <script src="_framework/blazor.server.js"></script>
+    @* Blazor asks Monaco to create the editor on its first render. Monaco defines its global
+       a little after its scripts have run, so Blazor is started only once Monaco's loader says
+       the editor module is ready. Started earlier, the editor is never created. *@
+    <script src="_framework/blazor.server.js" autostart="false"></script>
+    <script>
+        require(['vs/editor/editor.main'], function () {
+            Blazor.start();
+        });
+    </script>
 </body>
 </html>

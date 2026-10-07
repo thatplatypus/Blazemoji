@@ -21,6 +21,20 @@ namespace Blazemoji.E2E
         }
 
         [Fact]
+        public async Task The_editor_loads_on_every_one_of_many_cold_page_loads()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+
+            // Monaco defines its global a little after its script has run. Blazor used to be able
+            // to ask for the editor inside that gap, roughly once in four cold loads.
+            for (var load = 1; load <= 15; load++)
+            {
+                await using var editor = await EditorPage.OpenAsync(browser, readyTimeoutMilliseconds: 10_000);
+                editor.ConsoleErrors.ShouldBeEmpty($"page load {load}");
+            }
+        }
+
+        [Fact]
         public async Task The_theme_toggle_switches_the_editor_to_dark_and_back()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);

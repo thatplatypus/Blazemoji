@@ -66,7 +66,8 @@ namespace Blazemoji.E2E
         public static async Task<EditorPage> OpenAsync(
             BrowserFixture fixture,
             ColorScheme colorScheme = ColorScheme.Light,
-            Func<IPage, Task>? beforeNavigation = null)
+            Func<IPage, Task>? beforeNavigation = null,
+            float readyTimeoutMilliseconds = 60_000)
         {
             var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
             {
@@ -81,7 +82,15 @@ namespace Blazemoji.E2E
                 await beforeNavigation(page);
 
             await page.GotoAsync(BrowserFixture.BaseUrl!);
-            await editorPage.EditorText.GetByText("Hello World!").WaitForAsync();
+            try
+            {
+                await editorPage.EditorText.GetByText("Hello World!").WaitForAsync(new LocatorWaitForOptions { Timeout = readyTimeoutMilliseconds });
+            }
+            catch
+            {
+                await context.DisposeAsync();
+                throw;
+            }
 
             return editorPage;
         }
@@ -91,6 +100,12 @@ namespace Blazemoji.E2E
 
         public Task<string> GetCodeAsync() =>
             Page.EvaluateAsync<string>("() => monaco.editor.getModels()[0].getValue()");
+
+        /// <summary>
+        /// Markers reach the editor one round trip after the problems list is drawn, so they are waited for.
+        /// </summary>
+        public Task WaitForMarkerCountAsync(int count) =>
+            Page.WaitForFunctionAsync("count => monaco.editor.getModelMarkers({}).length === count", count);
 
         public async Task<IReadOnlyList<EditorMarker>> MarkersAsync()
         {
