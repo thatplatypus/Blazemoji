@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -15,11 +17,16 @@ namespace Blazemoji.Toolchain
         private const string ProgramFileName = "program";
         private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
 
+        private static readonly Lazy<string?> LineBufferingTool = new(() => FindOnPath("stdbuf"));
+
         private readonly ToolchainOptions _options = options.Value;
+        private readonly ConcurrentDictionary<string, LocalRun> _runs = new();
 
         internal string WorkRoot => _options.WorkRoot;
 
         private string BuildsRoot => Path.Combine(_options.WorkRoot, "builds");
+
+        private string RunsRoot => Path.Combine(_options.WorkRoot, "runs");
 
         public async Task<CompileResult> CompileAsync(CompileRequest request, CancellationToken cancellationToken = default)
         {
@@ -67,8 +74,35 @@ namespace Blazemoji.Toolchain
             }
         }
 
-        public Task<IToolchainRun> StartRunAsync(RunRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotImplementedException();
+        public Task<IToolchainRun> StartRunAsync(RunRequest request, CancellationToken cancellationToken = default)
+        {
+            var runId = Guid.NewGuid().ToString("N");
+            var program = BuildIdPattern().IsMatch(request.BuildId)
+                ? Path.Combine(BuildsRoot, request.BuildId, ProgramFileName)
+                : null;
+
+            if (program is null || !File.Exists(program))
+                return Task.FromResult(Track(LocalRun.FailedToStart(runId, null, Forget)));
+
+            var runDirectory = Path.Combine(RunsRoot, runId);
+            Directory.CreateDirectory(runDirectory);
+
+            var process = new Process { StartInfo = CreateRunStartInfo(program, runDirectory, request.Environment) };
+            try
+            {
+                process.Start();
+                process.StandardInput.Close();
+            }
+            catch (Win32Exception exception)
+            {
+                logger.LogError(exception, "Could not start build {BuildId}", request.BuildId);
+                process.Dispose();
+                return Task.FromResult(Track(LocalRun.FailedToStart(runId, runDirectory, Forget)));
+            }
+
+            var timeout = request.Timeout ?? _options.RunTimeout;
+            return Task.FromResult(Track(LocalRun.Started(runId, process, runDirectory, timeout, _options.MaxOutputBytes, Forget)));
+        }
 
         public Task ReleaseBuildAsync(string buildId)
         {
@@ -78,10 +112,50 @@ namespace Blazemoji.Toolchain
             return Task.CompletedTask;
         }
 
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
+            foreach (var run in _runs.Values)
+                await run.DisposeAsync();
+
             DeleteDirectory(_options.WorkRoot);
-            return ValueTask.CompletedTask;
+        }
+
+        /// <summary>
+        /// Emojicode prints through a C stdio stream that is block-buffered when it is a pipe,
+        /// so without help nothing arrives until the program exits. <c>stdbuf</c> makes it
+        /// line-buffered. Where the tool is missing the program still runs, with late output.
+        /// </summary>
+        private static ProcessStartInfo CreateRunStartInfo(string program, string runDirectory, IReadOnlyDictionary<string, string>? environment)
+        {
+            var startInfo = LineBufferingTool.Value is { } stdbuf
+                ? ProcessRunner.CreateStartInfo(stdbuf, ["-oL", "-eL", program], runDirectory)
+                : ProcessRunner.CreateStartInfo(program, [], runDirectory);
+
+            foreach (var (name, value) in environment ?? new Dictionary<string, string>())
+                startInfo.Environment[name] = value;
+
+            return startInfo;
+        }
+
+        private IToolchainRun Track(LocalRun run)
+        {
+            _runs[run.RunId] = run;
+            return run;
+        }
+
+        private void Forget(LocalRun run)
+        {
+            _runs.TryRemove(run.RunId, out _);
+            if (run.RunDirectory is { } directory)
+                DeleteDirectory(directory);
+        }
+
+        private static string? FindOnPath(string fileName)
+        {
+            var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+            return path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+                .Select(directory => Path.Combine(directory, fileName))
+                .FirstOrDefault(File.Exists);
         }
 
         private static string? Validate(CompileRequest request)

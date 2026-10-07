@@ -26,6 +26,27 @@ namespace Blazemoji.Test.Toolchain
             return new LocalToolchain(Options.Create(options), NullLogger<LocalToolchain>.Instance);
         }
 
+        /// <summary>
+        /// Puts a shell script where a compiled program would be, so that run mechanics can be
+        /// tested on any Unix without the Emojicode compiler.
+        /// </summary>
+        public static string ScriptBuild(LocalToolchain toolchain, string script)
+        {
+            var buildId = Guid.NewGuid().ToString("N");
+            var directory = Path.Combine(toolchain.WorkRoot, "builds", buildId);
+            Directory.CreateDirectory(directory);
+
+            var program = Path.Combine(directory, "program");
+            File.WriteAllText(program, "#!/bin/sh\n" + script + "\n");
+            File.SetUnixFileMode(program, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+            return buildId;
+        }
+
+        public const string UnixOnly = "Run mechanics are tested with shell scripts, which need a Unix system.";
+
+        public static bool IsUnix => !OperatingSystem.IsWindows();
+
         public static CompileRequest SingleFile(string code) =>
             new(new Dictionary<string, string> { ["main.🍇"] = code }, "main.🍇");
     }

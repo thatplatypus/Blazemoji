@@ -19,6 +19,7 @@ namespace Blazemoji.Toolchain
         {
             using var process = new Process { StartInfo = CreateStartInfo(fileName, arguments, workingDirectory) };
             process.Start();
+            process.StandardInput.Close();
 
             // Both pipes are drained while the process runs. Reading one after the other
             // deadlocks as soon as the unread pipe's buffer fills.
@@ -51,6 +52,8 @@ namespace Blazemoji.Toolchain
                 WorkingDirectory = workingDirectory,
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                // Redirected so that the child never reads the server's own stdin. Callers close it.
+                RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 StandardOutputEncoding = Encoding.UTF8,

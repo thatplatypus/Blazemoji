@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 
 namespace Blazemoji.Test
 {
+    [Collection(RunsAloneCollection.Name)]
     public class EmojiStringGeneratorTests
     {
         [Fact]

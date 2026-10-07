@@ -1,26 +1,16 @@
-using System.Runtime.InteropServices;
-using Blazemoji.Contracts.Models;
-using Blazemoji.Services.Compiler;
-using Microsoft.Extensions.Logging.Abstractions;
+using Blazemoji.Test.Toolchain;
+using Blazemoji.Toolchain;
 
 namespace Blazemoji.Test
 {
-    [Trait("Category", "Toolchain")]
     public class SampleProgramsTests
     {
-        private const string SkipReason = "The Emojicode compiler only runs on linux/amd64. Run the Docker test stage.";
         private const string NonTerminatingSample = "InfiniteLoop.🍇";
+        private const string RandomSample = "RandomNumber.🍇";
 
         private static readonly string SamplesDirectory = Path.Combine(AppContext.BaseDirectory, "Emojicode", "Samples");
 
-        private static bool ToolchainAvailable =>
-            OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
-
-        public SampleProgramsTests()
-        {
-            // CompilerService resolves emojicodec, ./packages and its output file from the working directory.
-            Directory.SetCurrentDirectory(AppContext.BaseDirectory);
-        }
+        private static CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
         public static TheoryData<string> TerminatingSamples()
         {
@@ -45,35 +35,83 @@ namespace Blazemoji.Test
             shipped.ShouldContain(NonTerminatingSample);
         }
 
+        public static TheoryData<string> DeterministicSamples()
+        {
+            var samples = new TheoryData<string>();
+            foreach (var row in TerminatingSamples())
+            {
+                if (row.Data != RandomSample)
+                    samples.Add(row.Data);
+            }
+
+            return samples;
+        }
+
+        /// <summary>
+        /// The same binary is run twice: once to completion with its output collected in one go,
+        /// and once through the event stream. Both must agree to the byte.
+        /// </summary>
         [Theory]
+        [Trait("Category", "Toolchain")]
+        [MemberData(nameof(DeterministicSamples))]
+        public async Task Streamed_output_matches_a_plain_run_of_the_same_binary(string sampleFile)
+        {
+            Assert.SkipUnless(ToolchainFixture.Available, ToolchainFixture.SkipReason);
+            await using var toolchain = ToolchainFixture.Create();
+            var build = await toolchain.CompileAsync(ToolchainFixture.SingleFile(await ReadSampleAsync(sampleFile)), Cancellation);
+            build.Ok.ShouldBeTrue();
+            var program = Path.Combine(toolchain.WorkRoot, "builds", build.BuildId!, "program");
+
+            var plain = await ProcessRunner.RunAsync(program, [], Path.GetTempPath(), TimeSpan.FromSeconds(30), Cancellation);
+            await using var run = await toolchain.StartRunAsync(new RunRequest(build.BuildId!), Cancellation);
+            var streamed = await run.RunToEndAsync(Cancellation);
+
+            plain.Stdout.ShouldNotBeNullOrWhiteSpace();
+            streamed.Stdout.ShouldBe(plain.Stdout);
+            streamed.Exit.ExitCode.ShouldBe(plain.ExitCode);
+        }
+
+        [Theory]
+        [Trait("Category", "Toolchain")]
         [MemberData(nameof(TerminatingSamples))]
         public async Task Sample_compiles_and_runs_with_output(string sampleFile)
         {
-            Assert.SkipUnless(ToolchainAvailable, SkipReason);
+            Assert.SkipUnless(ToolchainFixture.Available, ToolchainFixture.SkipReason);
+            await using var toolchain = ToolchainFixture.Create();
 
-            var result = await RunSampleAsync(sampleFile);
+            var finished = await toolchain.CompileAndRunAsync(await ReadSampleAsync(sampleFile), Cancellation);
 
-            result.Error.ShouldBeFalse(result.Message);
-            result.Result.ShouldNotBeNullOrWhiteSpace();
+            finished.Exit.Reason.ShouldBe(RunEndReason.Exited);
+            finished.Exit.ExitCode.ShouldBe(0);
+            finished.Stdout.ShouldNotBeNullOrWhiteSpace();
         }
 
         [Fact]
+        [Trait("Category", "Toolchain")]
         public async Task HelloWorld_prints_its_greeting()
         {
-            Assert.SkipUnless(ToolchainAvailable, SkipReason);
+            Assert.SkipUnless(ToolchainFixture.Available, ToolchainFixture.SkipReason);
+            await using var toolchain = ToolchainFixture.Create();
 
-            var result = await RunSampleAsync("HelloWorld.🍇");
+            var finished = await toolchain.CompileAndRunAsync(await ReadSampleAsync("HelloWorld.🍇"), Cancellation);
 
-            result.Error.ShouldBeFalse(result.Message);
-            result.Result.ShouldContain("Hello World!");
+            finished.Stdout.ShouldContain("Hello World!");
         }
 
-        private static async Task<EmojicodeResult> RunSampleAsync(string sampleFile)
+        [Fact]
+        [Trait("Category", "Toolchain")]
+        public async Task The_endless_sample_is_ended_at_the_output_limit()
         {
-            var code = await File.ReadAllTextAsync(Path.Combine(SamplesDirectory, sampleFile));
-            var compiler = new CompilerService(NullLogger<CompilerService>.Instance);
+            Assert.SkipUnless(ToolchainFixture.Available, ToolchainFixture.SkipReason);
+            await using var toolchain = ToolchainFixture.Create(options => options.MaxOutputBytes = 262_144);
 
-            return await compiler.CompileAndExecuteAsync(code);
+            var finished = await toolchain.CompileAndRunAsync(await ReadSampleAsync(NonTerminatingSample), Cancellation);
+
+            finished.Exit.Reason.ShouldBe(RunEndReason.OutputLimit);
+            finished.Stdout.ShouldStartWith("Let's see what happens!");
         }
+
+        private static Task<string> ReadSampleAsync(string sampleFile) =>
+            File.ReadAllTextAsync(Path.Combine(SamplesDirectory, sampleFile), Cancellation);
     }
 }
