@@ -6,46 +6,88 @@ using Microsoft.JSInterop;
 namespace Blazemoji.Services.Projects
 {
     /// <summary>
-    /// Keeps projects in the browser's local storage: one entry listing them, and one entry
-    /// per project. Local storage can only be reached once the page has rendered, is small
+    /// Keeps projects in the browser's local storage: one entry listing them, one entry per
+    /// project saying what it is and which files it has, and one entry per file holding its
+    /// text as it is. Local storage can only be reached once the page has rendered, is small
     /// (about 5 MB), and can be switched off, so every failure is a <see cref="ProjectStoreException"/>.
     /// </summary>
+    /// <remarks>
+    /// A file has an entry of its own for two reasons. The page reads an entry back in one
+    /// message and a message has a size limit, so nothing read at once may grow with the
+    /// project. And the same project can be open in two tabs: each writes only the files it
+    /// changed, so one does not put back the other's older text.
+    /// </remarks>
     public sealed class LocalStorageProjectStore(ILocalStorageService localStorage) : IProjectStore
     {
         private const string IndexKey = "blazemoji.projects";
         private const string ProjectKeyPrefix = "blazemoji.project.";
+        private const string FileKeyInfix = ".file.";
 
         private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
         {
             Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
+
+        // What this page last read from or wrote to storage, by project. A save writes the difference.
+        private readonly Dictionary<string, Stored> _stored = [];
 
         public async Task<IReadOnlyList<ProjectSummary>> ListAsync() =>
             (await ReadIndexAsync()).Projects.Select(row => new ProjectSummary(row.Id, row.Name)).ToList();
 
         public async Task<Project?> LoadAsync(string projectId)
         {
-            var stored = Read<StoredProject>(await GetAsync(ProjectKeyPrefix + projectId));
+            var description = await GetAsync(ProjectKeyPrefix + projectId);
+            var stored = Read<StoredProject>(description);
             if (stored?.Id is null || stored.Name is null || stored.Entry is null || stored.Files is null)
                 return null;
 
-            var files = stored.Files
-                .Where(file => file?.Path is not null)
-                .Select(file => new ProjectFile(file.Path!, file.Content ?? string.Empty))
-                .ToList();
+            var files = new List<ProjectFile>();
+            var kept = new Dictionary<string, string?>();
+            foreach (var file in stored.Files.Where(file => file?.Path is not null))
+            {
+                // An earlier version of this page kept the text inside the project's entry.
+                // It is read from there, and moves to an entry of its own at the next save.
+                var content = file.Content;
+                if (content is null)
+                    kept[file.Path!] = content = await GetAsync(FileKey(projectId, file.Path!)) ?? string.Empty;
 
+                files.Add(new ProjectFile(file.Path!, content));
+            }
+
+            _stored[projectId] = new Stored(stored.Files.Any(file => file?.Content is not null) ? null : description, kept);
             return new Project(stored.Id, stored.Name, stored.Kind, stored.Entry, files);
         }
 
         public async Task SaveAsync(Project project)
         {
-            var stored = new StoredProject(
-                project.Id,
-                project.Name,
-                project.Kind,
-                project.Entry,
-                project.Files.Select(file => new StoredFile(file.Path, file.Content)).ToList());
-            await SetAsync(ProjectKeyPrefix + project.Id, JsonSerializer.Serialize(stored, Json));
+            if (!_stored.TryGetValue(project.Id, out var stored))
+                _stored[project.Id] = stored = new Stored(null, await StoredPathsAsync(project.Id));
+
+            foreach (var file in project.Files)
+            {
+                if (stored.Files.TryGetValue(file.Path, out var content) && content == file.Content)
+                    continue;
+
+                await SetAsync(FileKey(project.Id, file.Path), file.Content);
+                stored.Files[file.Path] = file.Content;
+            }
+
+            var description = JsonSerializer.Serialize(
+                new StoredProject(project.Id, project.Name, project.Kind, project.Entry, project.Files.Select(file => new StoredFile(file.Path, null)).ToList()),
+                Json);
+            if (description != stored.Description)
+            {
+                await SetAsync(ProjectKeyPrefix + project.Id, description);
+                stored.Description = description;
+            }
+
+            // After the description no longer names them, so that a file is never listed without its text.
+            foreach (var path in stored.Files.Keys.Except(project.Files.Select(file => file.Path)).ToList())
+            {
+                await RemoveAsync(FileKey(project.Id, path));
+                stored.Files.Remove(path);
+            }
 
             var index = await ReadIndexAsync();
             var row = new IndexRow(project.Id, project.Name);
@@ -66,7 +108,11 @@ namespace Blazemoji.Services.Projects
             index.Projects.RemoveAll(row => row.Id == projectId);
             await WriteIndexAsync(index with { LastOpened = index.LastOpened == projectId ? null : index.LastOpened });
 
-            await Guarded(async () => await localStorage.RemoveItemAsync(ProjectKeyPrefix + projectId));
+            foreach (var path in (await StoredPathsAsync(projectId)).Keys)
+                await RemoveAsync(FileKey(projectId, path));
+
+            await RemoveAsync(ProjectKeyPrefix + projectId);
+            _stored.Remove(projectId);
         }
 
         public async Task<string?> GetLastOpenedAsync() => (await ReadIndexAsync()).LastOpened;
@@ -123,6 +169,24 @@ namespace Blazemoji.Services.Projects
 
         private Task SetAsync(string key, string value) => Guarded(async () => await localStorage.SetItemAsStringAsync(key, value));
 
+        private Task RemoveAsync(string key) => Guarded(async () => await localStorage.RemoveItemAsync(key));
+
+        private static string FileKey(string projectId, string path) => ProjectKeyPrefix + projectId + FileKeyInfix + path;
+
+        /// <summary>
+        /// The files storage has entries for, for a project this page has not read. Their text
+        /// is not known, so each is null and will be written.
+        /// </summary>
+        private async Task<Dictionary<string, string?>> StoredPathsAsync(string projectId)
+        {
+            var stored = Read<StoredProject>(await GetAsync(ProjectKeyPrefix + projectId));
+            return (stored?.Files ?? [])
+                .Where(file => file?.Path is not null)
+                .Select(file => file.Path!)
+                .Distinct()
+                .ToDictionary(path => path, _ => (string?)null);
+        }
+
         private static async Task Guarded(Func<Task> useStorage)
         {
             try
@@ -145,6 +209,16 @@ namespace Blazemoji.Services.Projects
 
         private sealed record StoredProject(string? Id, string? Name, ProjectKind Kind, string? Entry, List<StoredFile>? Files);
 
+        /// <param name="Content">Null since each file has an entry of its own.</param>
         private sealed record StoredFile(string? Path, string? Content);
+
+        /// <param name="Description">The project's entry as last read or written. Null when it has to be written again.</param>
+        /// <param name="Files">The text of each file's entry as last read or written.</param>
+        private sealed class Stored(string? description, Dictionary<string, string?> files)
+        {
+            public string? Description { get; set; } = description;
+
+            public Dictionary<string, string?> Files { get; } = files;
+        }
     }
 }

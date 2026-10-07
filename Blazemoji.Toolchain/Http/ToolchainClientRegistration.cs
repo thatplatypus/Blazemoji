@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -32,8 +33,10 @@ namespace Blazemoji.Toolchain.Http
         {
             services.Configure<ToolchainClientOptions>(configuration.GetSection(ToolchainClientOptions.SectionName));
 
-            services.AddHttpClient<IPackageDocumentationSource, HttpPackageDocumentationSource>(PointAtTheService);
-            return services.AddHttpClient<IToolchain, HttpToolchain>(PointAtTheService);
+            services.AddHttpClient<IPackageDocumentationSource, HttpPackageDocumentationSource>(PointAtTheService)
+                .ConfigurePrimaryHttpMessageHandler(ShowNeverAct);
+            return services.AddHttpClient<IToolchain, HttpToolchain>(PointAtTheService)
+                .ConfigurePrimaryHttpMessageHandler(ShowNeverAct);
         }
 
         private static void PointAtTheService(IServiceProvider provider, HttpClient client)
@@ -45,5 +48,18 @@ namespace Blazemoji.Toolchain.Http
 
             client.Timeout = options.RequestTimeout > TimeSpan.Zero ? options.RequestTimeout : TimeSpan.FromMinutes(2);
         }
+
+        /// <summary>
+        /// What comes back through the service can be a program's own response. A redirect or
+        /// a cookie in it is something to show, never something to act on: following one
+        /// would send this client wherever the program says.
+        /// </summary>
+        private static SocketsHttpHandler ShowNeverAct() => new()
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            RequestHeaderEncodingSelector = (_, _) => Encoding.UTF8,
+            ResponseHeaderEncodingSelector = (_, _) => Encoding.UTF8,
+        };
     }
 }
