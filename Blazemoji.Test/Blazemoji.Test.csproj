@@ -28,6 +28,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Blazemoji\Blazemoji.csproj" />
     <ProjectReference Include="..\Blazemoji.Toolchain\Blazemoji.Toolchain.csproj" />
   </ItemGroup>

@@ -1,11 +1,110 @@
-﻿@using MudBlazor
-<h4 class="p-2 pt-4">📄 Output</h4>
+@using System.Globalization
+@using Blazemoji.Toolchain
+@implements IDisposable
+@inject RunState State
 
-<pre style="max-height:80vh;">
-    @Output
-</pre>
+<MudTabs @bind-ActivePanelIndex="_activeTab" Elevation="0" Rounded="false">
+    <MudTabPanel Text="Output">
+        <div class="output-panel pa-2">
+            <div class="output-status" data-testid="run-status">@StatusText</div>
+            <div class="@ProgressClass">
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            </div>
+            @if (State.TotalLines > State.Lines.Count)
+            {
+                <div class="output-dropped" data-testid="output-dropped">
+                    Showing the last @Count(State.Lines.Count) of @Count(State.TotalLines) lines.
+                </div>
+            }
+            <div class="output-scroll">
+                <div class="output-lines">
+                    @foreach (var line in State.Lines)
+                    {
+                        <div @key="line.Number" class="@LineClass(line)" data-testid="output-line">@line.Text</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </MudTabPanel>
+    <MudTabPanel Text="Problems" BadgeData="@ProblemBadge" BadgeColor="@ProblemBadgeColor">
+        <ProblemsPanel Diagnostics="@State.Diagnostics" ProblemSelected="@ProblemSelected" />
+    </MudTabPanel>
+</MudTabs>
 
 @code {
+    private const int OutputTab = 0;
+    private const int ProblemsTab = 1;
 
-    [Parameter] public string Output { get; set; } = "";
+    private int _activeTab = OutputTab;
+    private RunStatus _lastStatus = RunStatus.Idle;
+
+    [Parameter]
+    public EventCallback<Diagnostic> ProblemSelected { get; set; }
+
+    private bool HasErrors => State.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+
+    private object? ProblemBadge => State.Diagnostics.Count == 0 ? null : State.Diagnostics.Count;
+
+    private Color ProblemBadgeColor => HasErrors ? Color.Error : Color.Warning;
+
+    private string ProgressClass => State.Status == RunStatus.Idle ? "output-progress output-progress-idle" : "output-progress";
+
+    private string StatusText => State.Status switch
+    {
+        RunStatus.Compiling => "Compiling",
+        RunStatus.Running => "Running",
+        _ when State.LastRun is { } run => Describe(run),
+        _ when HasErrors => "Build failed",
+        _ => "Ready",
+    };
+
+    protected override void OnInitialized()
+    {
+        State.StateChanged += OnStateChanged;
+        State.DiagnosticsChanged += OnDiagnosticsChanged;
+    }
+
+    private void OnStateChanged()
+    {
+        if (State.Status == RunStatus.Running && _lastStatus != RunStatus.Running)
+            _activeTab = OutputTab;
+
+        _lastStatus = State.Status;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnDiagnosticsChanged()
+    {
+        if (HasErrors)
+            _activeTab = ProblemsTab;
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private static string Describe(RunSummary run) => run.Reason switch
+    {
+        RunEndReason.Stopped => $"Stopped after {Seconds(run.Duration)}",
+        RunEndReason.TimedOut => $"Time limit reached after {Seconds(run.Duration)}",
+        RunEndReason.OutputLimit => $"Output limit reached after {Seconds(run.Duration)}",
+        RunEndReason.FailedToStart => "Could not start",
+        _ => $"Exited with code {run.ExitCode} after {Seconds(run.Duration)}",
+    };
+
+    private static string Seconds(TimeSpan duration) =>
+        duration.TotalSeconds.ToString("0.00", CultureInfo.InvariantCulture) + " s";
+
+    private static string Count(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
+
+    private static string LineClass(OutputLine line) => line.Stream switch
+    {
+        OutputStream.Stderr => "output-line output-line-stderr",
+        OutputStream.System => "output-line output-line-system",
+        _ => "output-line",
+    };
+
+    public void Dispose()
+    {
+        State.StateChanged -= OnStateChanged;
+        State.DiagnosticsChanged -= OnDiagnosticsChanged;
+    }
 }

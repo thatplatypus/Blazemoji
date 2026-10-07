@@ -1,8 +1,8 @@
 using Blazemoji;
 using Blazemoji.Components;
-using Blazemoji.Services.Compiler;
 using Blazemoji.Services.Library;
 using Blazemoji.Shared.State;
+using Blazemoji.Toolchain;
 using MudBlazor.Services;
 using System;
 
@@ -15,8 +15,10 @@ builder.Services.AddRazorComponents()
 builder.Services.AddMudServices();
 builder.Services.AddBlazoredLocalStorage();
 builder.Services.AddTransient<ILibraryService, LibraryService>();
-builder.Services.AddScoped<ICompilerService, CompilerService>();
-builder.Services.AddScoped<ICodeRunner, CodeRunner>();
+builder.Services.Configure<ToolchainOptions>(builder.Configuration.GetSection(ToolchainOptions.SectionName));
+builder.Services.AddSingleton<IToolchain, LocalToolchain>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<RunState>();
 builder.Services.AddSingleton(new LocalStorageFiles());
 
 //Register emojicode keyword implementations

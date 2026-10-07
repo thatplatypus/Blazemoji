@@ -1,13 +1,14 @@
 @page "/"
 @using Blazemoji.Components.EmojiPicker
 @using Blazemoji.Services
-@using Blazemoji.Services.Compiler
+@using Blazemoji.Toolchain
 @using System.Text.Json
+@implements IDisposable
 
 @inject ILibraryService _libraryService
 @inject IDialogService _dialogService
 @inject LocalStorageFiles _localStorageFiles
-@inject ICodeRunner _codeRunner
+@inject RunState _runState
 
 
 <MudContainer Style="max-height:90dvh;overflow:hidden;" MaxWidth="MaxWidth.ExtraExtraLarge">
@@ -35,30 +36,20 @@
                         <MudIconButton Icon="@Icons.Material.Outlined.Save" OnClick="SaveEmojicode" />
                     </MudTooltip>
 
-                     <MudButton Class="text-nowrap" Variant="@Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="RunEmojiCodeClicked" Disabled="_loading" Color="Color.Success">
-                         @if(_loading){
-                            <span class="mr-2">Running...</span>
-                            <MudProgressCircular Indeterminate="true" Style="max-width:1rem;max-height:1rem;" Color="Color.Primary" />
-                        }
-                        else
-                        {
-                            <span>Run Code</span>
-                        }
+                    <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle)" Color="Color.Success" data-testid="run-button">
+                        Run Code
+                    </MudButton>
 
-                     </MudButton>
+                    <MudButton Class="text-nowrap" Variant="@Variant.Outlined" StartIcon="@BlazemojiIcons.Stop" OnClick="StopClicked" Disabled="@IsIdle" Color="Color.Error" data-testid="stop-button">
+                        Stop
+                    </MudButton>
                 </MudToolBar>
             </MudPaper>
             <EmojiCodeEditor EmojiPickerOpened="@OpenEmojiPickerAsync" @ref="_editor" />
         </MudItem>
         <MudItem xs="2" lg="3">
-            <MudPaper Height="100%" Style="position:relative">
-            <MudOverlay DarkBackground="true"  Absolute="true" Visible="_loading">
-                @if(_loading)
-                {                        
-                    <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
-                }
-            </MudOverlay>
-            <OutputPanel Output="@_output" />
+            <MudPaper Height="100%">
+                <OutputPanel ProblemSelected="@RevealProblemAsync" />
             </MudPaper>
         </MudItem>
     </MudGrid>
@@ -67,34 +58,48 @@
 @code {
     private EmojiCodeEditor _editor = default!;
 
-    private string _output = "";
-    private bool _loading = false;
     private Sidebar _sidebar;
     private EmojiPicker _emojiPicker;
+    private IReadOnlyList<Diagnostic>? _markedDiagnostics;
+
+    private bool IsIdle => _runState.Status == RunStatus.Idle;
+
+    protected override void OnInitialized()
+    {
+        _runState.StateChanged += OnRunStateChanged;
+        _runState.DiagnosticsChanged += OnRunStateChanged;
+    }
+
+    private void OnRunStateChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Markers go to the editor through JS interop, so they are applied after a render
+        // instead of from the state's own event.
+        if (ReferenceEquals(_markedDiagnostics, _runState.Diagnostics))
+            return;
+
+        _markedDiagnostics = _runState.Diagnostics;
+        await _editor.SetMarkersAsync(_runState.Diagnostics, _runState.DiagnosticsSource);
+    }
 
     protected async Task RunEmojiCodeClicked()
     {
-        string code = await _editor.GetCodeAsync();
+        await _runState.RunAsync(await _editor.GetCodeAsync());
+    }
 
-        try
-        {
-            _loading = true;
-            StateHasChanged();
+    private async Task StopClicked()
+    {
+        await _runState.StopAsync();
+    }
 
-            var result = await _codeRunner.ExecuteAsync(code);
-
-            _output = "Run time: " + result.ExecutionTime?.TotalSeconds + " seconds" + Environment.NewLine; 
-            _output += result.Error ? result.Message : result.Result + Environment.NewLine;
-        }
-        catch(Exception ex)
-        {
-            _output = ex.Message;
-        }
-        finally
-        {
-            _loading = false;
-            StateHasChanged();
-        }
+    private async Task RevealProblemAsync(Diagnostic diagnostic)
+    {
+        if (DiagnosticPositions.ToEditorRange(diagnostic, _runState.DiagnosticsSource) is { } range)
+            await _editor.RevealAsync(range.StartLine, range.StartColumn);
     }
 
     private async Task OnCopiedToClipboard()
@@ -105,6 +110,7 @@
     private async Task LoadEmojicFile(EmojicFile file)
     {
         await _editor.SetCodeAsync(file.Code);
+        await _editor.ClearMarkersAsync();
     }
 
     private async Task SaveEmojicode()
@@ -150,6 +156,12 @@
     {
         var options = new DialogOptions { CloseOnEscapeKey = true, CloseButton = true, FullWidth = true };
         await _dialogService.ShowAsync<KeycommandsDialog>("Editor Keycommands", options);
+    }
+
+    public void Dispose()
+    {
+        _runState.StateChanged -= OnRunStateChanged;
+        _runState.DiagnosticsChanged -= OnRunStateChanged;
     }
 
 }

@@ -1,5 +1,6 @@
 ﻿@using BlazorMonaco.Editor
 @using BlazorMonaco;
+@using Blazemoji.Toolchain
 @inject IJSRuntime _jsRuntime
 
 <div class="@("text-align-center " + (_initializing ? "d-block" : "d-none"))">
@@ -16,6 +17,8 @@
     ConstructionOptions="EditorConstructionOptions" />
 
 @code {
+    private const string MarkerOwner = "emojicodec";
+
     private StandaloneCodeEditor _editor = default!;
     private BlazorMonaco.Selection _selection = default!;
     private bool _initializing = true;
@@ -131,6 +134,44 @@
     public async Task SetCodeAsync(string code)
     {
         await _editor.SetValue(code);
+    }
+
+    /// <summary>
+    /// Replaces the compiler markers in the editor. Diagnostics without a location get none.
+    /// </summary>
+    public async Task SetMarkersAsync(IReadOnlyList<Diagnostic> diagnostics, string source)
+    {
+        if (_initializing)
+            return;
+
+        var markers = new List<MarkerData>();
+        foreach (var diagnostic in diagnostics)
+        {
+            if (DiagnosticPositions.ToEditorRange(diagnostic, source) is not { } range)
+                continue;
+
+            markers.Add(new MarkerData
+            {
+                Severity = diagnostic.Severity == DiagnosticSeverity.Error ? MarkerSeverity.Error : MarkerSeverity.Warning,
+                Message = diagnostic.Message,
+                Source = MarkerOwner,
+                StartLineNumber = range.StartLine,
+                StartColumn = range.StartColumn,
+                EndLineNumber = range.EndLine,
+                EndColumn = range.EndColumn,
+            });
+        }
+
+        await Global.SetModelMarkers(_jsRuntime, await _editor.GetModel(), MarkerOwner, markers);
+    }
+
+    public Task ClearMarkersAsync() => SetMarkersAsync([], string.Empty);
+
+    public async Task RevealAsync(int line, int column)
+    {
+        await _editor.RevealLineInCenter(line);
+        await _editor.SetPosition(new BlazorMonaco.Position { LineNumber = line, Column = column }, MarkerOwner);
+        await _editor.Focus();
     }
 
     public async Task InsertTextAsync(string text)

@@ -1,0 +1,42 @@
+.output-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.output-status,
+.output-dropped {
+    color: var(--mud-palette-text-secondary);
+    font-size: 0.75rem;
+}
+
+/* Kept in the layout when idle so that the output does not jump when a run starts. */
+.output-progress-idle {
+    visibility: hidden;
+}
+
+/* A reversed column keeps the view pinned to the newest line until the reader scrolls up. */
+.output-scroll {
+    display: flex;
+    flex-direction: column-reverse;
+    overflow-y: auto;
+    max-height: 72vh;
+}
+
+.output-line {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    min-height: 1.4em;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.output-line-stderr {
+    color: var(--mud-palette-error);
+}
+
+.output-line-system {
+    color: var(--mud-palette-text-secondary);
+    font-style: italic;
+}
