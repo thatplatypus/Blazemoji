@@ -157,7 +157,7 @@ namespace Blazemoji.Test.Components
             await _state.RunAsync(Code);
             cut.WaitForAssertion(() => cut.FindAll("[data-testid=problem]").Count.ShouldBe(1));
 
-            await cut.FindAll(".mud-tab")[0].ClickAsync(new());
+            await cut.FindAll("[role=tab]")[0].ClickAsync(new());
 
             cut.WaitForAssertion(() => StatusOf(cut).ShouldBe("Build failed"));
         }

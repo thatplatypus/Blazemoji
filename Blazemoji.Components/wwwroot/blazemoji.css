@@ -1,5 +1,49 @@
 /* The few rules Blazemoji's components need that are not scoped to one component.
    A host links this file: _content/Blazemoji.Components/blazemoji.css */
+
+/* Nunito, the app's text font, served from here so that it is the same offline. It is under
+   the SIL Open Font License: fonts/nunito/OFL.txt. One variable file holds every weight. */
+@font-face {
+    font-family: "Nunito";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 200 1000;
+    src: url("fonts/nunito/nunito-latin-ext-wght-normal.woff2") format("woff2-variations");
+    unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@font-face {
+    font-family: "Nunito";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 200 1000;
+    src: url("fonts/nunito/nunito-latin-wght-normal.woff2") format("woff2-variations");
+    unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* An emoji used as an icon keeps its colours when its button is disabled, so it is faded
+   the way a glyph would be. */
+button:disabled .emoji-icon {
+    opacity: 0.38;
+}
+
+/* A line of example code inside a tooltip. HintText has no element of its own to scope this to. */
+.hint-text {
+    margin: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: calc(var(--mud-default-borderradius) / 2);
+    background-color: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+    font-family: Menlo, Consolas, "Courier New", monospace;
+    text-align: left;
+    white-space: pre-wrap;
+}
+
+/* The editor takes the theme's corners. Its own widgets sit outside the part that is clipped. */
+.monaco-editor,
+.monaco-editor .overflow-guard {
+    border-radius: var(--mud-default-borderradius);
+}
 .monaco-editor-container { 
     height: 80vh;
 }

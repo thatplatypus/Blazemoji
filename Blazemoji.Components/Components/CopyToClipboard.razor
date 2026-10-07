@@ -1,7 +1,7 @@
 @using Blazemoji.Interop
 @inject ClipboardInterop _clipboard
 
-<MudIconButton title="Copy" Size="Size.Small" Icon="@Icons.Material.Outlined.ContentCopy" OnClick="CopyToClipboardAsync"/>
+<MudIconButton title="Copy" Size="Size.Small" Icon="@BlazemojiIcons.Copy" OnClick="CopyToClipboardAsync"/>
 
 @code {
     [Parameter] public string ClipboardValue { get; set; } = "";

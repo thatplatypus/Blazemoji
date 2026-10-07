@@ -3,8 +3,8 @@
 @implements IDisposable
 @inject RunState State
 
-<MudTabs @bind-ActivePanelIndex="_activeTab" Elevation="0" Rounded="false" MinimumTabWidth="72px">
-    <MudTabPanel Text="Output">
+<SegmentedTabs @bind-Active="_activeTab" AriaLabel="Output, problems and requests" CompactBelow="240" PanelClass="pt-2">
+    <SegmentedTab Id="@OutputTab" Text="Output">
         <div class="output-panel pa-2">
             <div class="output-status">
                 <span data-testid="run-status">@StatusText</span>
@@ -25,20 +25,20 @@
                 </div>
             </div>
         </div>
-    </MudTabPanel>
-    <MudTabPanel Text="Problems" BadgeData="@ProblemBadge" BadgeColor="@ProblemBadgeColor">
+    </SegmentedTab>
+    <SegmentedTab Id="@ProblemsTab" Text="Problems" Count="@State.Diagnostics.Count" CountColor="@ProblemBadgeColor">
         <ProblemsPanel Diagnostics="@State.Diagnostics" ShowFiles="@ShowProblemFiles" ProblemSelected="@ProblemSelected" />
-    </MudTabPanel>
-    <MudTabPanel Text="Requests">
+    </SegmentedTab>
+    <SegmentedTab Id="requests" Text="Requests">
         <RequestPanel />
-    </MudTabPanel>
-</MudTabs>
+    </SegmentedTab>
+</SegmentedTabs>
 
 @code {
-    private const int OutputTab = 0;
-    private const int ProblemsTab = 1;
+    private const string OutputTab = "output";
+    private const string ProblemsTab = "problems";
 
-    private int _activeTab = OutputTab;
+    private string? _activeTab = OutputTab;
     private RunStatus _lastStatus = RunStatus.Idle;
 
     [Parameter]
@@ -49,8 +49,6 @@
     public bool ShowProblemFiles { get; set; }
 
     private bool HasErrors => State.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-
-    private object? ProblemBadge => State.Diagnostics.Count == 0 ? null : State.Diagnostics.Count;
 
     private Color ProblemBadgeColor => HasErrors ? Color.Error : Color.Warning;
 

@@ -10,7 +10,7 @@ namespace Blazemoji.Components.EmojiPicker
     {
         public EmojiPicker()
         {
-            AdornmentIcon = Icons.Material.Outlined.EmojiEmotions;
+            AdornmentIcon = BlazemojiIcons.EmojiPicker;
             AdornmentAriaLabel = "Open Emoji Picker";
         }
 

@@ -292,7 +292,7 @@ namespace Blazemoji.E2E
 
         public async Task OpenTabAsync(string name)
         {
-            var tab = Page.Locator(".mud-tab", new PageLocatorOptions { HasTextString = name });
+            var tab = Page.Locator("[role=tab]", new PageLocatorOptions { HasTextString = name });
 
             // A Library row's code preview can cover the tabs, and the tab is often open already.
             if (await tab.GetAttributeAsync("aria-selected") != "true")

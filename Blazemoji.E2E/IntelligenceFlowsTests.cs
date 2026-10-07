@@ -84,7 +84,7 @@ namespace Blazemoji.E2E
 
             (await editor.MarkersAsync())[0].Message.ShouldBe("Variable \"nope\" not defined.");
             (await editor.RunStatus.InnerTextAsync()).ShouldBe("Ready");
-            (await editor.Page.Locator(".mud-tabs .mud-badge").InnerTextAsync()).Trim().ShouldBe("1");
+            (await editor.Page.Locator("[role=tab] .mud-badge").InnerTextAsync()).Trim().ShouldBe("1");
             await editor.ScreenshotAsync("p4-03-marked-while-typing");
             TestContext.Current.TestOutputHelper?.WriteLine($"Marked {marked.TotalMilliseconds:0} ms after the last key.");
             marked.ShouldBeLessThan(TimeSpan.FromSeconds(3));

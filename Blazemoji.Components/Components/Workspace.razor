@@ -17,7 +17,7 @@
             <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" OnEmojicodeInsertedCallback="@InsertEmojicodeAsync" CopiedToClipboard="OnCopiedToClipboard" BeforeProjectChange="SyncOpenFileAsync" />
         </MudItem>
         <MudItem xs="6">
-            <MudPaper Elevation="25" Class="mb-2">
+            <MudPaper Elevation="0" Outlined="true" Class="mb-2">
                 <MudToolBar>
                     <h4 class="text-nowrap">🍇 Emojicode Editor</h4>
                     <MudSpacer />
@@ -29,11 +29,11 @@
                     />
 
                     <MudTooltip Text="Editor Commands">
-                        <MudIconButton Icon="@Icons.Material.Outlined.KeyboardCommandKey" OnClick="OpenEditorCommands" />
+                        <MudIconButton Icon="@BlazemojiIcons.KeyCommands" OnClick="OpenEditorCommands" />
                     </MudTooltip>
 
                     <MudTooltip Text="Save Code">
-                        <MudIconButton Icon="@Icons.Material.Outlined.Save" OnClick="SaveEmojicode" />
+                        <MudIconButton Icon="@BlazemojiIcons.Save" OnClick="SaveEmojicode" />
                     </MudTooltip>
 
                     <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle)" Color="Color.Success" data-testid="run-button">
@@ -49,7 +49,7 @@
             <EmojiCodeEditor EmojiPickerOpened="@OpenEmojiPickerAsync" Ready="OnEditorReady" ContentSettled="OnContentSettledAsync" @ref="_editor" />
         </MudItem>
         <MudItem xs="3">
-            <MudPaper Height="100%">
+            <MudPaper Elevation="0" Outlined="true" Height="100%" Class="pa-2">
                 <OutputPanel ProblemSelected="@RevealProblemAsync" ShowProblemFiles="@(_projectState.Current.Files.Count > 1)" />
             </MudPaper>
         </MudItem>

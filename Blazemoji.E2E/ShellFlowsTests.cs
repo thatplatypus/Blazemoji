@@ -156,5 +156,52 @@ namespace Blazemoji.E2E
             copied.Length.ShouldBeLessThan(12);
             editor.ConsoleErrors.ShouldBeEmpty();
         }
+
+        [Fact]
+        public async Task Buttons_and_tabs_are_written_as_typed_and_not_in_capitals()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+
+            var transforms = await editor.Page.EvaluateAsync<string[]>(
+                """
+                () => [
+                    document.querySelector('[data-testid=run-button]'),
+                    document.querySelector('[data-testid=stop-button]'),
+                    ...document.querySelectorAll('[role=tab]'),
+                ].map(element => `${element.textContent.trim()}: ${getComputedStyle(element).textTransform}`)
+                """);
+
+            transforms.Length.ShouldBe(8);
+            transforms.ShouldAllBe(transform => transform.EndsWith(": none"));
+        }
+
+        [Fact]
+        public async Task The_count_on_the_problems_tab_is_whole_and_moves_nothing_when_it_appears()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            const string tabs = "() => [...document.querySelectorAll('[role=tab]')].slice(-3).map(tab => { const box = tab.getBoundingClientRect(); return [box.left, box.right, box.top, box.bottom]; })";
+            var before = await editor.Page.EvaluateAsync<double[][]>(tabs);
+
+            await editor.SetCodeAsync("🏁 🍇\n  😀 nope❗️\n🍉\n");
+            await editor.RunButton.ClickAsync();
+            await editor.Problems.First.WaitForAsync();
+            var badge = editor.Page.Locator("[role=tab] .mud-badge");
+            (await badge.InnerTextAsync()).Trim().ShouldBe("1");
+
+            // Nothing moved: Output, Problems and Requests are where they were.
+            var after = await editor.Page.EvaluateAsync<double[][]>(tabs);
+            after.ShouldBe(before);
+
+            // And the count lies inside its tab, where the tab does not cut it.
+            var count = await badge.BoundingBoxAsync();
+            var problemsTab = after[1];
+            count.ShouldNotBeNull();
+            count.X.ShouldBeGreaterThanOrEqualTo((float)problemsTab[0]);
+            (count.X + count.Width).ShouldBeLessThanOrEqualTo((float)problemsTab[1]);
+            count.Y.ShouldBeGreaterThanOrEqualTo((float)problemsTab[2]);
+            (count.Y + count.Height).ShouldBeLessThanOrEqualTo((float)problemsTab[3]);
+        }
     }
 }

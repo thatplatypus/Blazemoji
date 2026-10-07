@@ -5,9 +5,7 @@
     {
         @foreach (var category in _emojisByCategory.Keys)
         {
-            <MudListItem T="string"><h6>@category
-                </h6></MudListItem>
-            <MudDivider />
+            <MudText Typo="Typo.subtitle2" Class="px-2 pt-4 pb-2">@category</MudText>
             <MudGrid Spacing="1" Justify="Justify.FlexStart">
             @foreach (var keyword in _emojisByCategory[category])
             {
