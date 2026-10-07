@@ -1,0 +1,349 @@
+{
+    "documentation": "\n  Package providing basic unit testing utility.\n",
+    "types": [
+        {
+            "type": "Class",
+            "name": "🧪",
+            "conformances": [],
+            "genericParameters": [],
+            "documentation": "\n  This class is a test helper class for unit testing.\n\n  To create a test suite, subclass this class and override 🏁, for instance:\n\n  ```\n  🐇 🦔 🧪  🍇\n    ✒️❗️ 🏁 🍇\n      🔢👇 20 20 🔤20 equal 20🔤❗️\n    🍉\n  🍉\n  ```\n\n  Than instantiate your class and call 👔. The return of 👔 is an exit code\n  that can be returned from the 🏁 function:\n\n  ```\n  🏁 ➡️ 🔢 🍇\n    ↩️ 👔🆕🦔❗️❗️\n  🍉\n  ```\n",
+            "methods": [
+                {
+                    "accessLevel": "🔐",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "⛔",
+                    "mangled": "testtube.class_1f9ea.26d4-s.vt_1f44c-s.class_1f521",
+                    "genericParameters": [],
+                    "documentation": "\n    Asserts that *value* is 👍. *description* should describe\n    what this test asserts exactly.\n\n    >!H Prefer other assertion methods like [[🔡❗️]] if possible as they\n    >!H provide more information in the case of failure.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "👌",
+                                "arguments": []
+                            },
+                            "name": "value",
+                            "escaping": false
+                        },
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "description",
+                            "escaping": false
+                        }
+                    ]
+                },
+                {
+                    "accessLevel": "🔐",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "❎",
+                    "mangled": "testtube.class_1f9ea.274e-s.vt_1f44c-s.class_1f521",
+                    "genericParameters": [],
+                    "documentation": "\n    Asserts that *value* is 👎. *description* should describe\n    what this test asserts exactly.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "👌",
+                                "arguments": []
+                            },
+                            "name": "value",
+                            "escaping": false
+                        },
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "description",
+                            "escaping": false
+                        }
+                    ]
+                },
+                {
+                    "accessLevel": "🔐",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "🔡",
+                    "mangled": "testtube.class_1f9ea.1f521-s.class_1f521-s.class_1f521-s.class_1f521",
+                    "genericParameters": [],
+                    "documentation": "\n    Asserts that *value* equals expectation. *description* should describe\n    what this test asserts exactly.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "value",
+                            "escaping": false
+                        },
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "expectation",
+                            "escaping": false
+                        },
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "description",
+                            "escaping": false
+                        }
+                    ]
+                },
+                {
+                    "accessLevel": "🔐",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "🔢",
+                    "mangled": "testtube.class_1f9ea.1f522-s.vt_1f522-s.vt_1f522-s.class_1f521",
+                    "genericParameters": [],
+                    "documentation": "\n    Asserts that *value* equals expectation. *description* should describe\n    what this test asserts exactly.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔢",
+                                "arguments": []
+                            },
+                            "name": "value",
+                            "escaping": false
+                        },
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔢",
+                                "arguments": []
+                            },
+                            "name": "expectation",
+                            "escaping": false
+                        },
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "description",
+                            "escaping": false
+                        }
+                    ]
+                },
+                {
+                    "accessLevel": "🔐",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "💧",
+                    "mangled": "testtube.class_1f9ea.1f4a7-s.vt_1f4a7-s.vt_1f4a7-s.class_1f521",
+                    "genericParameters": [],
+                    "documentation": "\n    Asserts that *value* equals expectation. *description* should describe\n    what this test asserts exactly.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "💧",
+                                "arguments": []
+                            },
+                            "name": "value",
+                            "escaping": false
+                        },
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "💧",
+                                "arguments": []
+                            },
+                            "name": "expectation",
+                            "escaping": false
+                        },
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "description",
+                            "escaping": false
+                        }
+                    ]
+                },
+                {
+                    "accessLevel": "🔐",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "💯",
+                    "mangled": "testtube.class_1f9ea.1f4af-s.vt_1f4af-s.vt_1f4af-s.class_1f521",
+                    "genericParameters": [],
+                    "documentation": "\n    Asserts that *value* equals expectation. *description* should describe\n    what this test asserts exactly.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "💯",
+                                "arguments": []
+                            },
+                            "name": "value",
+                            "escaping": false
+                        },
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "💯",
+                                "arguments": []
+                            },
+                            "name": "expectation",
+                            "escaping": false
+                        },
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "description",
+                            "escaping": false
+                        }
+                    ]
+                },
+                {
+                    "accessLevel": "🔐",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "🙁",
+                    "mangled": "testtube.class_1f9ea.1f641-s.class_1f521",
+                    "genericParameters": [],
+                    "documentation": "\n    Adds an assertion failure with the provided description.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "description",
+                            "escaping": false
+                        }
+                    ]
+                },
+                {
+                    "accessLevel": "🔐",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "✅",
+                    "mangled": "testtube.class_1f9ea.2705-s.class_1f521",
+                    "genericParameters": [],
+                    "documentation": "\n    Adds a passed assertion with the provided description.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "description",
+                            "escaping": false
+                        }
+                    ]
+                },
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "package": "s",
+                        "name": "🔢",
+                        "arguments": []
+                    },
+                    "mood": "❗️",
+                    "name": "👔",
+                    "mangled": "testtube.class_1f9ea.1f454",
+                    "genericParameters": [],
+                    "documentation": "\n    Runs tests.\n  ",
+                    "parameters": []
+                },
+                {
+                    "accessLevel": "🔐",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "🏁",
+                    "mangled": "testtube.class_1f9ea.1f3c1",
+                    "genericParameters": [],
+                    "parameters": []
+                }
+            ],
+            "initializers": [
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "name": "",
+                    "mangled": "testtube.class_1f9ea.init.1f195",
+                    "genericParameters": [],
+                    "parameters": []
+                }
+            ],
+            "typeMethods": [],
+            "final": false
+        }
+    ]
+}

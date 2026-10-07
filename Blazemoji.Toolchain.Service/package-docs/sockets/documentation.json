@@ -1,0 +1,234 @@
+{
+    "documentation": "\n  The sockets package allows you to open TCP sockets to servers or to create a TCP server socket\n  yourself.\n\n  The following is a very basic example of opening a TCP socket to make an HTTP request and print\n  the first 140 characters of the response.\n  ```\n  📦 sockets 🏠\n\n  🏁 🍇\n    🍺 🆕📞 🔤example.com🔤 80❗️ ➡️ socket\n    💬 socket 📇 🔤GET / HTTP/1.1❌r❌nHost: example.com❌r❌n❌r❌n🔤❗️❗️\n\n    🍺 👂 socket 140❗️ ➡️ data\n    😀 🍺 🔡 data❗️❗️\n  🍉\n  ```\n\n  At the time of writing this, the above code would return something similar to:\n  ```\n  HTTP/1.1 200 OK\n  Cache-Control: max-age=604800\n  Content-Type: text/html; charset=UTF-8\n  Date: Mon, 10 Sep 2018 08:36:28 GMT\n  Etag: \"15410256\n  ```\n\n  Here we’ve an example of a minimal echo-server that listens on port 8728. The server simply sends\n  back a copy of the data it received.\n  ```\n  📦 sockets 🏠\n\n  💭 Simple echo server listening on port 8728\n  🏁 🍇\n    🍺🆕🏄 8728❗️ ➡️ server\n\n    🔁 👍 🍇\n      🍺 🙋 server❗️ ➡️ clientSocket\n\n      🔁 👍 🍇\n        🆗 data 👂 clientSocket 50❗️ 🍇\n          💭 We’ve read 50 bytes and send them back\n          💬 clientSocket data❗️\n        🍉\n        🙅‍♀️ error 🍇🍉\n      🍉\n    🍉\n  🍉\n  ```\n\n  Of course, the code above is minimal. For example, it can handle only one\n  connection.\n",
+    "types": [
+        {
+            "type": "Class",
+            "name": "🏄",
+            "conformances": [],
+            "genericParameters": [],
+            "documentation": "\n  🏄 represents a socket that listens for clients on a given port.\n",
+            "methods": [
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "errorType": {
+                        "package": "s",
+                        "name": "🚧🔸↕",
+                        "arguments": []
+                    },
+                    "returnType": {
+                        "package": "sockets",
+                        "name": "📞",
+                        "arguments": []
+                    },
+                    "mood": "❗️",
+                    "name": "🙋",
+                    "mangled": "sockets.class_1f3c4.1f64b",
+                    "genericParameters": [],
+                    "documentation": "\n    Waits until a client wants to connect to this socket and returns a socket\n    to communicate with it.\n  ",
+                    "parameters": []
+                },
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "🚪",
+                    "mangled": "sockets.class_1f3c4.1f6aa",
+                    "genericParameters": [],
+                    "documentation": "\n    Closes this socket.\n  ",
+                    "parameters": []
+                },
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": false,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "deinit",
+                    "mangled": "sockets.class_1f3c4.deinit",
+                    "genericParameters": [],
+                    "parameters": []
+                }
+            ],
+            "initializers": [
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "errorType": {
+                        "package": "s",
+                        "name": "🚧🔸↕",
+                        "arguments": []
+                    },
+                    "name": "",
+                    "mangled": "sockets.class_1f3c4.init.1f195-s.vt_1f522",
+                    "genericParameters": [],
+                    "documentation": "\n    Creates a 🏄 instance that immediately starts listening on the given port.\n    This initializer returns an error if an error occurs.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔢",
+                                "arguments": []
+                            },
+                            "name": "port",
+                            "escaping": false
+                        }
+                    ]
+                }
+            ],
+            "typeMethods": [],
+            "final": false
+        },
+        {
+            "type": "Class",
+            "name": "📞",
+            "conformances": [],
+            "genericParameters": [],
+            "documentation": " 📞 represents a socket for communication between client and server. ",
+            "methods": [
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "errorType": {
+                        "package": "s",
+                        "name": "🚧🔸↕",
+                        "arguments": []
+                    },
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "💬",
+                    "mangled": "sockets.class_1f4de.1f4ac-s.class_1f4c7",
+                    "genericParameters": [],
+                    "documentation": "\n    Sends the given data to the peer. Returns true if the data was successfully\n    sent or false on error.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "📇",
+                                "arguments": []
+                            },
+                            "name": "message",
+                            "escaping": false
+                        }
+                    ]
+                },
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "🚪",
+                    "mangled": "sockets.class_1f4de.1f6aa",
+                    "genericParameters": [],
+                    "documentation": "\n    Closes this socket.\n  ",
+                    "parameters": []
+                },
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "errorType": {
+                        "package": "s",
+                        "name": "🚧🔸↕",
+                        "arguments": []
+                    },
+                    "returnType": {
+                        "package": "s",
+                        "name": "📇",
+                        "arguments": []
+                    },
+                    "mood": "❗️",
+                    "name": "👂",
+                    "mangled": "sockets.class_1f4de.1f442-s.vt_1f522",
+                    "genericParameters": [],
+                    "documentation": "\n    Tries to read up to *bytes* bytes from the socket. An error is returned\n    on error or if the socket was closed by the peer.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔢",
+                                "arguments": []
+                            },
+                            "name": "bytes",
+                            "escaping": false
+                        }
+                    ]
+                },
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": false,
+                    "final": false,
+                    "returnType": {
+                        "type": "NoReturn"
+                    },
+                    "mood": "❗️",
+                    "name": "deinit",
+                    "mangled": "sockets.class_1f4de.deinit",
+                    "genericParameters": [],
+                    "parameters": []
+                }
+            ],
+            "initializers": [
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "errorType": {
+                        "package": "s",
+                        "name": "🚧🔸↕",
+                        "arguments": []
+                    },
+                    "name": "",
+                    "mangled": "sockets.class_1f4de.init.1f195-s.class_1f521-s.vt_1f522",
+                    "genericParameters": [],
+                    "documentation": "\n    Opens a socket to *address*. *address* can be a host name which will be\n    resolved.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "host",
+                            "escaping": false
+                        },
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔢",
+                                "arguments": []
+                            },
+                            "name": "socket",
+                            "escaping": false
+                        }
+                    ]
+                }
+            ],
+            "typeMethods": [],
+            "final": false
+        }
+    ]
+}

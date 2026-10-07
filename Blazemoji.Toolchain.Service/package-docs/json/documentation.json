@@ -1,0 +1,149 @@
+{
+    "documentation": "\n  This package allows you to parse JSON.\n\n  Example:\n\n  ```\n  🍺 🔲 🍺⚪️🕊🌸 🔤{\"a\": 32, \"b\": 43, \"c\": -92}🔤❗️🍯🐚⚪️🍆➡️ dict\n\n  🍺🔲🐽dict 🔤b🔤❗️🔢  💭 Gets the value for b\n  ```\n",
+    "types": [
+        {
+            "type": "Class",
+            "name": "🚧🔸🌸",
+            "conformances": [],
+            "genericParameters": [],
+            "documentation": "\n  🚧🔸🌸 an error that occured when parsing a JSON text.\n",
+            "methods": [],
+            "initializers": [
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "name": "",
+                    "mangled": "json.class_1f6a7_1f538_1f338.init.1f195-s.class_1f521",
+                    "genericParameters": [],
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "message",
+                            "escaping": true
+                        }
+                    ]
+                }
+            ],
+            "typeMethods": [],
+            "superclass": {
+                "package": "s",
+                "name": "🚧",
+                "arguments": []
+            },
+            "final": false
+        },
+        {
+            "type": "Value Type",
+            "name": "🌸",
+            "conformances": [],
+            "genericParameters": [],
+            "documentation": "\n  🌸 represents a JSON parser. Its use is straightforward: It can either be used\n  with the shortcut type method ⚪️ that takes a string and returns the parsed\n  value, or you can instantiate it yourself and then call the method ⚪️ yourself.\n\n  On error, [[🚧🔸🌸]] is raised.\n",
+            "methods": [
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "errorType": {
+                        "package": "json",
+                        "name": "🚧🔸🌸",
+                        "arguments": []
+                    },
+                    "returnType": {
+                        "type": "Literal",
+                        "name": "⚪️"
+                    },
+                    "mood": "❗️",
+                    "name": "⚪",
+                    "mangled": "json.vt_1f338.26aa",
+                    "genericParameters": [],
+                    "documentation": "\n    Parses the instance’s input and returns the represented value.\n  ",
+                    "parameters": []
+                }
+            ],
+            "initializers": [
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "name": "",
+                    "mangled": "json.vt_1f338.init.1f195-s.class_1f521",
+                    "genericParameters": [],
+                    "documentation": "\n    Creates a 🌸 from the provided 🔡.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "str",
+                            "escaping": false
+                        }
+                    ]
+                },
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "name": "📇",
+                    "mangled": "json.vt_1f338.init.1f4c7-s.class_1f4c7",
+                    "genericParameters": [],
+                    "documentation": "\n    Creates a 🌸 from the provided 📇. The JSON text must be UTF-8 encoded.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "📇",
+                                "arguments": []
+                            },
+                            "name": "data",
+                            "escaping": false
+                        }
+                    ]
+                }
+            ],
+            "typeMethods": [
+                {
+                    "accessLevel": "🔓",
+                    "unsafe": false,
+                    "mutating": true,
+                    "final": false,
+                    "errorType": {
+                        "package": "json",
+                        "name": "🚧🔸🌸",
+                        "arguments": []
+                    },
+                    "returnType": {
+                        "type": "Literal",
+                        "name": "⚪️"
+                    },
+                    "mood": "❗️",
+                    "name": "⚪",
+                    "mangled": "json.vt_1f338.type.26aa-s.class_1f521",
+                    "genericParameters": [],
+                    "documentation": "\n    Parses `string` and returns the represented value.\n  ",
+                    "parameters": [
+                        {
+                            "type": {
+                                "package": "s",
+                                "name": "🔡",
+                                "arguments": []
+                            },
+                            "name": "string",
+                            "escaping": false
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
