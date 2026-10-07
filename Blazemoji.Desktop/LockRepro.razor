@@ -1,0 +1,66 @@
+@* SPIKE. The smallest thing that shows the lock problem, with nothing of Blazemoji in it:
+   one SemaphoreSlim, two callers on the window's thread. Does nothing unless a report path
+   is given in BLAZEMOJI_SPIKE_LOCK_REPORT. *@
+@inject IJSRuntime Js
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var path = Environment.GetEnvironmentVariable("BLAZEMOJI_SPIKE_LOCK_REPORT");
+        if (!firstRender || string.IsNullOrEmpty(path))
+            return;
+
+        var lines = new List<string>();
+        foreach (var secondAlsoWaitsForTheWebView in new[] { true, false })
+        {
+            lines.Add(secondAlsoWaitsForTheWebView
+                ? "--- the second holder also asks the web view something"
+                : "--- the second holder has nothing to wait for");
+            var gate = new SemaphoreSlim(1, 1);
+
+            async Task HoldAsync(string who, bool asksTheWebView)
+            {
+                await gate.WaitAsync();
+                lines.Add($"{who}: has the lock");
+                try
+                {
+                    // The answer comes back as a message from the web view, on the window's thread.
+                    if (asksTheWebView)
+                        await Js.InvokeAsync<int>("Math.max", 1, 2);
+                }
+                finally
+                {
+                    lines.Add($"{who}: calls Release");
+                    gate.Release();
+                    lines.Add($"{who}: Release returned, count is {gate.CurrentCount}");
+                }
+            }
+
+            var first = HoldAsync("first", asksTheWebView: true);
+            var second = HoldAsync("second", secondAlsoWaitsForTheWebView);
+            await Task.WhenAll(first, second);
+            lines.Add($"both are done and nobody holds the lock; count is {gate.CurrentCount}, and 1 is right");
+            lines.Add(await gate.WaitAsync(TimeSpan.FromSeconds(2))
+                ? "a third caller gets the lock"
+                : "a third caller waits two seconds and never gets the lock");
+        }
+
+        // The same cause seen without a lock: after an answer from the web view, does
+        // Task.Yield give way to the caller, as it is meant to?
+        lines.Add("--- Task.Yield, straight after an answer from the web view");
+        await Js.InvokeAsync<int>("Math.max", 1, 2);
+
+        async Task YieldingAsync()
+        {
+            lines.Add("the method: before Task.Yield");
+            await Task.Yield();
+            lines.Add("the method: after Task.Yield");
+        }
+
+        var yielding = YieldingAsync();
+        lines.Add("the caller: carries on");
+        await yielding;
+
+        await File.WriteAllLinesAsync(path, lines);
+    }
+}

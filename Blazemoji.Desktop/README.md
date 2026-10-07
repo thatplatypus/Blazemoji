@@ -21,3 +21,8 @@ With `BLAZEMOJI_SPIKE_REPORT=/some/file.json` set, the page looks at itself from
 (Monaco, style sheets, typing, completion, a compile and run, local storage, dark mode, the
 clipboard) and writes what it found to that file. `BLAZEMOJI_SPIKE_QUIT=1` closes the window
 when it has.
+
+`BLAZEMOJI_SPIKE_LOCK_REPORT=/some/file.txt` runs `LockRepro.razor` and writes its lines to
+that file: one `SemaphoreSlim` and two callers on the window's thread, with nothing of
+Blazemoji in it, and then `Task.Yield`. It shows the lock left taken with nobody holding it
+when the second caller has nothing to wait for.
