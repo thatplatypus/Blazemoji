@@ -2,7 +2,11 @@ namespace Blazemoji.Toolchain
 {
     /// <param name="Files">Source files by relative name, for example <c>main.🍇</c>.</param>
     /// <param name="Entry">The name in <paramref name="Files"/> to hand to the compiler.</param>
-    public sealed record CompileRequest(IReadOnlyDictionary<string, string> Files, string Entry);
+    /// <param name="CheckOnly">
+    /// Compile for the diagnostics alone: nothing is linked, no build is kept, and the result
+    /// has no build id. This is what an editor asks for while someone is typing.
+    /// </param>
+    public sealed record CompileRequest(IReadOnlyDictionary<string, string> Files, string Entry, bool CheckOnly = false);
 
     /// <param name="BuildId">Set only when <paramref name="Ok"/> is true.</param>
     public sealed record CompileResult(bool Ok, IReadOnlyList<Diagnostic> Diagnostics, string? BuildId);

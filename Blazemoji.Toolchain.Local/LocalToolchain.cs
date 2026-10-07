@@ -80,6 +80,9 @@ namespace Blazemoji.Toolchain.Local
                     return new CompileResult(false, diagnostics, null);
                 }
 
+                if (request.CheckOnly)
+                    return new CompileResult(true, diagnostics, null);
+
                 if (!File.Exists(Path.Combine(buildDirectory, ObjectFileName)))
                 {
                     logger.LogError("The compiler exited with 0 but produced no object file. stderr: {Stderr}", compiler.Stderr);

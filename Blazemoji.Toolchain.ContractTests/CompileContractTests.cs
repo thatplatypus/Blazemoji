@@ -112,6 +112,24 @@ namespace Blazemoji.Toolchain.ContractTests
         }
 
         [Fact]
+        public async Task A_check_only_compile_reports_diagnostics_and_makes_no_build()
+        {
+            Assert.SkipWhen(ToolchainService.BaseUrl is null, ToolchainService.SkipReason);
+            static object Body(string code) => new { files = new Dictionary<string, string> { ["main.🍇"] = code }, entry = "main.🍇", check = true };
+
+            using var fineResponse = await ToolchainService.PostCompileAsync(Body(Programs.Hello), Cancellation);
+            var fine = await ToolchainService.ReadJsonAsync(fineResponse, Cancellation);
+            using var brokenResponse = await ToolchainService.PostCompileAsync(Body(Programs.UndefinedVariable), Cancellation);
+            var broken = await ToolchainService.ReadJsonAsync(brokenResponse, Cancellation);
+
+            fine.GetProperty("ok").GetBoolean().ShouldBeTrue(fine.GetRawText());
+            fine.TryGetProperty("buildId", out _).ShouldBeFalse();
+            broken.GetProperty("ok").GetBoolean().ShouldBeFalse();
+            broken.GetProperty("diagnostics")[0].GetProperty("message").GetString().ShouldBe("Variable \"nope\" not defined.");
+            broken.GetProperty("diagnostics")[0].GetProperty("line").GetInt32().ShouldBe(2);
+        }
+
+        [Fact]
         public async Task A_body_that_is_not_json_is_a_400()
         {
             Assert.SkipWhen(ToolchainService.BaseUrl is null, ToolchainService.SkipReason);

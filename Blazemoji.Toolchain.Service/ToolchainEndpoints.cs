@@ -44,7 +44,7 @@ namespace Blazemoji.Toolchain.Service
 
             try
             {
-                var result = await toolchain.CompileAsync(new CompileRequest(body.Files, body.Entry), cancellationToken);
+                var result = await toolchain.CompileAsync(new CompileRequest(body.Files, body.Entry, body.Check), cancellationToken);
                 var response = new CompileResponseBody(result.Ok, result.Diagnostics.Select(DiagnosticBody.From).ToList(), result.BuildId);
 
                 return Results.Json(response, ToolchainJson.Options);

@@ -51,6 +51,19 @@ namespace Blazemoji.Test.Service
         }
 
         [Fact]
+        public async Task A_check_only_compile_is_asked_for_as_one()
+        {
+            _factory.Toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(true, [], null));
+
+            var result = await CreateClient().CompileAsync(ToolchainFixture.SingleFile("🏁 🍇 🍉") with { CheckOnly = true }, Cancellation);
+
+            result.Ok.ShouldBeTrue();
+            result.BuildId.ShouldBeNull();
+            await _factory.Toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
         public async Task A_failed_build_comes_back_with_its_error()
         {
             var error = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Variable \"nope\" not defined.");

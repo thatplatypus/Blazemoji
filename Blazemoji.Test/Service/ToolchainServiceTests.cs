@@ -121,6 +121,31 @@ namespace Blazemoji.Test.Service
         }
 
         [Fact]
+        public async Task A_check_only_compile_is_passed_on_as_one_and_answers_without_a_build_id()
+        {
+            _factory.Toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(true, [], null));
+
+            var response = await Client.PostAsync(ToolchainRoutes.Compile,
+                new StringContent("""{"files":{"main.🍇":"🏁 🍇 🍉"},"entry":"main.🍇","check":true}""", Encoding.UTF8, "application/json"), Cancellation);
+
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+            (await response.Content.ReadAsStringAsync(Cancellation)).ShouldBe("""{"ok":true,"diagnostics":[]}""");
+            await _factory.Toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_compile_is_a_full_build_unless_it_asks_to_be_checked_only()
+        {
+            _factory.Toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(true, [], "build-1"));
+
+            await Client.PostAsJsonAsync(ToolchainRoutes.Compile, new { files = new Dictionary<string, string> { ["main.🍇"] = "x" }, entry = "main.🍇" }, Cancellation);
+
+            await _factory.Toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => !request.CheckOnly), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
         public async Task A_failed_compile_is_still_a_200_with_diagnostics_and_no_build_id()
         {
             _factory.Toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())

@@ -58,7 +58,8 @@ namespace Blazemoji.Toolchain.Http
         public const string Exit = "exit";
     }
 
-    public sealed record CompileRequestBody(Dictionary<string, string>? Files, string? Entry, string[]? Packages = null);
+    /// <param name="Check">See <see cref="CompileRequest.CheckOnly"/>.</param>
+    public sealed record CompileRequestBody(Dictionary<string, string>? Files, string? Entry, string[]? Packages = null, bool Check = false);
 
     public sealed record CompileResponseBody(bool Ok, IReadOnlyList<DiagnosticBody> Diagnostics, string? BuildId);
 

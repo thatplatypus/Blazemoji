@@ -17,7 +17,7 @@ namespace Blazemoji.Toolchain.Http
     {
         public async Task<CompileResult> CompileAsync(CompileRequest request, CancellationToken cancellationToken = default)
         {
-            var body = new CompileRequestBody(new Dictionary<string, string>(request.Files), request.Entry);
+            var body = new CompileRequestBody(new Dictionary<string, string>(request.Files), request.Entry, Check: request.CheckOnly);
 
             try
             {

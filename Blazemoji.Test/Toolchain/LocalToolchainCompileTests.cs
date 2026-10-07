@@ -188,6 +188,44 @@ namespace Blazemoji.Test.Toolchain
         }
 
         [Fact]
+        public async Task A_check_only_compile_reports_success_without_linking_or_keeping_a_build()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var linkerRan = Path.Combine(Path.GetTempPath(), "blazemoji-tests", "linker-ran-" + Guid.NewGuid().ToString("N"));
+            await using var toolchain = ToolchainFixture.Create(options =>
+            {
+                options.CompilerPath = ToolchainFixture.CompilerThatSucceeds();
+                options.LinkerPath = ToolchainFixture.Script("fake-linker", $": > '{linkerRan}'\n: > program");
+            });
+
+            var result = await toolchain.CompileAsync(ToolchainFixture.SingleFile(Programs.Hello) with { CheckOnly = true }, TestContext.Current.CancellationToken);
+
+            result.Ok.ShouldBeTrue(Describe(result));
+            result.BuildId.ShouldBeNull();
+            File.Exists(linkerRan).ShouldBeFalse();
+            BuildDirectories(toolchain).ShouldBeEmpty();
+        }
+
+        [Fact]
+        [Trait("Category", "Toolchain")]
+        public async Task A_check_only_compile_reports_the_same_diagnostics_as_a_build()
+        {
+            Assert.SkipUnless(ToolchainFixture.Available, ToolchainFixture.SkipReason);
+            await using var toolchain = ToolchainFixture.Create();
+
+            var broken = await toolchain.CompileAsync(ToolchainFixture.SingleFile(Programs.UndefinedVariable) with { CheckOnly = true }, TestContext.Current.CancellationToken);
+            var fine = await toolchain.CompileAsync(ToolchainFixture.SingleFile(Programs.RttiWarning) with { CheckOnly = true }, TestContext.Current.CancellationToken);
+
+            broken.Ok.ShouldBeFalse();
+            broken.Diagnostics.ShouldHaveSingleItem().ShouldBe(
+                new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Variable \"nope\" not defined."));
+            fine.Ok.ShouldBeTrue(Describe(fine));
+            fine.BuildId.ShouldBeNull();
+            fine.Diagnostics.ShouldHaveSingleItem().Severity.ShouldBe(DiagnosticSeverity.Warning);
+            BuildDirectories(toolchain).ShouldBeEmpty();
+        }
+
+        [Fact]
         public async Task A_linker_that_fails_is_a_failed_build_with_a_fixed_message()
         {
             Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
