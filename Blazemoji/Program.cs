@@ -19,8 +19,7 @@ builder.Services.AddRazorComponents()
 // What any host of the editor registers. docs/hosting.md explains each line.
 builder.Services.AddMudServices();
 builder.Services.AddToolchainClient(builder.Configuration);
-builder.Services.AddBlazemojiEditor();
-builder.Services.Configure<ProjectTemplateOptions>(builder.Configuration.GetSection(ProjectTemplateOptions.SectionName));
+builder.Services.AddBlazemojiEditor(builder.Configuration);
 
 // What this host supplies because it runs in a browser: projects and snippets in local storage.
 builder.Services.AddBlazoredLocalStorage();

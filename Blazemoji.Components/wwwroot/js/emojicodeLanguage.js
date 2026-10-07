@@ -2,8 +2,9 @@
 // The providers hold no knowledge of the language: each one hands the text and the cursor's
 // offset to .NET and turns the answer into the shape Monaco wants.
 //
-// This file is the source. scripts/build-js.sh compiles it to wwwroot/js/emojicodeLanguage.js,
-// which is committed so that building the app does not need Node.
+// Written in Scripts/emojicodeLanguage.ts and compiled by scripts/build-js.sh to
+// wwwroot/js/emojicodeLanguage.js. The compiled file is committed so that building the app
+// does not need Node. Edit the .ts file.
 // The names of the .NET methods this module calls. They match EmojicodeLanguageInterop.
 const COMPLETE = "CompleteAsync";
 const HOVER = "HoverAsync";

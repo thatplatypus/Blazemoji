@@ -4,21 +4,26 @@ using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Interop;
 using Blazemoji.Services.Library;
 using Blazemoji.Services.Projects;
+using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
 using Blazemoji.Toolchain;
 using Blazemoji.Toolchain.Http;
+using System.Text.RegularExpressions;
 using Bunit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using MudBlazor.Services;
 using NSubstitute;
 
 namespace Blazemoji.Test
 {
     /// <summary>
-    /// docs/hosting.md tells a host which registrations it must make. These build a container
-    /// from exactly those and check that the editor has everything it asks for, so that the
-    /// document and the code cannot drift apart.
+    /// docs/hosting.md tells a host which registrations to make and which files to link.
+    /// These read the document, make exactly the registrations it lists, and check that the
+    /// editor then has every service it asks for and that every file it names exists. What
+    /// they cannot check is the page shell itself: the order of the scripts and how Blazor
+    /// is started are only checked by the browser tests against the web host.
     /// </summary>
     public class HostingTests : BunitContext
     {
@@ -87,15 +92,160 @@ namespace Blazemoji.Test
         }
 
         [Fact]
-        public void The_provider_module_is_loaded_from_the_librarys_own_static_files()
+        public async Task The_provider_module_is_loaded_from_the_librarys_own_static_files()
         {
-            var module = JSInterop.SetupModule("./_content/Blazemoji.Components/js/emojicodeLanguage.js");
-            module.SetupModule("register", _ => true);
+            const string path = "./_content/Blazemoji.Components/js/emojicodeLanguage.js";
+            JSInterop.Mode = JSRuntimeMode.Strict;
+            var module = JSInterop.SetupModule(path);
+            module.SetupModule("register", _ => true).SetupVoid("dispose").SetVoidResult();
             var interop = Services.GetRequiredService<EmojicodeLanguageInterop>();
 
-            Should.NotThrow(() => interop.RegisterAsync("emojiscript").GetAwaiter().GetResult());
+            await interop.RegisterAsync("emojiscript");
 
             module.Invocations["register"].ShouldHaveSingleItem();
+            File.Exists(InTheLibrary(path)).ShouldBeTrue(path);
+        }
+
+        [Fact]
+        public async Task Copying_uses_a_script_of_the_librarys_own_and_nothing_the_page_has_to_define()
+        {
+            const string path = "./_content/Blazemoji.Components/js/clipboard.js";
+            JSInterop.Mode = JSRuntimeMode.Strict;
+            var module = JSInterop.SetupModule(path);
+            module.Setup<bool>("copyText", "🍇").SetResult(true);
+            var copied = 0;
+            var cut = Render<CopyToClipboard>(parameters => parameters
+                .Add(copy => copy.ClipboardValue, "🍇")
+                .Add(copy => copy.CopiedToClipboard, () => copied++));
+
+            await cut.Find("button").ClickAsync();
+
+            module.Invocations["copyText"].ShouldHaveSingleItem();
+            copied.ShouldBe(1);
+            File.Exists(InTheLibrary(path)).ShouldBeTrue(path);
+        }
+
+        [Fact]
+        public void Every_tab_renders_with_those_registrations_alone()
+        {
+            Services.GetRequiredService<ILibraryService>().GetAllSamplesAsync().Returns([]);
+            Services.GetRequiredService<ILibraryService>().GetUserSavedFiles().Returns([]);
+
+            Should.NotThrow(() => Render<Library>());
+            Should.NotThrow(() => Render<EmojiToolbox>());
+            Should.NotThrow(() => Render<OutputPanel>());
+            Should.NotThrow(() => Render<RequestPanel>());
+            Render<EmojiToolbox>().FindComponents<CopyToClipboard>().ShouldNotBeEmpty();
+        }
+
+        [Fact]
+        public void The_document_lists_exactly_the_registrations_these_tests_make()
+        {
+            var listed = Regex.Matches(FirstCodeBlock("csharp"), @"services\.(Add\w+(?:<[^>]+>)?)").Select(match => match.Groups[1].Value);
+
+            listed.ShouldBe(
+            [
+                "AddMudServices",
+                "AddToolchainClient",
+                "AddBlazemojiEditor",
+                "AddScoped<IProjectStore, YourProjectStore>",
+                "AddTransient<ILibraryService, YourLibraryService>",
+            ]);
+        }
+
+        [Fact]
+        public void Every_file_of_the_library_that_the_document_names_exists()
+        {
+            var named = Regex.Matches(Document(), @"_content/Blazemoji\.Components/[\w./-]+\w").Select(match => match.Value).Distinct().ToList();
+
+            named.ShouldContain("_content/Blazemoji.Components/blazemoji.css");
+            named.ShouldAllBe(path => File.Exists(InTheLibrary(path)));
+        }
+
+        [Fact]
+        public void The_document_says_where_templates_are_set_and_the_setting_is_read_from_there()
+        {
+            Document().ShouldContain($"\"{ProjectTemplateOptions.SectionName}\"");
+            var services = new ServiceCollection();
+            services.AddBlazemojiEditor(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { [ProjectTemplateOptions.SectionName + ":Path"] = "/somewhere/else" })
+                .Build());
+
+            services.BuildServiceProvider().GetRequiredService<IOptions<ProjectTemplateOptions>>().Value.Path.ShouldBe("/somewhere/else");
+        }
+
+        [Fact]
+        public void The_editors_own_call_brings_everything_its_own_services_need()
+        {
+            var services = new ServiceCollection();
+            services.AddBlazemojiEditor();
+            services.AddSingleton(Substitute.For<IProjectStore>());
+            using var provider = services.BuildServiceProvider(validateScopes: true);
+            using var scope = provider.CreateScope();
+
+            provider.GetRequiredService<IProjectTemplates>().ShouldBeOfType<FileProjectTemplates>();
+            provider.GetRequiredService<ICodeIntelligence>().ShouldNotBeNull();
+            scope.ServiceProvider.GetRequiredService<ProjectState>().ShouldNotBeNull();
+        }
+
+        [Fact]
+        public void What_a_host_registers_before_the_editors_call_is_kept()
+        {
+            var templates = Substitute.For<IProjectTemplates>();
+            templates.All.Returns([new ProjectTemplate("own", "Own", "The host's own.", ProjectKind.Program, "main.🍇", [new ProjectFile("main.🍇", "🏁 🍇 🍉")])]);
+            var services = new ServiceCollection();
+            services.AddSingleton(templates);
+            services.AddSingleton(Substitute.For<IProjectStore>());
+            services.AddSingleton<ProjectState>();
+            services.AddBlazemojiEditor();
+            using var provider = services.BuildServiceProvider();
+            using var one = provider.CreateScope();
+            using var two = provider.CreateScope();
+
+            provider.GetRequiredService<IProjectTemplates>().ShouldBeSameAs(templates);
+            one.ServiceProvider.GetRequiredService<ProjectState>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<ProjectState>());
+            provider.GetServices<EmojicodeKeyword>().Count().ShouldBeGreaterThan(30);
+        }
+
+        [Fact]
+        public void The_library_styles_what_it_draws_without_bootstrap()
+        {
+            var markup = Directory.EnumerateFiles(Path.Combine(RepositoryRoot(), "Blazemoji.Components"), "*.razor", SearchOption.AllDirectories)
+                .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") && !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+                .Select(File.ReadAllText)
+                .ToList();
+            var styles = File.ReadAllText(Path.Combine(RepositoryRoot(), "Blazemoji.Components", "wwwroot", "blazemoji.css"));
+            var classes = markup
+                .SelectMany(text => Regex.Matches(text, "[Cc]lass=\"([^\"@]*)\"").SelectMany(match => match.Groups[1].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries)))
+                .ToHashSet();
+
+            // Bootstrap's spacing is p-2 and m-3; MudBlazor's, which the library has, is pa-2 and ma-3.
+            classes.Where(name => Regex.IsMatch(name, "^[pm]-(\\d+|auto)$")).ShouldBeEmpty();
+            foreach (var bootstraps in new[] { "text-nowrap", "text-md-center" }.Where(classes.Contains))
+                styles.ShouldContain("." + bootstraps);
+        }
+
+        private static string Document() => File.ReadAllText(Path.Combine(RepositoryRoot(), "docs", "hosting.md"));
+
+        private static string FirstCodeBlock(string language)
+        {
+            var document = Document();
+            var start = document.IndexOf("```" + language, StringComparison.Ordinal);
+            start.ShouldBeGreaterThanOrEqualTo(0);
+            return document[start..document.IndexOf("```", start + 3, StringComparison.Ordinal)];
+        }
+
+        /// <summary>Where a path under <c>_content/Blazemoji.Components/</c> is in the source tree.</summary>
+        private static string InTheLibrary(string contentPath) =>
+            Path.Combine(RepositoryRoot(), "Blazemoji.Components", "wwwroot", contentPath[(contentPath.IndexOf("Blazemoji.Components/", StringComparison.Ordinal) + "Blazemoji.Components/".Length)..]);
+
+        private static string RepositoryRoot()
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Blazemoji.sln")))
+                directory = directory.Parent;
+
+            return directory.ShouldNotBeNull("the tests run from inside the repository").FullName;
         }
     }
 }

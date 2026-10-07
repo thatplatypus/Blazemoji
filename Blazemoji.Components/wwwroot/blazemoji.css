@@ -39,6 +39,18 @@
     text-align: center!important;
 }
 
+/* Two classes the markup uses that MudBlazor does not have. They are Bootstrap's names and
+   rules, so the components look the same in a host that does not link Bootstrap. */
+.text-nowrap {
+    white-space: nowrap!important;
+}
+
+@media (min-width: 768px) {
+    .text-md-center {
+        text-align: center!important;
+    }
+}
+
 .m-auto {
     margin-left: auto!important;
     margin-right: auto!important;

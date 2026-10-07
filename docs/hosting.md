@@ -26,25 +26,34 @@ The web host's containers set it to `http://toolchain:8080`. A desktop host poin
 // The same for every host.
 services.AddMudServices();
 services.AddToolchainClient(configuration);   // reads ToolchainClient:BaseUrl
-services.AddBlazemojiEditor();                // catalog, code intelligence, templates, state
+services.AddBlazemojiEditor(configuration);   // catalog, code intelligence, templates, state
 
 // What only the host can supply.
 services.AddScoped<IProjectStore, YourProjectStore>();
 services.AddTransient<ILibraryService, YourLibraryService>();
 ```
 
+The types are in `MudBlazor.Services`, `Blazemoji.Toolchain.Http`, `Blazemoji` (for `AddBlazemojiEditor`), `Blazemoji.Services.Projects` and `Blazemoji.Services.Library`.
+
 | The host supplies | For | The web host's version |
 | --- | --- | --- |
 | `IProjectStore` | Where projects are kept between sessions. | `LocalStorageProjectStore`: the browser's local storage. A desktop host would write files. |
 | `ILibraryService` | The sample programs and saved snippets in the Library tab. | `LibraryService`: samples from `Emojicode/Samples`, snippets in local storage. |
-| `ProjectTemplateOptions.Path` (optional) | The folder of project templates. Defaults to `Emojicode/Templates` beside the app. | The default. The folders are content of the host project. |
+| `"ProjectTemplates": { "Path": "..." }` in configuration (optional) | The folder of project templates. Defaults to `Emojicode/Templates` beside the app. | The default. The folders are content of the host project. |
 
-`AddBlazemojiEditor` registers the state classes (`RunState`, `ProjectState`, `RequestState`) as scoped: one set per circuit on a server, one per window on a desktop.
+`AddBlazemojiEditor` keeps whatever was registered before it is called. Two uses:
+
+- **State lifetime.** It registers the state classes (`RunState`, `ProjectState`, `RequestState`, `LocalStorageFiles`) as scoped, which on a server is one set per circuit. A desktop host with one user can register them as singletons first, and its own `IProjectStore` to match.
+- **Templates from somewhere other than a folder.** Register your own `IProjectTemplates` first.
+
+The web host also raises the size of a message from the browser to 4 MiB (`AddHubOptions` in `Program.cs`), because the editor hands over a file's whole text. That limit belongs to Blazor Server; a Blazor Hybrid host has none.
 
 ## In the page shell
 
-1. MudBlazor's providers (`MudThemeProvider`, `MudPopoverProvider`, `MudDialogProvider`, `MudSnackbarProvider`) and its style sheet and script.
-2. The style sheets `_content/Blazemoji.Components/blazemoji.css` and the host's own `<HostAssembly>.styles.css`, which pulls in the components' scoped styles.
+1. MudBlazor's providers (`MudThemeProvider`, `MudPopoverProvider`, `MudDialogProvider`, `MudSnackbarProvider`) and its style sheet and script. The theme is the host's: the web host's is `Blazemoji/Layout/Theme.cs`, and `MainLayout.razor` switches Monaco between its light and dark themes when MudBlazor's dark mode changes.
+2. The style sheets `_content/Blazemoji.Components/blazemoji.css` and the host's own `<HostAssembly>.styles.css`, which pulls in the components' scoped styles. `blazemoji.css` gives the editor a height of 83% of the window (`.editor`), which suits the web host's layout; a host with a different layout overrides it.
+
+   The web host links Bootstrap 5.1 as well, ahead of these. The components do not use its classes, but a few of them draw plain headings, paragraphs and `<pre>` blocks, which Bootstrap's reset styles. Without Bootstrap those take MudBlazor's and the browser's defaults: the same content, slightly different spacing.
 3. Monaco's scripts, in this order, before Blazor's:
 
    ```html
@@ -53,7 +62,8 @@ services.AddTransient<ILibraryService, YourLibraryService>();
    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
    ```
 
-4. Blazor started from Monaco's ready callback, not automatically. Monaco defines itself a moment after its script loads, and an editor created before that silently does nothing:
+4. The scripts the components import themselves need nothing from the page: `_content/Blazemoji.Components/js/emojicodeLanguage.js` (the editor's help) and `_content/Blazemoji.Components/js/clipboard.js` (the Copy buttons) are loaded as modules when first used.
+5. Blazor started from Monaco's ready callback, not automatically. Monaco defines itself a moment after its script loads, and an editor created before that silently does nothing:
 
    ```html
    <script src="_framework/blazor.server.js" autostart="false"></script>
@@ -75,4 +85,6 @@ That is the whole editor: the Files, Toolbox and Library tabs, the editor with i
 - No desktop host has been built.
 - There is no file-based `IProjectStore`.
 - The sample programs and project templates are files of the web host. A second host needs its own copies or a shared content project.
+- `ILibraryService` and the Library tab still speak of "local storage", which is where the web host keeps snippets. A desktop host implements the same methods over files, and the wording wants changing when one exists.
+- Copying uses the browser's clipboard API. Whether a desktop WebView allows it has not been tried.
 - The libraries are referenced as projects, not published as packages.

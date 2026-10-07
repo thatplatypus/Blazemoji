@@ -128,5 +128,24 @@ namespace Blazemoji.E2E
 
             (await editor.Page.Locator(".emoji-box-hover").CountAsync()).ShouldBeGreaterThan(20);
         }
+
+        [Fact]
+        public async Task Copy_in_the_toolbox_puts_the_emoji_on_the_clipboard()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await editor.Page.Context.GrantPermissionsAsync(["clipboard-read", "clipboard-write"]);
+            await editor.OpenTabAsync("Toolbox");
+            await editor.Page.Locator(".emoji-box-hover").First.WaitForAsync();
+
+            await editor.Page.Locator("button[title=Copy]").First.ClickAsync();
+
+            // The click goes to the server and comes back as a call to the library's script.
+            await editor.Page.WaitForFunctionAsync("async () => (await navigator.clipboard.readText()).length > 0");
+            var copied = await editor.Page.EvaluateAsync<string>("() => navigator.clipboard.readText()");
+            copied.ShouldNotBeNullOrWhiteSpace();
+            copied.Length.ShouldBeLessThan(12);
+            editor.ConsoleErrors.ShouldBeEmpty();
+        }
     }
 }

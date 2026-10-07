@@ -39,18 +39,6 @@
     <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
     <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
-    <script>
-        window.clipboardCopy = {
-            copyText: function (text) {
-                navigator.clipboard.writeText(text).then(function () {
-                    return true;
-                })
-                .catch(function (error) {
-                    return false;
-                });
-            }
-        };
-    </script>
     @* Blazor asks Monaco to create the editor on its first render. Monaco defines its global
        a little after its scripts have run, so Blazor is started only once Monaco's loader says
        the editor module is ready. Started earlier, the editor is never created. If Monaco

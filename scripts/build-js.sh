@@ -7,6 +7,7 @@ cd "$(dirname "$0")/.."
 npx --yes --package typescript@5.9.3 tsc \
   --target ES2020 --module ES2020 --strict --newLine lf \
   --outDir Blazemoji.Components/wwwroot/js \
-  Blazemoji.Components/Scripts/emojicodeLanguage.ts
+  Blazemoji.Components/Scripts/emojicodeLanguage.ts \
+  Blazemoji.Components/Scripts/clipboard.ts
 
-echo "wrote Blazemoji.Components/wwwroot/js/emojicodeLanguage.js"
+echo "wrote Blazemoji.Components/wwwroot/js/emojicodeLanguage.js and clipboard.js"

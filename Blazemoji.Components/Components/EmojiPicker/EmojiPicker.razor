@@ -12,7 +12,7 @@
             <h4>↪️ Emoji Picker ❗️</h4>
         </MudPickerToolbar>
         <MudPickerContent>
-            <MudGrid Spacing="2" Class="text-align-center m-auto p-2" Justify="Justify.FlexStart" Style="max-width:310px;">
+            <MudGrid Spacing="2" Class="text-align-center ma-auto pa-2" Justify="Justify.FlexStart" Style="max-width:310px;">
             @foreach(var emoji in _emojicodes)
             {
                 <MudItem style="height:3rem;width:3rem;padding:0px;" Class="emoji-box-hover" @onclick="(() => OnEmojiSelectedAsync(emoji))" xs="2">

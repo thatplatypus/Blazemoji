@@ -1,4 +1,5 @@
-@inject IJSRuntime _jsRuntime
+@using Blazemoji.Interop
+@inject ClipboardInterop _clipboard
 
 <MudIconButton title="Copy" Size="Size.Small" Icon="@Icons.Material.Outlined.ContentCopy" OnClick="CopyToClipboardAsync"/>
 
@@ -16,7 +17,7 @@
             return;
         }
 
-        await _jsRuntime.InvokeVoidAsync("clipboardCopy.copyText", ClipboardValue);
+        await _clipboard.CopyAsync(ClipboardValue);
 
         await CopiedToClipboard.InvokeAsync();
     }
