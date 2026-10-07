@@ -1,11 +1,11 @@
-﻿@using Blazemoji.Emojicode.Keywords;
+@using Blazemoji.Emojicode.Keywords;
 
-<MudList Clickable="false" Style="overflow-x:clip;overflow-y:auto;max-height:84vh;">
+<MudList T="string" ReadOnly="true" Style="overflow-x:clip;overflow-y:auto;max-height:84vh;">
     @if (_emojisByCategory != null)
     {
         @foreach (var category in _emojisByCategory.Keys)
         {
-            <MudListItem><h6>@category
+            <MudListItem T="string"><h6>@category
                 </h6></MudListItem>
             <MudDivider />
             <MudGrid Spacing="1" Justify="Justify.FlexStart">

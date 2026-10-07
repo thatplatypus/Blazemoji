@@ -1,4 +1,4 @@
-﻿namespace Blazemoji.Test
+namespace Blazemoji.Test
 {
     public class EmojiTypeTests
     {
@@ -29,9 +29,9 @@
             EmojicodeKeyword emoji = (EmojicodeKeyword)Activator.CreateInstance(emojiType)!;
 
             // Assert
-            Assert.Equal(expectedName, emoji.Name);
-            Assert.Equal(expectedEmoji, emoji.Emoji);
-            Assert.Equal(expectedKeyword, emoji.Keyword);
+            emoji.Name.ShouldBe(expectedName);
+            emoji.Emoji.ShouldBe(expectedEmoji);
+            emoji.Keyword.ShouldBe(expectedKeyword);
         }
     }
 }

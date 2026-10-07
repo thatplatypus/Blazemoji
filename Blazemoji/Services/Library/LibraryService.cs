@@ -1,4 +1,4 @@
-﻿
+
 namespace Blazemoji.Services.Library
 {
     public class LibraryService : ILibraryService
@@ -44,7 +44,7 @@ namespace Blazemoji.Services.Library
                     files.Add(new EmojicFile
                     {
                         Name = key,
-                        Code = code,
+                        Code = code ?? string.Empty,
                     });
                 }
                 catch (Exception ex)

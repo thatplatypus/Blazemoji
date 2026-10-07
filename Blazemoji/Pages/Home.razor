@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @using Blazemoji.Components.EmojiPicker
 @using Blazemoji.Services
 @using Blazemoji.Services.Compiler
@@ -22,7 +22,7 @@
                     <MudSpacer />
                     <Blazemoji.Components.EmojiPicker.EmojiPicker
                         @ref="_emojiPicker"
-                        DisableUnderLine="true"
+                        Underline="false"
                         Class="emoji-picker mr-3"
                         OnEmojiPicked="@InsertEmojiAsync"
                     />
@@ -112,7 +112,7 @@
         var options = new DialogOptions { CloseOnEscapeKey = true };
         var dialogResponse = await _dialogService.ShowAsync<SaveFileDialog>("Save File As", options);
         var result = await dialogResponse.Result;
-        if(result.Canceled)
+        if (result is null || result.Canceled)
         {
             return;
         }
@@ -120,7 +120,7 @@
         var code = await _editor.GetCodeAsync();
         var emojicode = new EmojicFile()
             {
-                Name = result.Data.ToString() ?? "Untitled.🍇",
+                Name = result.Data?.ToString() ?? "Untitled.🍇",
                 Code = code,
             };
 
@@ -143,14 +143,13 @@
 
     private async Task OpenEmojiPickerAsync()
     {
-        _emojiPicker.Open();
-        await Task.CompletedTask;
+        await _emojiPicker.OpenAsync();
     }
 
     private async Task OpenEditorCommands()
     {
         var options = new DialogOptions { CloseOnEscapeKey = true, CloseButton = true, FullWidth = true };
-        _dialogService.Show<KeycommandsDialog>("Editor Keycommands", options);
+        await _dialogService.ShowAsync<KeycommandsDialog>("Editor Keycommands", options);
     }
 
 }

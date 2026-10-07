@@ -1,4 +1,4 @@
-﻿using MudBlazor;
+using MudBlazor;
 
 namespace Blazemoji.Layout
 {
@@ -6,7 +6,7 @@ namespace Blazemoji.Layout
     {
         public Theme() 
         {
-            Palette = new PaletteLight()
+            PaletteLight = new PaletteLight()
             {
                 Primary = "#312d67",
                 AppbarBackground = "#312d67",

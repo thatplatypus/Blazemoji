@@ -1,6 +1,6 @@
-﻿@inject IJSRuntime _jsRuntime
+@inject IJSRuntime _jsRuntime
 
-<MudIconButton Title="Copy" Size="Size.Small" Icon="@Icons.Material.Outlined.ContentCopy" OnClick="CopyToClipboardAsync"/>
+<MudIconButton title="Copy" Size="Size.Small" Icon="@Icons.Material.Outlined.ContentCopy" OnClick="CopyToClipboardAsync"/>
 
 @code {
     [Parameter] public string ClipboardValue { get; set; } = "";

@@ -1,4 +1,4 @@
-﻿@using Blazemoji.Services.Library;
+@using Blazemoji.Services.Library;
 @using Blazemoji.Shared.Components;
 @using Blazemoji.Shared.State;
 @using Blazemoji.Shared.Models.Library;
@@ -111,7 +111,7 @@
         var dialogResult = await _dialogService.ShowAsync<DestructiveDialog>("🗑️ Clear Local Storage", parameters, options);
         var dialog = await dialogResult.Result;
 
-        if(dialog.Canceled)
+        if (dialog is null || dialog.Canceled)
         {
             return;
         }

@@ -1,4 +1,4 @@
-﻿<MudDialog>
+<MudDialog>
     <DialogContent>
         @foreach(var keybinding in EmojicodeKeybindings.Keybindings)
         {
@@ -28,7 +28,7 @@
     </DialogActions>
 </MudDialog>
 @code {
-    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
 
     void Cancel() => MudDialog.Cancel();
 }

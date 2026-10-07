@@ -1,4 +1,4 @@
-﻿<MudDialog>
+<MudDialog>
     <DialogContent>
         <MudTextField @bind-Value="FileName" Label="Enter File Name" Variant="Variant.Text" />
     </DialogContent>
@@ -8,7 +8,7 @@
     </DialogActions>
 </MudDialog>
 @code {
-    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
 
     protected string FileName { get; set; } = "Untitled";
     private const string _extension = "🍇";
