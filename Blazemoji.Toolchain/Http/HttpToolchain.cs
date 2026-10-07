@@ -20,7 +20,7 @@ namespace Blazemoji.Toolchain.Http
 
             try
             {
-                using var response = await http.PostAsJsonAsync(ToolchainRoutes.Compile, body, ToolchainJson.Options, cancellationToken);
+                using var response = await http.PostAsJsonAsync(Relative(ToolchainRoutes.Compile), body, ToolchainJson.Options, cancellationToken);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -48,7 +48,7 @@ namespace Blazemoji.Toolchain.Http
 
             try
             {
-                using var response = await http.PostAsJsonAsync(ToolchainRoutes.Runs, new StartRunBody(request.BuildId, environment), ToolchainJson.Options, cancellationToken);
+                using var response = await http.PostAsJsonAsync(Relative(ToolchainRoutes.Runs), new StartRunBody(request.BuildId, environment), ToolchainJson.Options, cancellationToken);
 
                 if (response.StatusCode == HttpStatusCode.Created
                     && await response.Content.ReadFromJsonAsync<RunStartedBody>(ToolchainJson.Options, cancellationToken) is { } started)
@@ -84,6 +84,12 @@ namespace Blazemoji.Toolchain.Http
             }
         }
 
+        /// <summary>
+        /// Routes are written from the root for the service's benefit. The client asks for them
+        /// relative to its base address, so that the service can sit under a path.
+        /// </summary>
+        private static string Relative(string route) => route.TrimStart('/');
+
         private static CompileResult Failed(string message) =>
             new(false, [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, message)], null);
 
@@ -99,7 +105,7 @@ namespace Blazemoji.Toolchain.Http
                 if (Interlocked.Exchange(ref _readerTaken, 1) == 1)
                     throw new InvalidOperationException("A run supports a single reader.");
 
-                using var request = new HttpRequestMessage(HttpMethod.Get, ToolchainRoutes.RunEvents(runId));
+                using var request = new HttpRequestMessage(HttpMethod.Get, Relative(ToolchainRoutes.RunEvents(runId)));
                 using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
@@ -134,13 +140,13 @@ namespace Blazemoji.Toolchain.Http
 
             public async Task StopAsync()
             {
-                using var response = await http.DeleteAsync(ToolchainRoutes.Run(runId));
+                using var response = await http.DeleteAsync(Relative(ToolchainRoutes.Run(runId)));
             }
 
             public async Task WriteInputAsync(string text, bool endOfInput = false, CancellationToken cancellationToken = default)
             {
                 using var content = new StringContent(text, Encoding.UTF8, "text/plain");
-                using var response = await http.PostAsync(ToolchainRoutes.RunInput(runId, endOfInput), content, cancellationToken);
+                using var response = await http.PostAsync(Relative(ToolchainRoutes.RunInput(runId, endOfInput)), content, cancellationToken);
 
                 if (response.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.NotFound)
                     throw new InvalidOperationException("The run is not accepting input.");

@@ -1,8 +1,11 @@
 # check=skip=FromPlatformFlagConstDisallowed
 # The Emojicode compiler bundled in this repo is the x86_64 Linux build, so every stage is linux/amd64.
 # Build from the repository root:
+#   docker compose up --build                                                        run the app (see docker-compose.yml)
 #   docker build -f Blazemoji/Dockerfile --target test --output type=cacheonly .     run the tests
-#   docker build -f Blazemoji/Dockerfile -t blazemoji .                              build the app image
+#
+# Two images come out of this file: "toolchain", the service that compiles and runs programs
+# and the only one that holds the compiler, and "web", the app people open in a browser.
 
 # The .NET SDK plus what the Emojicode compiler needs. scripts/test-in-docker.sh runs the
 # tests in a container made from this stage alone.
@@ -35,18 +38,30 @@ FROM build AS test
 # the rare case, seen under amd64 emulation, where the whole test process freezes.
 RUN timeout -k 10 900 dotnet test --project Blazemoji.Test/Blazemoji.Test.csproj -c $BUILD_CONFIGURATION --no-build --timeout 5m -- --fail-skips on
 
-FROM build AS publish
+FROM build AS publish-web
 RUN dotnet publish Blazemoji/Blazemoji.csproj -c $BUILD_CONFIGURATION --no-build -o /app/publish /p:UseAppHost=false
 # Without this file the page renders but never becomes interactive.
 RUN test -f /app/publish/wwwroot/_framework/blazor.server.js
 
-FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+FROM build AS publish-toolchain
+RUN dotnet publish Blazemoji.Toolchain.Service/Blazemoji.Toolchain.Service.csproj -c $BUILD_CONFIGURATION --no-build -o /app/publish /p:UseAppHost=false
+# The service is no use without an executable compiler and the package documentation.
+RUN test -x /app/publish/emojicodec/emojicodec && test -f /app/publish/package-docs/s/documentation.json
+
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/aspnet:10.0 AS toolchain
 COPY docker/install-toolchain-deps.sh /tmp/install-toolchain-deps.sh
 RUN /tmp/install-toolchain-deps.sh
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=publish-toolchain /app/publish .
 # Programs are compiled and run under the temp directory, so the app user needs no write
 # access to the application itself.
+USER $APP_UID
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "Blazemoji.Toolchain.Service.dll"]
+
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/aspnet:10.0 AS web
+WORKDIR /app
+COPY --from=publish-web /app/publish .
 USER $APP_UID
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "Blazemoji.dll"]

@@ -2,8 +2,7 @@ using Blazemoji;
 using Blazemoji.Components;
 using Blazemoji.Services.Library;
 using Blazemoji.Shared.State;
-using Blazemoji.Toolchain;
-using Blazemoji.Toolchain.Local;
+using Blazemoji.Toolchain.Http;
 using MudBlazor.Services;
 using System;
 
@@ -16,8 +15,7 @@ builder.Services.AddRazorComponents()
 builder.Services.AddMudServices();
 builder.Services.AddBlazoredLocalStorage();
 builder.Services.AddTransient<ILibraryService, LibraryService>();
-builder.Services.Configure<ToolchainOptions>(builder.Configuration.GetSection(ToolchainOptions.SectionName));
-builder.Services.AddSingleton<IToolchain, LocalToolchain>();
+builder.Services.AddToolchainClient(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<RunState>();
 builder.Services.AddSingleton(new LocalStorageFiles());

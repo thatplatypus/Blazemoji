@@ -1,0 +1,39 @@
+# Runs Blazemoji as two containers: the web app and the toolchain service it calls.
+#
+#   docker compose up --build        then open http://localhost:5080
+#
+# The toolchain service compiles and runs whatever code it is given. It is attached only to
+# an internal network, so the programs it runs have no route to the internet or to this
+# machine's network, and it publishes no port. The web app is published on this machine only.
+# Do not expose either beyond that: every program still shares one container.
+services:
+  toolchain:
+    image: blazemoji-toolchain
+    build:
+      context: .
+      dockerfile: Blazemoji/Dockerfile
+      target: toolchain
+    platform: linux/amd64
+    networks:
+      - sandbox
+
+  web:
+    image: blazemoji-web
+    build:
+      context: .
+      dockerfile: Blazemoji/Dockerfile
+      target: web
+    platform: linux/amd64
+    environment:
+      ToolchainClient__BaseUrl: http://toolchain:8080
+    ports:
+      - "127.0.0.1:${BLAZEMOJI_PORT:-5080}:8080"
+    networks:
+      - default
+      - sandbox
+    depends_on:
+      - toolchain
+
+networks:
+  sandbox:
+    internal: true

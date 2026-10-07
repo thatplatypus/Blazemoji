@@ -60,7 +60,7 @@
   </ItemGroup>
 
 <ItemGroup>
-    <ProjectReference Include="..\Blazemoji.Toolchain.Local\Blazemoji.Toolchain.Local.csproj" />
+    <ProjectReference Include="..\Blazemoji.Toolchain\Blazemoji.Toolchain.csproj" />
   </ItemGroup>
 
 <ItemGroup>
