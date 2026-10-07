@@ -87,3 +87,12 @@ A fresh reviewer found the move faithful and the web app intact, and the third g
 5. **The Dockerfile's steps were replayed on macOS by the reviewer** (restore from the seven project files alone, build, publish) and succeeded. A real image build is still to be done.
 
 Left as they are: the status-word table covers 34 codes where ASP.NET's covers 63, and words two of them differently; `ILibraryService` and the Library tab speak of "local storage"; namespaces now span assemblies.
+
+## Added after Tom tried to run it from his IDE
+
+Since Phase 2 the Dockerfile's last stage, which is what a build with no target produces, was the web app alone. An IDE that builds and runs the Dockerfile therefore got an editor with nothing to compile with, and on a Mac the toolchain service cannot run natively, so there was no way to run from an IDE at all. Two additions, neither changing what docker compose builds:
+
+1. **A last stage, `all-in-one`,** holding the web app and the toolchain service, which talk over loopback. It is the default build. Programs run in it have the container's access to the network, so it is for a developer's own machine.
+2. **`scripts/dev-toolchain.sh`** starts the toolchain service in a container on `127.0.0.1:5290`, where the web app looks by default, for running and debugging the web project natively.
+
+Checked by building the Dockerfile with no target and running every browser test against the one container (33 of 33), and by running the project tests against the web project started with its `http` launch profile and the script's service (9 of 9).

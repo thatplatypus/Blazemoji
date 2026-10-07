@@ -2,10 +2,13 @@
 # The Emojicode compiler bundled in this repo is the x86_64 Linux build, so every stage is linux/amd64.
 # Build from the repository root:
 #   docker compose up --build                                                        run the app (see docker-compose.yml)
+#   docker build -f Blazemoji/Dockerfile -t blazemoji . && docker run -p 5000:8080 blazemoji    the same in one container
 #   docker build -f Blazemoji/Dockerfile --target test --output type=cacheonly .     run the tests
 #
-# Two images come out of this file: "toolchain", the service that compiles and runs programs
-# and the only one that holds the compiler, and "web", the app people open in a browser.
+# Three images come out of this file. "toolchain" is the service that compiles and runs
+# programs, and "web" is the app people open in a browser; docker compose runs those two,
+# with the toolchain shut off from the network. "all-in-one", the last stage and so the
+# default, holds both, for running on your own machine from an IDE or with one command.
 
 # The .NET SDK plus what the Emojicode compiler needs. scripts/test-in-docker.sh runs the
 # tests in a container made from this stage alone.
@@ -76,3 +79,17 @@ COPY --from=publish-web /app/publish .
 USER $APP_UID
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "Blazemoji.dll"]
+
+# The whole app in one container, and what this file builds when no target is named, which
+# is what an IDE does when asked to build and run a Dockerfile. The web app and the
+# toolchain service run side by side and talk over loopback. Programs run here have the
+# container's own access to the network, so this is for running on your own machine.
+# docker compose builds the `toolchain` and `web` targets instead and keeps the toolchain
+# on a network with no way out.
+FROM toolchain AS all-in-one
+WORKDIR /web
+COPY --from=publish-web /app/publish .
+COPY docker/all-in-one.sh /usr/local/bin/blazemoji-all-in-one
+ENV ToolchainClient__BaseUrl=http://127.0.0.1:5290
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/blazemoji-all-in-one"]

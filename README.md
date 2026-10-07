@@ -63,7 +63,24 @@ This starts two containers. `web` is published on this machine only. `toolchain`
 
 The app compiles and runs whatever code it is given, with no sign-in, and every program shares the one toolchain container. Do not expose it beyond your own machine.
 
-`dotnet run --project Blazemoji` starts the web app alone, which is fine for working on the UI. Run Code then needs a toolchain service to talk to; `dotnet run --project Blazemoji.Toolchain.Service` provides one where the compiler can execute: x86_64 Linux with `g++` and `libtinfo5` installed.
+### From an IDE
+
+The web app does not hold the compiler: it asks the toolchain service, which can only run on x86_64 Linux. That leaves two ways to run from an IDE, and both work on a Mac.
+
+**Build and run the Dockerfile.** With no target named, `Blazemoji/Dockerfile` builds an image that holds the web app and the toolchain service together, so an IDE's "run in Docker" gives a working app in one container:
+
+```bash
+docker build -f Blazemoji/Dockerfile -t blazemoji .
+docker run -p 5000:8080 blazemoji
+```
+
+**Run the web project itself,** to debug it. Start the toolchain service in a container, then run the project as usual (the `http` launch profile, or `dotnet run --project Blazemoji`). The app looks for the service at `http://localhost:5290`, which is where the script puts it:
+
+```bash
+scripts/dev-toolchain.sh        # start; "scripts/dev-toolchain.sh stop" stops it
+```
+
+Either way the programs you run can reach the network, which `docker compose up` does not allow, so keep both to your own machine. For Grapevine to be there, run `scripts/build-grapevine.sh` once in this checkout first.
 
 ## Projects
 
