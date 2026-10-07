@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Blazemoji.Toolchain", "Blaz
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Blazemoji.E2E", "Blazemoji.E2E\Blazemoji.E2E.csproj", "{4B5AFBE3-1831-412C-ADBA-E41C502077B9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Blazemoji.Toolchain.Service", "Blazemoji.Toolchain.Service\Blazemoji.Toolchain.Service.csproj", "{0F596E0B-C962-4FB8-95E0-4260236839AE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,6 +71,18 @@ Global
 		{4B5AFBE3-1831-412C-ADBA-E41C502077B9}.Release|x64.Build.0 = Release|Any CPU
 		{4B5AFBE3-1831-412C-ADBA-E41C502077B9}.Release|x86.ActiveCfg = Release|Any CPU
 		{4B5AFBE3-1831-412C-ADBA-E41C502077B9}.Release|x86.Build.0 = Release|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Debug|x64.Build.0 = Debug|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Debug|x86.Build.0 = Debug|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Release|x64.ActiveCfg = Release|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Release|x64.Build.0 = Release|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Release|x86.ActiveCfg = Release|Any CPU
+		{0F596E0B-C962-4FB8-95E0-4260236839AE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

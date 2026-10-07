@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="bunit" Version="2.11.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageReference Include="NSubstitute" Version="6.2.0" />
@@ -34,6 +35,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Blazemoji\Blazemoji.csproj" />
     <ProjectReference Include="..\Blazemoji.Toolchain\Blazemoji.Toolchain.csproj" />
+    <ProjectReference Include="..\Blazemoji.Toolchain.Service\Blazemoji.Toolchain.Service.csproj" />
   </ItemGroup>
 
 </Project>
