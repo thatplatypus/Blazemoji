@@ -140,10 +140,19 @@ namespace Blazemoji.E2E
 
             await editor.Page.Locator("button[title=Copy]").First.ClickAsync();
 
-            // The click goes to the server and comes back as a call to the library's script.
-            await editor.Page.WaitForFunctionAsync("async () => (await navigator.clipboard.readText()).length > 0");
-            var copied = await editor.Page.EvaluateAsync<string>("() => navigator.clipboard.readText()");
-            copied.ShouldNotBeNullOrWhiteSpace();
+            // The click goes to the server and comes back as a call to the library's script, so
+            // the clipboard is read until it has something. Playwright's own wait cannot do
+            // this: it does not wait for a promise, and reading the clipboard returns one.
+            var copied = string.Empty;
+            var giveUp = DateTime.UtcNow.AddSeconds(15);
+            while (string.IsNullOrEmpty(copied) && DateTime.UtcNow < giveUp)
+            {
+                copied = await editor.Page.EvaluateAsync<string>("() => navigator.clipboard.readText()") ?? string.Empty;
+                if (copied.Length == 0)
+                    await Task.Delay(100, TestContext.Current.CancellationToken);
+            }
+
+            copied.ShouldNotBeNullOrWhiteSpace($"nothing reached the clipboard; console errors: {string.Join(" | ", editor.ConsoleErrors)}");
             copied.Length.ShouldBeLessThan(12);
             editor.ConsoleErrors.ShouldBeEmpty();
         }
