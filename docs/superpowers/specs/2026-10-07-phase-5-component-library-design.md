@@ -75,3 +75,15 @@ Nothing new is being built, so the test is that nothing changed:
 3. **The keybindings stay with the components,** not in Core: they are written in terms of Monaco's key codes.
 4. **`IProjectTemplates` and its file reader are in Core;** `IProjectStore` and `ILibraryService` are in Components, since only a host implements them.
 5. **The Dockerfile's new `COPY` lines have not been through an image build.** Docker's disk had no room for one. The projects build and pass their tests in the Linux container, where the sources are copied in whole, and the published output was checked for the library's static files.
+
+## Changes after the independent review
+
+A fresh reviewer found the move faithful and the web app intact, and the third goal only partly met: a host built from `docs/hosting.md` alone would have had a broken Copy button and visible styling differences, and the test that was said to pin the document did not read it.
+
+1. **Copy is a module of the library** (`clipboard.ts`, behind `ClipboardInterop`). It was a function in an inline script on the web host's page.
+2. **The library's markup uses no Bootstrap class.** The spacing classes are MudBlazor's; `text-nowrap` and `text-md-center` are in the library's style sheet.
+3. **`AddBlazemojiEditor` brings what it needs** (options, logging), **keeps what a host registered first,** and reads `ProjectTemplates` from configuration when given it. Registering first is also how a single-user host makes the state classes singletons.
+4. **The hosting tests read the document.** They check that the registrations it lists are the ones they make, that every library file it names exists, that every tab renders, and that the two scripts load from the library with nothing else defined. The sentence under Testing that says the document "cannot drift from the code" claimed more than the first version of the test did. What the tests still cannot check is the page shell: the order of the scripts and how Blazor is started are only exercised by the browser tests against the web host.
+5. **The Dockerfile's steps were replayed on macOS by the reviewer** (restore from the seven project files alone, build, publish) and succeeded. A real image build is still to be done.
+
+Left as they are: the status-word table covers 34 codes where ASP.NET's covers 63, and words two of them differently; `ILibraryService` and the Library tab speak of "local storage"; namespaces now span assemblies.

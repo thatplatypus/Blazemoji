@@ -139,3 +139,17 @@ Every response on the proxy route that does **not** come from the program carrie
 7. **Templates are tested for real:** every committed template is compiled, and the two-file one is run, by the Docker tests.
 8. **The editor's first, empty model is left in place.** Disposing it through BlazorMonaco failed in the browser; it holds nothing and nothing refers to it.
 9. **The per-program address-space limit went from 1 GiB to 4 GiB.** Grapevine's own tests, run from the sample project, were aborted by the emulator at 1 GiB (`rosetta error: mmap_anonymous_rw mmap failed`): the limit counts reserved address space, which 64 thread stacks and the emulator's tables fill quickly. Real memory use is still capped by the container's 2 GB limit.
+
+## Changes after the independent review
+
+A fresh reviewer ran the service and the web app and found two defects certain to bite in ordinary use, and five more. All were fixed test first.
+
+1. **A project is stored one entry per file, as plain text.** It was one entry of JSON read back in a single message. Blazor Server ends the session on a message over 32 KB and JSON writes each emoji as twelve characters, so a project with about 15 KB of source hung the page on every reload. The Todo sample was ten lines short of that. Projects stored the earlier way still open, and move over at the next save.
+2. **Messages from the browser may be up to 4 MiB,** the size the toolchain service accepts for a project. The editor hands over a file's whole text, and one of Grapevine's files is 37 KB.
+3. **The web app's HTTP client does not follow redirects or keep cookies.** A response through the service can be a program's own, so a program could send the client to any address, and its redirects were shown as whatever they led to.
+4. **Header values are UTF-8 at every hop.** A response header the server cannot send is reported as a bad response; it used to come back as a 500 that looked like the program's own.
+5. **Editor work takes turns.** Showing a file, setting markers, revealing a problem and handing text to the project could interleave: two quick clicks could end the session, store one file's text as another's, or scroll to a problem in the wrong file. Text is read from a file's own model.
+6. **What could not be saved is kept in memory and can be come back to,** as the warning says, and is written when saving works again.
+7. **The same project in two tabs** no longer has one tab undo the other's work on files it did not touch. Two tabs editing the same file is still last writer wins.
+
+Left as they are, and listed in the report: what the service adds to a response (`Date`, `Server`), `%2F` refused anywhere in a path, the missing idle tooltip, file extensions not enforced, alerts that move the panel below them, and several rough edges in `scripts/build-grapevine.sh`.

@@ -123,3 +123,19 @@ Half a second after typing pauses, the page compiles the project with `check: tr
 8. **Grapevine's routing methods have no doc comments at the pinned commit.** Completion shows their signature and the emoji's name; 🧱, 🗂 and the others that are documented show their text.
 9. **The browser tests for this phase ran against a different arrangement of the same pieces.** Docker's disk had no room for another image build, so the new toolchain service was published on the Mac and mounted into the existing toolchain image, with the web app run natively. The two-container stack itself was last exercised at Phase 3.
 10. **Measured:** a type error was marked 604 ms after the last key, in a browser, against the real compiler under emulation.
+
+## Changes after the independent review
+
+A fresh reviewer ran the intelligence against the real documentation and the Todo sample and found it confidently wrong in ordinary code. The claim above that the type inference "only ever narrows suggestions" was not true: it also feeds hover and signature help and writes code. All of the following were fixed test first.
+
+1. **Calls are read as the compiler's parser reads them** (`ExpressionReader`): a method, what it is called on, and arguments up to its own ❗️ or ❓, each an expression, whether or not the method is known. The flat stack it replaces lost the outer call after any call it knew nothing about, counted the elements of a list as arguments, and did not count 👍 or 👇.
+2. **No type is guessed.** After a 🍇, a name is a parameter only when what follows is a type of an imported package or of the file; a parameter list ends with its line; an expression is typed only when it is one whole expression. Before, `r.` on the first line of a block offered nothing, `passed ➕ 1` made `passed` a ➕, and a comparison took its left side's type.
+3. **Operators are operators.** The report marks them with an empty mood. After a dot they are written between their operands; accepting one used to write `➕ port`, which does not compile. Methods written as assignments are not offered after a dot.
+4. **A line that declares is not read as a call,** in hover or in signature help.
+5. **Of several initializers or methods with one name, the one that fits the arguments is shown.** `🆕🔡` showed the raw-memory initializer.
+6. **A compile result says whether it reached the compiler.** The check used to infer that from a missing line number, and so dropped "No 🏁 block was found" and compiler crashes, leaving old problems on fixed code.
+7. **Problems while typing continue while a program runs,** and stand aside only while one is being built. The section above says otherwise; the Todo sample is a server and is edited while it is up.
+8. **The reader goes at most 100 values deep.** Found while fixing: a line of 60,000 emoji is a call in a call in a call, and without the limit it overflowed the stack, which would have ended the server.
+9. **A hover on a call that the keyword catalog also teaches shows both,** the call first.
+
+Left as they are, and listed in the report: a file the entry does not include gets no problems while typing; checks are not limited to one at a time; other overloads are not listed; type methods are not offered after `Type.`; the intelligence reads one file, not the project.
