@@ -402,6 +402,88 @@ namespace Blazemoji.Test.State
         }
 
         [Fact]
+        public async Task What_was_typed_while_saving_failed_is_still_there_after_looking_at_another_project()
+        {
+            var state = await LoadedAsync();
+            var first = state.Current.Id;
+            await state.CreateAsync("Second", "api");
+            var second = state.Current.Id;
+            _store.FailWrites = true;
+            await state.UpdateContentAsync("app/main.🍇", "typed while storage is full");
+
+            await state.OpenAsync(first);
+            await state.OpenAsync(second);
+
+            state.Current.Id.ShouldBe(second);
+            state.Current.Find("app/main.🍇")!.Content.ShouldBe("typed while storage is full");
+        }
+
+        [Fact]
+        public async Task A_project_made_while_saving_failed_can_be_opened_again()
+        {
+            var state = await LoadedAsync();
+            var first = state.Current.Id;
+            _store.FailWrites = true;
+            await state.CreateAsync("Never saved", "api");
+            var made = state.Current.Id;
+
+            await state.OpenAsync(first);
+            await state.OpenAsync(made);
+
+            state.Current.Name.ShouldBe("Never saved");
+            state.Projects.Select(project => project.Name).ShouldBe(["Hello World", "Never saved"]);
+        }
+
+        [Fact]
+        public async Task When_saving_works_again_everything_that_was_only_in_memory_is_saved()
+        {
+            var state = await LoadedAsync();
+            var first = state.Current.Id;
+            _store.FailWrites = true;
+            await state.UpdateContentAsync("main.🍇", "first, typed while storage is full");
+            await state.CreateAsync("Second", "api");
+            var second = state.Current.Id;
+            _store.FailWrites = false;
+
+            await state.UpdateContentAsync("app/main.🍇", "second, typed once storage is back");
+
+            state.SaveFailed.ShouldBeFalse();
+            _store.Saved[first].Find("main.🍇")!.Content.ShouldBe("first, typed while storage is full");
+            _store.Saved[second].Find("app/main.🍇")!.Content.ShouldBe("second, typed once storage is back");
+        }
+
+        [Fact]
+        public async Task Deleting_the_open_project_while_saving_fails_still_moves_on_to_another()
+        {
+            var state = await LoadedAsync();
+            var first = state.Current.Id;
+            await state.CreateAsync("Second", "api");
+            var second = state.Current.Id;
+            _store.FailWrites = true;
+
+            await state.DeleteProjectAsync(second);
+
+            state.Current.Id.ShouldBe(first);
+            state.Projects.ShouldHaveSingleItem().Id.ShouldBe(first);
+            state.SaveFailed.ShouldBeTrue();
+        }
+
+        [Fact]
+        public async Task With_storage_that_cannot_be_read_the_first_project_can_still_be_come_back_to()
+        {
+            _store.FailReads = true;
+            var state = await LoadedAsync();
+            var first = state.Current.Id;
+            await state.UpdateContentAsync("main.🍇", "typed with no storage at all");
+            await state.CreateAsync("Second", "api");
+
+            await state.OpenAsync(first);
+
+            state.Current.Id.ShouldBe(first);
+            state.OpenFile.Content.ShouldBe("typed with no storage at all");
+        }
+
+        [Fact]
         public async Task Storage_that_cannot_be_read_leaves_a_working_project_in_memory()
         {
             _store.FailReads = true;
