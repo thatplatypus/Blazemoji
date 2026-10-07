@@ -1,28 +1,34 @@
 # check=skip=FromPlatformFlagConstDisallowed
 # The Emojicode compiler bundled in this repo is the x86_64 Linux build, so every stage is linux/amd64.
 # Build from the repository root:
-#   docker build -f Blazemoji/Dockerfile --target test .     run the tests
-#   docker build -f Blazemoji/Dockerfile -t blazemoji .      build the app image
+#   docker build -f Blazemoji/Dockerfile --target test --output type=cacheonly .     run the tests
+#   docker build -f Blazemoji/Dockerfile -t blazemoji .                              build the app image
 
-FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0 AS build
-ARG BUILD_CONFIGURATION=Release
+# The .NET SDK plus what the Emojicode compiler needs. scripts/test-in-docker.sh runs the
+# tests in a container made from this stage alone.
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0 AS sdk-toolchain
 COPY docker/install-toolchain-deps.sh /tmp/install-toolchain-deps.sh
 RUN /tmp/install-toolchain-deps.sh
+
+FROM sdk-toolchain AS build
+ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY global.json Blazemoji.sln ./
+COPY global.json ./
 COPY Blazemoji/Blazemoji.csproj Blazemoji/
 COPY Blazemoji.Toolchain/Blazemoji.Toolchain.csproj Blazemoji.Toolchain/
 COPY Blazemoji.Test/Blazemoji.Test.csproj Blazemoji.Test/
-RUN dotnet restore Blazemoji.sln
+# The test project references the app and the toolchain, so restoring and building it covers
+# all three. The browser tests run on the host and are left out of the image.
+RUN dotnet restore Blazemoji.Test/Blazemoji.Test.csproj
 COPY Blazemoji/ Blazemoji/
 COPY Blazemoji.Toolchain/ Blazemoji.Toolchain/
 COPY Blazemoji.Test/ Blazemoji.Test/
-RUN dotnet build Blazemoji.sln -c $BUILD_CONFIGURATION --no-restore
+RUN dotnet build Blazemoji.Test/Blazemoji.Test.csproj -c $BUILD_CONFIGURATION --no-restore
 
 FROM build AS test
 # A skipped test here means the compiler tests did not run, and a hung test must fail the
 # build instead of blocking it, so both are turned into failures.
-RUN dotnet test --solution Blazemoji.sln -c $BUILD_CONFIGURATION --no-build --timeout 5m -- --fail-skips on
+RUN dotnet test --project Blazemoji.Test/Blazemoji.Test.csproj -c $BUILD_CONFIGURATION --no-build --timeout 5m -- --fail-skips on
 
 FROM build AS publish
 RUN dotnet publish Blazemoji/Blazemoji.csproj -c $BUILD_CONFIGURATION --no-build -o /app/publish /p:UseAppHost=false
