@@ -71,6 +71,18 @@ Projects are kept in the browser's local storage, so they are still there after 
 
 A project runs either as a **Program**, which runs to the end and stops, or as a **Web server**, which keeps running until it is stopped or has had no request for ten minutes. A web server is told which port to listen on through the `PORT` environment variable. While it runs, the **Requests** tab sends it HTTP requests (method, path, headers, body) and shows the status, headers and body that come back.
 
+## Help while typing
+
+The editor has no language server. Three small Monaco providers hand the text and the cursor's position to plain C# (`Blazemoji/Emojicode/Intelligence`), which answers from the keyword catalog, a list of emoji names, and the compiler's documentation report for each package the project imports.
+
+- **Type a name to find an emoji.** `inbox` or `:inbox` offers 📥. Methods of the variables in scope come first, then keywords, then every other emoji. Tab accepts; Enter is always a new line.
+- **Type the receiver and a dot to find a method.** Emojicode puts the method first (`📥 app 🔤/🔤 handler❗️`), so there is nothing to complete against when you start typing a call. `app.` lists the methods of `app`'s type, and accepting one rewrites it into `📥 app `. The editor works out a variable's type from the text: an initializer, a literal, a documented call, or a declared parameter.
+- **Parameters appear once the receiver is there,** with the one you are on marked.
+- **Hover** over a keyword, a type, a method or a variable to see what it is.
+- **Problems show up while you type.** About half a second after a pause the project is compiled without linking, and errors are marked in the editor and counted on the Problems tab. Only Run brings that tab forward.
+
+The provider code is TypeScript in `Blazemoji/Scripts`. Its compiled JavaScript is committed, so building the app needs no Node; `scripts/build-js.sh` recompiles it after a change.
+
 ## Grapevine
 
 Grapevine is an HTTP framework written in Emojicode. It has its own repository, so its package and its Todo sample are not committed here. One script builds them from a local checkout:
@@ -89,7 +101,7 @@ Plain HTTP/1.1 and server-sent events, so that it can be reimplemented elsewhere
 
 | Request | Answer |
 | --- | --- |
-| `POST /compile` with `{ "files": { "main.🍇": "..." }, "entry": "main.🍇", "packages": [] }` | `{ "ok", "diagnostics": [], "buildId" }`. A failed build is still a 200. |
+| `POST /compile` with `{ "files": { "main.🍇": "..." }, "entry": "main.🍇", "packages": [], "check": false }` | `{ "ok", "diagnostics": [], "buildId" }`. A failed build is still a 200. With `"check": true` nothing is linked or kept and there is no `buildId`: it is for diagnostics alone. |
 | `POST /runs` with `{ "buildId", "env": {}, "http": false }` | `201` and `{ "runId" }`. With `"http": true` the program is run as a server: it is given a port in `PORT`, has no wall-clock limit, and is ended when it has had no request for the idle time. |
 | `GET /runs/{id}/events` | An event stream of `stdout`, `stderr` and one final `exit`. Replays from the start, or from after `Last-Event-ID`. |
 | `POST /runs/{id}/stdin` | Appends the body to the program's input; `?eof=true` ends it. |

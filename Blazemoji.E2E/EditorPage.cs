@@ -214,6 +214,50 @@ namespace Blazemoji.E2E
             await Page.Locator("[data-testid=response-request]", new PageLocatorOptions { HasTextString = $"{method} {path}" }).WaitForAsync();
         }
 
+        public ILocator Suggestions => Page.Locator(".suggest-widget.visible .monaco-list-row");
+
+        public ILocator SuggestionDetails => Page.Locator(".suggest-details");
+
+        public ILocator ParameterHints => Page.Locator(".parameter-hints-widget");
+
+        public ILocator ActiveParameter => Page.Locator(".parameter-hints-widget .parameter.active");
+
+        /// <summary>
+        /// Puts the cursor on a new, empty line straight after the first line that contains
+        /// <paramref name="text"/>, with the keyboard in the editor.
+        /// </summary>
+        public async Task StartLineAfterAsync(string text)
+        {
+            await Page.EvaluateAsync(
+                """
+                text => {
+                    const editor = monaco.editor.getEditors()[0];
+                    const line = editor.getModel().getLinesContent().findIndex(content => content.includes(text)) + 1;
+                    editor.setPosition({ lineNumber: line, column: editor.getModel().getLineMaxColumn(line) });
+                    editor.focus();
+                }
+                """,
+                text);
+            await Page.Keyboard.PressAsync("Enter");
+        }
+
+        /// <summary>Types as a person would, one key at a time, which is what makes suggestions appear.</summary>
+        public Task TypeAsync(string text) => Page.Keyboard.TypeAsync(text, new KeyboardTypeOptions { Delay = 40 });
+
+        public Task<string> LineAtCursorAsync() =>
+            Page.EvaluateAsync<string>("() => { const editor = monaco.editor.getEditors()[0]; return editor.getModel().getLineContent(editor.getPosition().lineNumber); }");
+
+        /// <summary>What each visible suggestion says: its label, what it belongs to, and its kind.</summary>
+        public async Task<IReadOnlyList<string>> SuggestionTextsAsync()
+        {
+            await Suggestions.First.WaitForAsync();
+            return await Suggestions.EvaluateAllAsync<string[]>("rows => rows.map(row => row.getAttribute('aria-label') ?? '')");
+        }
+
+        /// <summary>Opens the documentation beside the suggestion list, as Ctrl+Space does.</summary>
+        public Task ShowSuggestionDetailsAsync() =>
+            Page.EvaluateAsync("() => monaco.editor.getEditors()[0].trigger('test', 'toggleSuggestionDetails', {})");
+
         public ILocator ResponseStatus => Page.GetByTestId("response-status");
 
         public ILocator ResponseBody => Page.GetByTestId("response-body");

@@ -110,3 +110,16 @@ Half a second after typing pauses, the page compiles the project with `check: tr
 3. GEmojiSharp for emoji names.
 4. TypeScript source with the compiled JavaScript committed, so that building the app still needs no Node.
 5. A `check` flag on `/compile` in place of a separate endpoint.
+
+## Amendments during implementation
+
+1. **All three providers go through one module of our own,** not BlazorMonaco's completion and hover hooks. Each of those passes a model's address and a position, so every request would have needed a second round trip to fetch the text. Our module sends the text and the offset in the one call it already makes.
+2. **A name search matches methods by their emoji's name only.** Matching on parameter names and documentation words as well, which is right after a dot, put the standard package's text methods above 🍇 for `:grap` (their documentation talks about graphemes).
+3. **Tab accepts a suggestion; Enter never does.** A suggestion is nearly always showing while a name is typed, and Enter has to stay a new line.
+4. **Problems found while typing do not take over the right-hand panel.** They update the count on the Problems tab and the markers in the editor. Only a Run that fails brings the tab forward and reads "Build failed".
+5. **A check that never reached the compiler changes nothing.** The service being busy or unreachable is not something to show as a problem in the code.
+6. **The report writes some emoji without the variation selector the source has** (✏ for ✏️). Names are compared with selectors removed.
+7. **Five keyword catalog entries are unfinished** (⁉️ 👈 👉 🔲 😜 throw from their description). They are read as having none and are not offered.
+8. **Grapevine's routing methods have no doc comments at the pinned commit.** Completion shows their signature and the emoji's name; 🧱, 🗂 and the others that are documented show their text.
+9. **The browser tests for this phase ran against a different arrangement of the same pieces.** Docker's disk had no room for another image build, so the new toolchain service was published on the Mac and mounted into the existing toolchain image, with the web app run natively. The two-container stack itself was last exercised at Phase 3.
+10. **Measured:** a type error was marked 604 ms after the last key, in a browser, against the real compiler under emulation.
