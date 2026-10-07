@@ -1,9 +1,0 @@
-{
-  "projectName": "Blazemoji",
-  "workingDirectory": "/Users/tombrewer/Code/Blazemoji",
-  "maxConcurrentAgents": 4,
-  "autoAssignTasks": false,
-  "claudeCodePath": "claude",
-  "defaultInstructions": [],
-  "environmentVariables": {}
-}
