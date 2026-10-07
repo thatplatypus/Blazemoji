@@ -58,6 +58,12 @@ namespace Blazemoji.Test
         }
 
         [Fact]
+        public void Character_zero_on_an_indented_line_marks_the_first_token_not_the_indentation()
+        {
+            DiagnosticPositions.ToEditorRange(At(2, 0), "🏁 🍇\n    nope here\n🍉").ShouldBe(new EditorRange(2, 5, 2, 9));
+        }
+
+        [Fact]
         public void A_line_past_the_end_is_clamped_to_the_last_line()
         {
             DiagnosticPositions.ToEditorRange(At(5, 0), "a\nb").ShouldBe(new EditorRange(2, 1, 2, 2));

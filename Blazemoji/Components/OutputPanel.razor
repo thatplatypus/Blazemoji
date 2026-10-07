@@ -6,16 +6,16 @@
 <MudTabs @bind-ActivePanelIndex="_activeTab" Elevation="0" Rounded="false">
     <MudTabPanel Text="Output">
         <div class="output-panel pa-2">
-            <div class="output-status" data-testid="run-status">@StatusText</div>
+            <div class="output-status">
+                <span data-testid="run-status">@StatusText</span>
+                @if (State.TotalLines > State.Lines.Count)
+                {
+                    <span data-testid="output-dropped">Showing the last @Count(State.Lines.Count) of @Count(State.TotalLines) lines.</span>
+                }
+            </div>
             <div class="@ProgressClass">
                 <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
             </div>
-            @if (State.TotalLines > State.Lines.Count)
-            {
-                <div class="output-dropped" data-testid="output-dropped">
-                    Showing the last @Count(State.Lines.Count) of @Count(State.TotalLines) lines.
-                </div>
-            }
             <div class="output-scroll">
                 <div class="output-lines">
                     @foreach (var line in State.Lines)

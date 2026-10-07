@@ -115,7 +115,7 @@ namespace Blazemoji.Test.Toolchain
         }
 
         [Fact]
-        public async Task A_program_that_never_ends_can_be_stopped()
+        public async Task A_compiled_program_that_never_ends_is_ended_at_the_time_limit()
         {
             Assert.SkipUnless(ToolchainFixture.Available, ToolchainFixture.SkipReason);
             await using var toolchain = ToolchainFixture.Create();

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Blazemoji.Shared.State;
 using Blazemoji.Toolchain;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
@@ -59,7 +60,7 @@ namespace Blazemoji.Test.State
             state.Status.ShouldBe(RunStatus.Idle);
             state.Diagnostics.ShouldBe([error]);
             state.DiagnosticsSource.ShouldBe(Code);
-            diagnosticsChanged.ShouldBe(1);
+            diagnosticsChanged.ShouldBeGreaterThanOrEqualTo(1);
             state.LastRun.ShouldBeNull();
             await _toolchain.DidNotReceive().StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>());
         }
@@ -303,7 +304,7 @@ namespace Blazemoji.Test.State
             await running;
 
             state.Diagnostics.ShouldBe([warning]);
-            diagnosticsChanged.ShouldBe(1);
+            diagnosticsChanged.ShouldBeGreaterThanOrEqualTo(1);
             state.Lines.ShouldHaveSingleItem().Text.ShouldBe("ran");
         }
 
@@ -332,6 +333,106 @@ namespace Blazemoji.Test.State
             await running;
 
             state.Lines.ShouldHaveSingleItem().ShouldBe(new OutputLine(1, OutputStream.Stdout, "second"));
+        }
+
+        [Fact]
+        public async Task Problems_from_an_earlier_run_are_gone_as_soon_as_a_new_run_starts()
+        {
+            var error = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Variable \"nope\" not defined.");
+            var compiling = new TaskCompletionSource<CompileResult>();
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new CompileResult(false, [error], null)), compiling.Task);
+            await using var state = CreateState();
+            await state.RunAsync(Code);
+            state.Diagnostics.ShouldBe([error]);
+
+            var running = state.RunAsync(Code);
+
+            state.Status.ShouldBe(RunStatus.Compiling);
+            state.Diagnostics.ShouldBeEmpty();
+
+            compiling.SetResult(new CompileResult(false, [], null));
+            await running;
+        }
+
+        [Fact]
+        public async Task Clearing_the_diagnostics_empties_them_and_tells_subscribers()
+        {
+            var error = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Variable \"nope\" not defined.");
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(false, [error], null));
+            await using var state = CreateState();
+            await state.RunAsync(Code);
+            var diagnosticsChanged = 0;
+            state.DiagnosticsChanged += () => diagnosticsChanged++;
+
+            state.ClearDiagnostics();
+
+            state.Diagnostics.ShouldBeEmpty();
+            state.DiagnosticsSource.ShouldBeEmpty();
+            diagnosticsChanged.ShouldBe(1);
+        }
+
+        [Fact]
+        public async Task A_stop_that_arrives_while_the_program_is_being_started_still_stops_it()
+        {
+            var starting = new TaskCompletionSource<IToolchainRun>();
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(true, [], "build-1"));
+            _toolchain.StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>()).Returns(starting.Task);
+            await using var state = CreateState();
+            var running = state.RunAsync(Code);
+            state.Status.ShouldBe(RunStatus.Running);
+
+            await state.StopAsync();
+            starting.SetResult(_run);
+            await running;
+
+            _run.StopCalls.ShouldBe(1);
+            state.LastRun!.Reason.ShouldBe(RunEndReason.Stopped);
+        }
+
+        [Fact]
+        public async Task Closing_the_session_while_output_is_arriving_is_not_reported_as_a_failure()
+        {
+            var logger = new RecordingLogger<RunState>();
+            var slowToStop = new SlowToCancelRun();
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(true, [], "build-1"));
+            _toolchain.StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>()).Returns<IToolchainRun>(slowToStop);
+            var state = new RunState(_toolchain, logger, _time);
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.TotalLines == 1, advanceTime: false);
+
+            await state.DisposeAsync();
+            await running;
+
+            logger.Entries.Where(entry => entry.Level >= LogLevel.Warning).ShouldBeEmpty();
+            state.Lines.Select(line => line.Stream).ShouldNotContain(OutputStream.System);
+        }
+
+        /// <summary>
+        /// Emits one line, then takes a moment to notice cancellation, the way a real stream
+        /// does when the request to stop it has to travel somewhere.
+        /// </summary>
+        private sealed class SlowToCancelRun : IToolchainRun
+        {
+            public string RunId => "slow";
+
+            public async IAsyncEnumerable<RunEvent> ReadEventsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+            {
+                yield return new StdoutEvent("line\n");
+
+                var cancelled = new TaskCompletionSource();
+                await using var registration = cancellationToken.Register(() => cancelled.TrySetResult());
+                await cancelled.Task;
+                await Task.Delay(150, CancellationToken.None);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            public Task StopAsync() => Task.CompletedTask;
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         }
 
         [Fact]

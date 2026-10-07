@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Blazemoji.Toolchain
@@ -6,10 +8,20 @@ namespace Blazemoji.Toolchain
     internal sealed record ProcessResult(int ExitCode, string Stdout, string Stderr, bool TimedOut);
 
     /// <summary>
-    /// Runs a short-lived process to completion and collects its output.
+    /// Starting, bounding and ending child processes.
     /// </summary>
     internal static class ProcessRunner
     {
+        /// <summary>
+        /// The longest time limit a timer accepts comfortably. Anything larger, or not positive, is replaced.
+        /// </summary>
+        public static readonly TimeSpan LongestTimeout = TimeSpan.FromDays(1);
+
+        private const int SigKill = 9;
+
+        /// <summary>
+        /// Runs a short-lived process to completion and collects its output.
+        /// </summary>
         public static async Task<ProcessResult> RunAsync(
             string fileName,
             IEnumerable<string> arguments,
@@ -27,7 +39,7 @@ namespace Blazemoji.Toolchain
             var stderr = process.StandardError.ReadToEndAsync(CancellationToken.None);
 
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            deadline.CancelAfter(timeout);
+            deadline.CancelAfter(Usable(timeout, LongestTimeout));
 
             var timedOut = false;
             try
@@ -36,7 +48,7 @@ namespace Blazemoji.Toolchain
             }
             catch (OperationCanceledException)
             {
-                KillTree(process);
+                Kill(process, wholeGroup: false);
                 await process.WaitForExitAsync(CancellationToken.None);
                 cancellationToken.ThrowIfCancellationRequested();
                 timedOut = true;
@@ -66,17 +78,34 @@ namespace Blazemoji.Toolchain
             return startInfo;
         }
 
-        public static void KillTree(Process process)
+        /// <summary>
+        /// A time limit that a timer will accept: the given one when it is positive and not
+        /// absurdly long, otherwise the fallback.
+        /// </summary>
+        public static TimeSpan Usable(TimeSpan timeout, TimeSpan fallback) =>
+            timeout > TimeSpan.Zero && timeout <= LongestTimeout ? timeout : fallback;
+
+        /// <param name="wholeGroup">
+        /// The process leads its own process group (it was started through setsid), so every
+        /// process it started is ended with it, including ones that have outlived their parent.
+        /// </param>
+        public static void Kill(Process process, bool wholeGroup)
         {
             try
             {
+                if (wholeGroup)
+                    kill(-process.Id, SigKill);
+
                 if (!process.HasExited)
                     process.Kill(entireProcessTree: true);
             }
-            catch (InvalidOperationException)
+            catch (Exception exception) when (exception is InvalidOperationException or Win32Exception or NotSupportedException)
             {
-                // The process exited between the check and the kill.
+                // The process had already gone.
             }
         }
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern int kill(int pid, int signal);
     }
 }

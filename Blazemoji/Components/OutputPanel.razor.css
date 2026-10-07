@@ -4,8 +4,11 @@
     gap: 4px;
 }
 
-.output-status,
-.output-dropped {
+/* One row for the status and the dropped-lines note, so the note appearing moves nothing. */
+.output-status {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 0.75rem;
     color: var(--mud-palette-text-secondary);
     font-size: 0.75rem;
 }

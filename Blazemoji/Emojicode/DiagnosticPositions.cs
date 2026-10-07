@@ -28,10 +28,24 @@ namespace Blazemoji.Emojicode
             if (line.Length == 0)
                 return new EditorRange(lineNumber, 1, lineNumber, 1);
 
-            var start = Math.Min(Utf16OffsetOfCharacter(line, character), line.Length - 1);
+            // Character 0 means the compiler gave only a line; point at the first thing on it.
+            var start = diagnostic.Character < 1 || diagnostic.Line > lines.Length
+                ? FirstNonWhitespace(line)
+                : Math.Min(Utf16OffsetOfCharacter(line, character), line.Length - 1);
             var end = TokenEnd(line, start);
 
             return new EditorRange(lineNumber, start + 1, lineNumber, end + 1);
+        }
+
+        private static int FirstNonWhitespace(string line)
+        {
+            for (var offset = 0; offset < line.Length; offset++)
+            {
+                if (!char.IsWhiteSpace(line[offset]))
+                    return offset;
+            }
+
+            return 0;
         }
 
         private static int Utf16OffsetOfCharacter(string line, int character)

@@ -53,6 +53,7 @@ namespace Blazemoji.Shared.State
                 return;
 
             ResetOutput();
+            ClearDiagnostics();
             Status = RunStatus.Compiling;
             NotifyStateChanged();
 
@@ -77,6 +78,11 @@ namespace Blazemoji.Shared.State
                 NotifyStateChanged();
 
                 _run = await toolchain.StartRunAsync(new RunRequest(buildId), _disposal.Token);
+
+                // Stop may have been pressed while the program was being started.
+                if (_stopRequested)
+                    await _run.StopAsync();
+
                 await ConsumeAsync(_run, _disposal.Token);
             }
             catch (OperationCanceledException) when (_disposal.IsCancellationRequested)
@@ -99,6 +105,19 @@ namespace Blazemoji.Shared.State
                 Status = RunStatus.Idle;
                 NotifyStateChanged();
             }
+        }
+
+        /// <summary>
+        /// Forgets the last build's diagnostics, for when the code they refer to is replaced.
+        /// </summary>
+        public void ClearDiagnostics()
+        {
+            if (Diagnostics.Count == 0 && DiagnosticsSource.Length == 0)
+                return;
+
+            Diagnostics = [];
+            DiagnosticsSource = string.Empty;
+            DiagnosticsChanged?.Invoke();
         }
 
         public async Task StopAsync()
@@ -125,13 +144,14 @@ namespace Blazemoji.Shared.State
         private async Task ConsumeAsync(IToolchainRun run, CancellationToken cancellationToken)
         {
             using var flushCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            await using var events = run.ReadEventsAsync(cancellationToken).GetAsyncEnumerator(cancellationToken);
+            var events = run.ReadEventsAsync(cancellationToken).GetAsyncEnumerator(cancellationToken);
 
-            var next = events.MoveNextAsync().AsTask();
+            Task<bool>? next = null;
             Task? flushDue = null;
 
             try
             {
+                next = events.MoveNextAsync().AsTask();
                 while (true)
                 {
                     if (flushDue is not null && await Task.WhenAny(next, flushDue) == flushDue)
@@ -155,6 +175,11 @@ namespace Blazemoji.Shared.State
             {
                 await flushCancellation.CancelAsync();
                 await ObserveCancelledAsync(flushDue);
+
+                // An enumerator must not be disposed while a move is still in flight, which is
+                // where things stand when the session closes between two events.
+                await ObserveCancelledAsync(next);
+                await events.DisposeAsync();
             }
         }
 

@@ -165,8 +165,6 @@
         await Global.SetModelMarkers(_jsRuntime, await _editor.GetModel(), MarkerOwner, markers);
     }
 
-    public Task ClearMarkersAsync() => SetMarkersAsync([], string.Empty);
-
     public async Task RevealAsync(int line, int column)
     {
         await _editor.RevealLineInCenter(line);

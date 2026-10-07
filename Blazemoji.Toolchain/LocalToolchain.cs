@@ -18,15 +18,21 @@ namespace Blazemoji.Toolchain
         private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
 
         private static readonly Lazy<string?> LineBufferingTool = new(() => FindOnPath("stdbuf"));
+        private static readonly Lazy<string?> SessionTool = new(() => FindOnPath("setsid"));
 
         private readonly ToolchainOptions _options = options.Value;
         private readonly ConcurrentDictionary<string, LocalRun> _runs = new();
 
-        internal string WorkRoot => _options.WorkRoot;
+        /// <summary>
+        /// This instance's own folder under the configured work root. Several instances can be
+        /// given the same root (two app processes on one machine, say) without one deleting the
+        /// other's builds when it shuts down.
+        /// </summary>
+        internal string WorkRoot { get; } = Path.Combine(options.Value.WorkRoot, Guid.NewGuid().ToString("N"));
 
-        private string BuildsRoot => Path.Combine(_options.WorkRoot, "builds");
+        private string BuildsRoot => Path.Combine(WorkRoot, "builds");
 
-        private string RunsRoot => Path.Combine(_options.WorkRoot, "runs");
+        private string RunsRoot => Path.Combine(WorkRoot, "runs");
 
         public async Task<CompileResult> CompileAsync(CompileRequest request, CancellationToken cancellationToken = default)
         {
@@ -53,6 +59,8 @@ namespace Blazemoji.Toolchain
                 if (!TryParseDiagnostics(compiler, out var diagnostics))
                     return Failed("The compiler produced output that could not be read.");
 
+                diagnostics = diagnostics.Select(CompilerPositions.Normalize).ToList();
+
                 if (compiler.ExitCode != 0)
                 {
                     if (!diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
@@ -62,6 +70,13 @@ namespace Blazemoji.Toolchain
                     }
 
                     return new CompileResult(false, diagnostics, null);
+                }
+
+                // The compiler does not check its linker's result, so a link failure still exits with 0.
+                if (!File.Exists(Path.Combine(buildDirectory, ProgramFileName)))
+                {
+                    logger.LogError("The compiler exited with 0 but produced no program. stderr: {Stderr}", compiler.Stderr);
+                    return new CompileResult(false, [.. diagnostics, Error("The program could not be linked.")], null);
                 }
 
                 keepBuild = true;
@@ -82,7 +97,10 @@ namespace Blazemoji.Toolchain
                 : null;
 
             if (program is null || !File.Exists(program))
+            {
+                logger.LogWarning("A run was asked for a build that does not exist");
                 return Task.FromResult(Track(LocalRun.FailedToStart(runId, null, Forget)));
+            }
 
             var runDirectory = Path.Combine(RunsRoot, runId);
             Directory.CreateDirectory(runDirectory);
@@ -100,9 +118,15 @@ namespace Blazemoji.Toolchain
                 return Task.FromResult(Track(LocalRun.FailedToStart(runId, runDirectory, Forget)));
             }
 
-            var timeout = request.Timeout ?? _options.RunTimeout;
-            return Task.FromResult(Track(LocalRun.Started(runId, process, runDirectory, timeout, _options.MaxOutputBytes, Forget)));
+            var fallback = ProcessRunner.Usable(_options.RunTimeout, ProcessRunner.LongestTimeout);
+            var timeout = ProcessRunner.Usable(request.Timeout ?? fallback, fallback);
+            var leadsProcessGroup = SessionTool.Value is not null;
+
+            return Task.FromResult(Track(LocalRun.Started(runId, process, runDirectory, timeout, _options.MaxOutputBytes, leadsProcessGroup, Forget)));
         }
+
+        public bool HasBuild(string buildId) =>
+            BuildIdPattern().IsMatch(buildId) && File.Exists(Path.Combine(BuildsRoot, buildId, ProgramFileName));
 
         public Task ReleaseBuildAsync(string buildId)
         {
@@ -117,7 +141,7 @@ namespace Blazemoji.Toolchain
             foreach (var run in _runs.Values)
                 await run.DisposeAsync();
 
-            DeleteDirectory(_options.WorkRoot);
+            DeleteDirectory(WorkRoot);
         }
 
         /// <summary>
@@ -127,9 +151,14 @@ namespace Blazemoji.Toolchain
         /// </summary>
         private static ProcessStartInfo CreateRunStartInfo(string program, string runDirectory, IReadOnlyDictionary<string, string>? environment)
         {
-            var startInfo = LineBufferingTool.Value is { } stdbuf
-                ? ProcessRunner.CreateStartInfo(stdbuf, ["-oL", "-eL", program], runDirectory)
-                : ProcessRunner.CreateStartInfo(program, [], runDirectory);
+            List<string> command = LineBufferingTool.Value is { } stdbuf ? [stdbuf, "-oL", "-eL", program] : [program];
+
+            // A session of its own makes the program a process group leader, so that ending the
+            // run can end everything the program started, including what has outlived it.
+            if (SessionTool.Value is { } setsid)
+                command.Insert(0, setsid);
+
+            var startInfo = ProcessRunner.CreateStartInfo(command[0], command.Skip(1), runDirectory);
 
             foreach (var (name, value) in environment ?? new Dictionary<string, string>())
                 startInfo.Environment[name] = value;
@@ -243,7 +272,7 @@ namespace Blazemoji.Toolchain
 
         private static Diagnostic Error(string message) => new(DiagnosticSeverity.Error, string.Empty, 0, 0, message);
 
-        [GeneratedRegex("^[0-9a-f]{32}$")]
+        [GeneratedRegex(@"\A[0-9a-f]{32}\z")]
         private static partial Regex BuildIdPattern();
     }
 }

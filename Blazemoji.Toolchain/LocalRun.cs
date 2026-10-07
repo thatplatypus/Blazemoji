@@ -12,28 +12,37 @@ namespace Blazemoji.Toolchain
     {
         private const int NoEndRequested = -1;
 
+        // How long output may still arrive after the program itself has gone. Anything holding
+        // the pipes open beyond this is a process the program left behind, not the program.
+        private static readonly TimeSpan DrainGrace = TimeSpan.FromMilliseconds(250);
+
         private readonly Process? _process;
         private readonly string? _runDirectory;
         private readonly long _maxOutputBytes;
+        private readonly bool _leadsProcessGroup;
         private readonly Action<LocalRun> _disposed;
         private readonly Stopwatch _clock = Stopwatch.StartNew();
         private readonly CancellationTokenSource _timeout = new();
         private readonly CancellationTokenRegistration _timeoutRegistration;
         private readonly SurrogateSafeReader? _stdout;
         private readonly SurrogateSafeReader? _stderr;
+        private readonly Task _exited = Task.CompletedTask;
 
         private Task<string?>? _pendingStdout;
         private Task<string?>? _pendingStderr;
         private int _requestedEnd = NoEndRequested;
         private int _readerTaken;
         private int _disposeStarted;
+        private int _readsAbandoned;
+        private volatile bool _processDisposed;
 
-        private LocalRun(string runId, Process? process, string? runDirectory, TimeSpan timeout, long maxOutputBytes, Action<LocalRun> disposed)
+        private LocalRun(string runId, Process? process, string? runDirectory, TimeSpan timeout, long maxOutputBytes, bool leadsProcessGroup, Action<LocalRun> disposed)
         {
             RunId = runId;
             _process = process;
             _runDirectory = runDirectory;
             _maxOutputBytes = maxOutputBytes;
+            _leadsProcessGroup = leadsProcessGroup;
             _disposed = disposed;
 
             if (process is null)
@@ -41,17 +50,18 @@ namespace Blazemoji.Toolchain
 
             _stdout = new SurrogateSafeReader(process.StandardOutput);
             _stderr = new SurrogateSafeReader(process.StandardError);
+            _exited = process.WaitForExitAsync(CancellationToken.None);
             _timeoutRegistration = _timeout.Token.Register(() => End(RunEndReason.TimedOut));
             _timeout.CancelAfter(timeout);
         }
 
         public string RunId { get; }
 
-        public static LocalRun Started(string runId, Process process, string runDirectory, TimeSpan timeout, long maxOutputBytes, Action<LocalRun> disposed) =>
-            new(runId, process, runDirectory, timeout, maxOutputBytes, disposed);
+        public static LocalRun Started(string runId, Process process, string runDirectory, TimeSpan timeout, long maxOutputBytes, bool leadsProcessGroup, Action<LocalRun> disposed) =>
+            new(runId, process, runDirectory, timeout, maxOutputBytes, leadsProcessGroup, disposed);
 
         public static LocalRun FailedToStart(string runId, string? runDirectory, Action<LocalRun> disposed) =>
-            new(runId, null, runDirectory, Timeout.InfiniteTimeSpan, 0, disposed);
+            new(runId, null, runDirectory, Timeout.InfiniteTimeSpan, 0, false, disposed);
 
         public async IAsyncEnumerable<RunEvent> ReadEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
@@ -67,16 +77,30 @@ namespace Blazemoji.Toolchain
             var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             await using var cancellation = cancellationToken.Register(() => cancelled.TrySetResult());
 
-            // The pending reads are fields so that DisposeAsync can wait for them if the caller
+            // The pending reads are fields so that DisposeAsync can deal with them if the caller
             // stops enumerating early.
             _pendingStdout = _stdout.ReadChunkAsync(CancellationToken.None);
             _pendingStderr = _stderr.ReadChunkAsync(CancellationToken.None);
             long outputBytes = 0;
+            Task? drained = null;
 
             while (_pendingStdout is not null || _pendingStderr is not null)
             {
-                var completed = await Task.WhenAny(Pending(cancelled.Task));
+                var completed = await Task.WhenAny(Pending(cancelled.Task, drained ?? _exited));
                 cancellationToken.ThrowIfCancellationRequested();
+
+                if (completed == _exited && drained is null)
+                {
+                    drained = Task.Delay(DrainGrace, CancellationToken.None);
+                    continue;
+                }
+
+                if (completed == drained)
+                {
+                    // The program has gone but something it started still holds its pipes.
+                    AbandonReads();
+                    break;
+                }
 
                 RunEvent? output = null;
                 if (completed == _pendingStdout)
@@ -103,8 +127,9 @@ namespace Blazemoji.Toolchain
                     End(RunEndReason.OutputLimit);
             }
 
-            await _process.WaitForExitAsync(cancellationToken);
+            await _exited.WaitAsync(cancellationToken);
             _clock.Stop();
+            EndStrays();
 
             var reason = EndRequested ? (RunEndReason)_requestedEnd : RunEndReason.Exited;
             yield return new ExitEvent(_process.ExitCode, reason, _clock.Elapsed);
@@ -127,9 +152,12 @@ namespace Blazemoji.Toolchain
 
             if (_process is not null)
             {
+                await _exited;
+                EndStrays();
+                AbandonReads();
                 await ObserveAsync(_pendingStdout);
                 await ObserveAsync(_pendingStderr);
-                await _process.WaitForExitAsync(CancellationToken.None);
+                _processDisposed = true;
                 _process.Dispose();
             }
 
@@ -142,20 +170,43 @@ namespace Blazemoji.Toolchain
 
         private void End(RunEndReason reason)
         {
-            if (_process is null || _process.HasExited)
+            if (_process is null || _processDisposed || _exited.IsCompleted)
                 return;
 
             if (Interlocked.CompareExchange(ref _requestedEnd, (int)reason, NoEndRequested) == NoEndRequested)
-                ProcessRunner.KillTree(_process);
+                ProcessRunner.Kill(_process, _leadsProcessGroup);
         }
 
-        private IEnumerable<Task> Pending(Task cancelled)
+        /// <summary>
+        /// Ends anything the program started that has outlived it. Only possible when the
+        /// program was given a process group of its own.
+        /// </summary>
+        private void EndStrays()
+        {
+            if (_process is not null && !_processDisposed && _leadsProcessGroup)
+                ProcessRunner.Kill(_process, wholeGroup: true);
+        }
+
+        /// <summary>
+        /// Closes this side of the pipes, which makes any read still waiting on them finish.
+        /// </summary>
+        private void AbandonReads()
+        {
+            if (_process is null || Interlocked.Exchange(ref _readsAbandoned, 1) == 1)
+                return;
+
+            _process.StandardOutput.Dispose();
+            _process.StandardError.Dispose();
+        }
+
+        private IEnumerable<Task> Pending(Task cancelled, Task exitedOrDrained)
         {
             if (_pendingStdout is not null)
                 yield return _pendingStdout;
             if (_pendingStderr is not null)
                 yield return _pendingStderr;
             yield return cancelled;
+            yield return exitedOrDrained;
         }
 
         private static async Task ObserveAsync(Task<string?>? pendingRead)
@@ -167,9 +218,9 @@ namespace Blazemoji.Toolchain
             {
                 await pendingRead;
             }
-            catch (Exception exception) when (exception is IOException or ObjectDisposedException or OperationCanceledException)
+            catch (Exception exception) when (exception is IOException or ObjectDisposedException or OperationCanceledException or InvalidOperationException)
             {
-                // The pipe closed underneath a read that nobody is waiting for any more.
+                // The pipe was closed underneath a read that nobody is waiting for any more.
             }
         }
     }

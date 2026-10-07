@@ -53,6 +53,20 @@ namespace Blazemoji.Test.Toolchain
 
         [Fact]
         [Trait("Category", "Toolchain")]
+        public async Task An_error_on_the_first_line_is_reported_one_based_like_any_other_line()
+        {
+            Assert.SkipUnless(ToolchainFixture.Available, ToolchainFixture.SkipReason);
+            await using var toolchain = ToolchainFixture.Create();
+
+            // The compiler itself counts characters on line 1 from zero and on later lines from one.
+            var result = await toolchain.CompileAsync(ToolchainFixture.SingleFile("🏁 🍇 😀 nope❗️ 🍉\n"), TestContext.Current.CancellationToken);
+
+            result.Diagnostics.ShouldHaveSingleItem().ShouldBe(
+                new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 1, 7, "Variable \"nope\" not defined."));
+        }
+
+        [Fact]
+        [Trait("Category", "Toolchain")]
         public async Task Concurrent_compiles_get_separate_builds()
         {
             Assert.SkipUnless(ToolchainFixture.Available, ToolchainFixture.SkipReason);
@@ -121,7 +135,21 @@ namespace Blazemoji.Test.Toolchain
             result.Ok.ShouldBeFalse();
             result.BuildId.ShouldBeNull();
             result.Diagnostics.ShouldHaveSingleItem().Severity.ShouldBe(DiagnosticSeverity.Error);
-            Directory.Exists(toolchain.WorkRoot).ShouldBeFalse();
+            BuildDirectories(toolchain).ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task Two_toolchains_given_the_same_work_root_do_not_delete_each_others_builds()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var sharedRoot = Path.Combine(Path.GetTempPath(), "blazemoji-tests", Guid.NewGuid().ToString("N"));
+            var first = ToolchainFixture.Create(options => options.WorkRoot = sharedRoot);
+            await using var second = ToolchainFixture.Create(options => options.WorkRoot = sharedRoot);
+            var buildId = ToolchainFixture.ScriptBuild(second, "echo still here");
+
+            await first.DisposeAsync();
+
+            second.HasBuild(buildId).ShouldBeTrue();
         }
 
         [Fact]
@@ -134,6 +162,25 @@ namespace Blazemoji.Test.Toolchain
 
             result.Ok.ShouldBeFalse();
             result.Diagnostics.ShouldHaveSingleItem().Message.ShouldBe("The entry file is not among the files.");
+        }
+
+        [Fact]
+        public async Task A_compiler_that_exits_cleanly_without_producing_a_program_is_a_failed_build()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var fakeCompiler = Path.Combine(Path.GetTempPath(), "blazemoji-tests", "fake-compiler-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.GetDirectoryName(fakeCompiler)!);
+            File.WriteAllText(fakeCompiler, "#!/bin/sh\necho '[]'\necho 'ld: cannot find -lruntime' >&2\n");
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(fakeCompiler, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            await using var toolchain = ToolchainFixture.Create(options => options.CompilerPath = fakeCompiler);
+
+            var result = await toolchain.CompileAsync(ToolchainFixture.SingleFile(Programs.Hello), TestContext.Current.CancellationToken);
+
+            result.Ok.ShouldBeFalse();
+            result.BuildId.ShouldBeNull();
+            result.Diagnostics.ShouldHaveSingleItem().Message.ShouldBe("The program could not be linked.");
+            BuildDirectories(toolchain).ShouldBeEmpty();
         }
 
         [Fact]
@@ -166,7 +213,7 @@ namespace Blazemoji.Test.Toolchain
         {
             var builds = Path.Combine(toolchain.WorkRoot, "builds");
             return Directory.Exists(builds)
-                ? Directory.GetDirectories(builds).Select(Path.GetFileName).ToArray()!
+                ? Directory.GetDirectories(builds).Select(path => Path.GetFileName(path)!).ToArray()
                 : [];
         }
 

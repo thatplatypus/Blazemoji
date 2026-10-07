@@ -216,6 +216,129 @@ namespace Blazemoji.Test.Toolchain
         }
 
         [Fact]
+        public async Task A_background_child_that_keeps_the_pipes_open_does_not_keep_the_run_open()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create();
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "sleep 30 &\necho started");
+
+            await using var run = await toolchain.StartRunAsync(new RunRequest(buildId), Cancellation);
+            var clock = Stopwatch.StartNew();
+            var finished = await run.RunToEndAsync(Cancellation);
+
+            finished.Stdout.ShouldBe("started\n");
+            finished.Exit.ExitCode.ShouldBe(0);
+            finished.Exit.Reason.ShouldBe(RunEndReason.Exited);
+            clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(10));
+        }
+
+        [Fact]
+        public async Task Stop_ends_the_run_when_a_child_would_keep_the_pipes_open()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create();
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "sleep 30 &\necho started\nsleep 30");
+
+            await using var run = await toolchain.StartRunAsync(new RunRequest(buildId), Cancellation);
+            var clock = Stopwatch.StartNew();
+            ExitEvent? exit = null;
+            await foreach (var runEvent in run.ReadEventsAsync(Cancellation))
+            {
+                if (runEvent is StdoutEvent)
+                    await run.StopAsync();
+                if (runEvent is ExitEvent exited)
+                    exit = exited;
+            }
+
+            exit.ShouldNotBeNull().Reason.ShouldBe(RunEndReason.Stopped);
+            clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(10));
+        }
+
+        [Fact]
+        public async Task The_time_limit_ends_the_run_when_a_child_would_keep_the_pipes_open()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create();
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "sleep 30 &\nsleep 30");
+
+            await using var run = await toolchain.StartRunAsync(new RunRequest(buildId, Timeout: TimeSpan.FromMilliseconds(500)), Cancellation);
+            var clock = Stopwatch.StartNew();
+            var finished = await run.RunToEndAsync(Cancellation);
+
+            finished.Exit.Reason.ShouldBe(RunEndReason.TimedOut);
+            clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(10));
+        }
+
+        [Fact]
+        public async Task Disposing_a_run_does_not_wait_for_a_child_that_keeps_the_pipes_open()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create();
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "sleep 30 &\necho started\nsleep 30");
+            var run = await toolchain.StartRunAsync(new RunRequest(buildId), Cancellation);
+            await using var events = run.ReadEventsAsync(Cancellation).GetAsyncEnumerator(Cancellation);
+            (await events.MoveNextAsync()).ShouldBeTrue();
+            await events.DisposeAsync();
+
+            var clock = Stopwatch.StartNew();
+            await run.DisposeAsync();
+
+            clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(10));
+        }
+
+        [Fact]
+        public async Task Stopping_a_run_ends_the_children_it_started_too()
+        {
+            Assert.SkipUnless(OperatingSystem.IsLinux(), "Ending a whole process group needs setsid, which the Linux images have.");
+            await using var toolchain = ToolchainFixture.Create();
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "sleep 30 &\necho $!\nsleep 30");
+
+            await using var run = await toolchain.StartRunAsync(new RunRequest(buildId), Cancellation);
+            var childId = 0;
+            await foreach (var runEvent in run.ReadEventsAsync(Cancellation))
+            {
+                if (runEvent is StdoutEvent output)
+                {
+                    childId = int.Parse(output.Text.Trim());
+                    await run.StopAsync();
+                }
+            }
+
+            childId.ShouldBeGreaterThan(0);
+            await Task.Delay(200, Cancellation);
+            Should.Throw<ArgumentException>(() => Process.GetProcessById(childId));
+        }
+
+        [Theory]
+        [InlineData(-5)]
+        [InlineData(0)]
+        [InlineData(60L * 60 * 24 * 365)]
+        public async Task A_time_limit_that_makes_no_sense_does_not_leave_a_program_running_unwatched(long seconds)
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create();
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "echo ran");
+
+            await using var run = await toolchain.StartRunAsync(new RunRequest(buildId, Timeout: TimeSpan.FromSeconds(seconds)), Cancellation);
+            var finished = await run.RunToEndAsync(Cancellation);
+
+            finished.Stdout.ShouldBe("ran\n");
+        }
+
+        [Fact]
+        public async Task Stop_after_dispose_does_nothing()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create();
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "echo once");
+            var run = await toolchain.StartRunAsync(new RunRequest(buildId), Cancellation);
+            await run.RunToEndAsync(Cancellation);
+            await run.DisposeAsync();
+
+            await Should.NotThrowAsync(() => run.StopAsync());
+        }
+
+        [Fact]
         public async Task A_second_reader_is_refused()
         {
             Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);

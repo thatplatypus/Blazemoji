@@ -61,16 +61,28 @@
     private Sidebar _sidebar;
     private EmojiPicker _emojiPicker;
     private IReadOnlyList<Diagnostic>? _markedDiagnostics;
+    private RunStatus _renderedStatus = RunStatus.Idle;
 
     private bool IsIdle => _runState.Status == RunStatus.Idle;
 
     protected override void OnInitialized()
     {
         _runState.StateChanged += OnRunStateChanged;
-        _runState.DiagnosticsChanged += OnRunStateChanged;
+        _runState.DiagnosticsChanged += OnDiagnosticsChanged;
     }
 
     private void OnRunStateChanged()
+    {
+        // The state announces every batch of output. This page only shows whether something
+        // is running, so it re-renders when that changes and leaves the rest to the output panel.
+        if (_runState.Status == _renderedStatus)
+            return;
+
+        _renderedStatus = _runState.Status;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnDiagnosticsChanged()
     {
         InvokeAsync(StateHasChanged);
     }
@@ -110,7 +122,7 @@
     private async Task LoadEmojicFile(EmojicFile file)
     {
         await _editor.SetCodeAsync(file.Code);
-        await _editor.ClearMarkersAsync();
+        _runState.ClearDiagnostics();
     }
 
     private async Task SaveEmojicode()
@@ -161,7 +173,7 @@
     public void Dispose()
     {
         _runState.StateChanged -= OnRunStateChanged;
-        _runState.DiagnosticsChanged -= OnRunStateChanged;
+        _runState.DiagnosticsChanged -= OnDiagnosticsChanged;
     }
 
 }
