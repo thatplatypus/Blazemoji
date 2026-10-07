@@ -1,5 +1,5 @@
 # check=skip=FromPlatformFlagConstDisallowed
-# Emojicode ships x86_64 Linux binaries only, so every stage is linux/amd64.
+# The Emojicode compiler bundled in this repo is the x86_64 Linux build, so every stage is linux/amd64.
 # Build from the repository root:
 #   docker build -f Blazemoji/Dockerfile --target test .     run the tests
 #   docker build -f Blazemoji/Dockerfile -t blazemoji .      build the app image
