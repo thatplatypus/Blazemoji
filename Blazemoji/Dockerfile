@@ -11,9 +11,11 @@ RUN /tmp/install-toolchain-deps.sh
 WORKDIR /src
 COPY global.json Blazemoji.sln ./
 COPY Blazemoji/Blazemoji.csproj Blazemoji/
+COPY Blazemoji.Toolchain/Blazemoji.Toolchain.csproj Blazemoji.Toolchain/
 COPY Blazemoji.Test/Blazemoji.Test.csproj Blazemoji.Test/
 RUN dotnet restore Blazemoji.sln
 COPY Blazemoji/ Blazemoji/
+COPY Blazemoji.Toolchain/ Blazemoji.Toolchain/
 COPY Blazemoji.Test/ Blazemoji.Test/
 RUN dotnet build Blazemoji.sln -c $BUILD_CONFIGURATION --no-restore
 
