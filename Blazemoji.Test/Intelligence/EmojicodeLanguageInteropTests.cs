@@ -35,7 +35,7 @@ namespace Blazemoji.Test.Intelligence
         [Fact]
         public async Task Registering_loads_the_module_and_registers_the_providers_once()
         {
-            var module = JSInterop.SetupModule("./js/emojicodeLanguage.js");
+            var module = JSInterop.SetupModule("./_content/Blazemoji.Components/js/emojicodeLanguage.js");
             module.SetupModule("register", _ => true).SetupVoid("dispose").SetVoidResult();
             await using var interop = Create();
 
@@ -113,7 +113,7 @@ namespace Blazemoji.Test.Intelligence
         [Fact]
         public async Task Disposing_after_the_page_has_gone_does_not_throw()
         {
-            var module = JSInterop.SetupModule("./js/emojicodeLanguage.js");
+            var module = JSInterop.SetupModule("./_content/Blazemoji.Components/js/emojicodeLanguage.js");
             module.SetupModule("register", _ => true).SetupVoid("dispose").SetException(new JSDisconnectedException("gone"));
             var interop = Create();
             await interop.RegisterAsync("emojiscript");

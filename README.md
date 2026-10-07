@@ -42,12 +42,14 @@ The Emojicode compiler bundled in this repo is the x86_64 Linux build of 1.0 bet
 
 | Project | What it is |
 | --- | --- |
-| `Blazemoji` | The web app: projects, editor, toolbox, output, problems and requests. It holds no compiler. |
+| `Blazemoji` | The web host: a Blazor Server app that shows the editor and keeps projects in the browser. It holds no compiler. |
+| `Blazemoji.Components` | The editor as Razor components, with the state behind them: projects, editor, toolbox, output, problems and requests. |
+| `Blazemoji.Core` | The keyword catalog, the code intelligence and the project model. No UI. |
 | `Blazemoji.Toolchain` | The toolchain contract (`IToolchain`) and `HttpToolchain`, its client. |
 | `Blazemoji.Toolchain.Local` | Compiles and runs programs as local processes. Holds the compiler and stock packages. |
 | `Blazemoji.Toolchain.Service` | A small HTTP service in front of the local toolchain. |
 
-The web app reaches the toolchain service at `ToolchainClient:BaseUrl` (default `http://localhost:5290`). Any host that can make HTTP requests can use the same service; that setting is the only thing it needs.
+The web app reaches the toolchain service at `ToolchainClient:BaseUrl` (default `http://localhost:5290`). Any host that can make HTTP requests can use the same service; that setting is the only thing it needs. [docs/hosting.md](docs/hosting.md) lists what a second host, such as a desktop app, has to supply to show the same editor.
 
 ## Run the app
 
@@ -73,7 +75,7 @@ A project runs either as a **Program**, which runs to the end and stops, or as a
 
 ## Help while typing
 
-The editor has no language server. Three small Monaco providers hand the text and the cursor's position to plain C# (`Blazemoji/Emojicode/Intelligence`), which answers from the keyword catalog, a list of emoji names, and the compiler's documentation report for each package the project imports.
+The editor has no language server. Three small Monaco providers hand the text and the cursor's position to plain C# (`Blazemoji.Core/Emojicode/Intelligence`), which answers from the keyword catalog, a list of emoji names, and the compiler's documentation report for each package the project imports.
 
 - **Type a name to find an emoji.** `inbox` or `:inbox` offers 📥. Methods of the variables in scope come first, then keywords, then every other emoji. Tab accepts; Enter is always a new line.
 - **Type the receiver and a dot to find a method.** Emojicode puts the method first (`📥 app 🔤/🔤 handler❗️`), so there is nothing to complete against when you start typing a call. `app.` lists the methods of `app`'s type, and accepting one rewrites it into `📥 app `. The editor works out a variable's type from the text: an initializer, a literal, a documented call, or a declared parameter.
@@ -81,7 +83,7 @@ The editor has no language server. Three small Monaco providers hand the text an
 - **Hover** over a keyword, a type, a method or a variable to see what it is.
 - **Problems show up while you type.** About half a second after a pause the project is compiled without linking, and errors are marked in the editor and counted on the Problems tab. Only Run brings that tab forward.
 
-The provider code is TypeScript in `Blazemoji/Scripts`. Its compiled JavaScript is committed, so building the app needs no Node; `scripts/build-js.sh` recompiles it after a change.
+The provider code is TypeScript in `Blazemoji.Components/Scripts`. Its compiled JavaScript is committed, so building the app needs no Node; `scripts/build-js.sh` recompiles it after a change.
 
 ## Grapevine
 

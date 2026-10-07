@@ -1,6 +1,5 @@
 @using System.Globalization
 @using Blazemoji.Toolchain
-@using Microsoft.AspNetCore.WebUtilities
 @implements IDisposable
 @inject RunState Run
 @inject RequestState Requests
@@ -136,7 +135,7 @@
 
     private static string StatusLine(ProgramResponse response)
     {
-        var reason = string.IsNullOrEmpty(response.ReasonPhrase) ? ReasonPhrases.GetReasonPhrase(response.StatusCode) : response.ReasonPhrase;
+        var reason = string.IsNullOrEmpty(response.ReasonPhrase) ? RequestState.ReasonPhrase(response.StatusCode) : response.ReasonPhrase;
         return $"{response.StatusCode} {reason}".TrimEnd();
     }
 

@@ -1,46 +1,26 @@
 using Blazemoji;
 using Blazemoji.Components;
 using Blazemoji.Services.Library;
-using Blazemoji.Emojicode.Intelligence;
-using Blazemoji.Interop;
 using Blazemoji.Services.Projects;
-using Blazemoji.Shared.State;
 using Blazemoji.Toolchain.Http;
 using MudBlazor.Services;
-using System;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 builder.Services.AddRazorPages();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+// What any host of the editor registers. docs/hosting.md explains each line.
 builder.Services.AddMudServices();
-builder.Services.AddBlazoredLocalStorage();
-builder.Services.AddTransient<ILibraryService, LibraryService>();
 builder.Services.AddToolchainClient(builder.Configuration);
-builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddScoped<RunState>();
+builder.Services.AddBlazemojiEditor();
 builder.Services.Configure<ProjectTemplateOptions>(builder.Configuration.GetSection(ProjectTemplateOptions.SectionName));
-builder.Services.AddSingleton<IProjectTemplates, FileProjectTemplates>();
+
+// What this host supplies because it runs in a browser: projects and snippets in local storage.
+builder.Services.AddBlazoredLocalStorage();
 builder.Services.AddScoped<IProjectStore, LocalStorageProjectStore>();
-builder.Services.AddScoped<ProjectState>();
-builder.Services.AddScoped<RequestState>();
-builder.Services.AddSingleton<IEmojiNames, EmojiNames>();
-builder.Services.AddSingleton<ICodeIntelligence, CodeIntelligence>();
-builder.Services.AddScoped<IPackageLibrary, PackageLibrary>();
-builder.Services.AddScoped<EmojicodeLanguageInterop>();
-builder.Services.AddSingleton(new LocalStorageFiles());
-
-//Register emojicode keyword implementations
-var emojicodeKeywordTypes = typeof(EmojicodeKeyword).Assembly.GetTypes()
-    .Where(t => t.IsSubclassOf(typeof(EmojicodeKeyword)));
-
-foreach (var type in emojicodeKeywordTypes)
-{
-    if (Activator.CreateInstance(type) is EmojicodeKeyword keyword && keyword.Emoji != null)
-        builder.Services.AddSingleton(typeof(EmojicodeKeyword), type);
-}
+builder.Services.AddTransient<ILibraryService, LibraryService>();
 
 var app = builder.Build();
 

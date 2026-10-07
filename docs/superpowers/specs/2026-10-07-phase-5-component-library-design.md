@@ -67,3 +67,11 @@ Nothing new is being built, so the test is that nothing changed:
 1. Two libraries (Core and Components) where the brief says "a Razor class library", to follow the Mythetech layering.
 2. Namespaces are kept as they are.
 3. Local storage implementations stay in the web host.
+
+## Amendments during implementation
+
+1. **The saved-snippet list is now per session.** `LocalStorageFiles` was registered as one instance for the whole app, so on a server every visitor shared one list of snippet names and code. It is registered per session with the other state. This is the one behaviour change in the phase.
+2. **The status words for HTTP codes are a small table in `RequestState`.** The Requests panel used ASP.NET's `ReasonPhrases`, which a component library that must also load in a desktop app cannot reference.
+3. **The keybindings stay with the components,** not in Core: they are written in terms of Monaco's key codes.
+4. **`IProjectTemplates` and its file reader are in Core;** `IProjectStore` and `ILibraryService` are in Components, since only a host implements them.
+5. **The Dockerfile's new `COPY` lines have not been through an image build.** Docker's disk had no room for one. The projects build and pass their tests in the Linux container, where the sources are copied in whole, and the published output was checked for the library's static files.

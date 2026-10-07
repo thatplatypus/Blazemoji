@@ -23,7 +23,7 @@ namespace Blazemoji.Interop
         ProjectState project,
         ILogger<EmojicodeLanguageInterop> logger) : IAsyncDisposable
     {
-        private const string ModulePath = "./js/emojicodeLanguage.js";
+        private const string ModulePath = "./_content/Blazemoji.Components/js/emojicodeLanguage.js";
         private const string RegisterFunction = "register";
         private const string DisposeFunction = "dispose";
 

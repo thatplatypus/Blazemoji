@@ -94,6 +94,48 @@ namespace Blazemoji.Shared.State
         };
 
         /// <summary>
+        /// The usual words for a status code, for a program that sent the number alone.
+        /// </summary>
+        public static string ReasonPhrase(int statusCode) => statusCode switch
+        {
+            200 => "OK",
+            201 => "Created",
+            202 => "Accepted",
+            204 => "No Content",
+            301 => "Moved Permanently",
+            302 => "Found",
+            303 => "See Other",
+            304 => "Not Modified",
+            307 => "Temporary Redirect",
+            308 => "Permanent Redirect",
+            400 => "Bad Request",
+            401 => "Unauthorized",
+            403 => "Forbidden",
+            404 => "Not Found",
+            405 => "Method Not Allowed",
+            406 => "Not Acceptable",
+            408 => "Request Timeout",
+            409 => "Conflict",
+            410 => "Gone",
+            411 => "Length Required",
+            413 => "Content Too Large",
+            414 => "URI Too Long",
+            415 => "Unsupported Media Type",
+            418 => "I'm a teapot",
+            422 => "Unprocessable Content",
+            426 => "Upgrade Required",
+            429 => "Too Many Requests",
+            431 => "Request Header Fields Too Large",
+            500 => "Internal Server Error",
+            501 => "Not Implemented",
+            502 => "Bad Gateway",
+            503 => "Service Unavailable",
+            504 => "Gateway Timeout",
+            505 => "HTTP Version Not Supported",
+            _ => string.Empty,
+        };
+
+        /// <summary>
         /// The body of an answer as text to show: JSON laid out over several lines, other text
         /// as it is, and a description in place of anything that is not text.
         /// </summary>

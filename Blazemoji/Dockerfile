@@ -18,6 +18,8 @@ ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY global.json ./
 COPY Blazemoji/Blazemoji.csproj Blazemoji/
+COPY Blazemoji.Core/Blazemoji.Core.csproj Blazemoji.Core/
+COPY Blazemoji.Components/Blazemoji.Components.csproj Blazemoji.Components/
 COPY Blazemoji.Toolchain/Blazemoji.Toolchain.csproj Blazemoji.Toolchain/
 COPY Blazemoji.Toolchain.Local/Blazemoji.Toolchain.Local.csproj Blazemoji.Toolchain.Local/
 COPY Blazemoji.Toolchain.Service/Blazemoji.Toolchain.Service.csproj Blazemoji.Toolchain.Service/
@@ -26,6 +28,8 @@ COPY Blazemoji.Test/Blazemoji.Test.csproj Blazemoji.Test/
 # all three. The browser tests run on the host and are left out of the image.
 RUN dotnet restore Blazemoji.Test/Blazemoji.Test.csproj
 COPY Blazemoji/ Blazemoji/
+COPY Blazemoji.Core/ Blazemoji.Core/
+COPY Blazemoji.Components/ Blazemoji.Components/
 COPY Blazemoji.Toolchain/ Blazemoji.Toolchain/
 COPY Blazemoji.Toolchain.Local/ Blazemoji.Toolchain.Local/
 COPY Blazemoji.Toolchain.Service/ Blazemoji.Toolchain.Service/

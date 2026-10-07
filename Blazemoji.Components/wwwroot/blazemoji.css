@@ -1,0 +1,45 @@
+/* The few rules Blazemoji's components need that are not scoped to one component.
+   A host links this file: _content/Blazemoji.Components/blazemoji.css */
+.monaco-editor-container { 
+    height: 80vh;
+}
+
+.editor {
+    height: 83vh;
+}
+
+.tree-view-no-arrow > * > .mud-treeview-item-arrow {
+  width:16px;
+}
+
+.emoji-box-hover:hover {
+    background-color: var(--mud-palette-primary-hover);
+    cursor:pointer;
+}
+
+.stretch-emoji {
+    font-size: xx-large !important;
+    line-height: 3rem;
+}
+
+.emoji-picker {
+    margin-right: 0px!important;
+    width: 1rem;
+}
+
+.emoji-picker > .mud-input-control {
+    margin-top: 0!important;
+}
+
+.emoji-picker > .mud-input-control > .mud-input-control-input-container > div.mud-input.mud-input-text {
+    margin-top: 0!important;
+}
+
+.text-align-center {
+    text-align: center!important;
+}
+
+.m-auto {
+    margin-left: auto!important;
+    margin-right: auto!important;
+}
