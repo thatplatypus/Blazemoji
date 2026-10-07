@@ -34,9 +34,12 @@ RUN dotnet build Blazemoji.Test/Blazemoji.Test.csproj -c $BUILD_CONFIGURATION --
 
 FROM build AS test
 # A skipped test here means the compiler tests did not run, and a hung test must fail the
-# build instead of blocking it, so both are turned into failures. The outer timeout is for
-# the rare case, seen under amd64 emulation, where the whole test process freezes.
-RUN timeout -k 10 900 dotnet test --project Blazemoji.Test/Blazemoji.Test.csproj -c $BUILD_CONFIGURATION --no-build --timeout 5m -- --fail-skips on
+# build instead of blocking it, so both are turned into failures. The tests that start
+# processes run apart from the rest, and each run has an outer timeout, because under amd64
+# emulation a process that compiles its own code while starting others can freeze for good
+# (see scripts/test-in-docker.sh).
+RUN timeout -k 10 900 dotnet test --project Blazemoji.Test/Blazemoji.Test.csproj -c $BUILD_CONFIGURATION --no-build --timeout 5m -- --fail-skips on --filter-namespace Blazemoji.Test.Toolchain
+RUN timeout -k 10 900 dotnet test --project Blazemoji.Test/Blazemoji.Test.csproj -c $BUILD_CONFIGURATION --no-build --timeout 5m -- --fail-skips on --filter-not-namespace Blazemoji.Test.Toolchain
 
 FROM build AS publish-web
 RUN dotnet publish Blazemoji/Blazemoji.csproj -c $BUILD_CONFIGURATION --no-build -o /app/publish /p:UseAppHost=false

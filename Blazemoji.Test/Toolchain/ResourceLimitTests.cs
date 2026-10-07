@@ -23,8 +23,8 @@ namespace Blazemoji.Test.Toolchain
             var clock = Stopwatch.StartNew();
             var finished = await run.RunToEndAsync(Cancellation);
 
-            finished.Exit.Reason.ShouldBe(RunEndReason.TimedOut);
-            finished.Exit.ExitCode.ShouldNotBe(0);
+            finished.Exit.Reason.ShouldBe(RunEndReason.TimedOut, $"exit code {finished.Exit.ExitCode}");
+            finished.Exit.ExitCode.ShouldBe(128 + 24);
             clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(15));
         }
 
@@ -82,8 +82,8 @@ namespace Blazemoji.Test.Toolchain
             var clock = Stopwatch.StartNew();
             var finished = await run.RunToEndAsync(Cancellation);
 
-            finished.Exit.Reason.ShouldBe(RunEndReason.TimedOut);
-            finished.Exit.ExitCode.ShouldNotBe(0);
+            finished.Exit.Reason.ShouldBe(RunEndReason.TimedOut, $"exit code {finished.Exit.ExitCode}");
+            finished.Exit.ExitCode.ShouldBe(128 + 24);
             clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(15));
         }
     }

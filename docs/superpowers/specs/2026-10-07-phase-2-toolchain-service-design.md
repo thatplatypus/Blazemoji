@@ -151,9 +151,23 @@ The review found no critical defects and six important ones. All six are fixed o
 2. **Finished runs were kept without any ceiling.** Forty runs that each hit the output cap held 650 MB within two seconds. Finished runs are now kept up to a count (`MaxRetainedRuns`, 32) and an approximate amount of memory (`MaxRetainedBytes`, 64 MiB), oldest dropped first, the newest always kept. Compiles are limited to `MaxConcurrentCompiles` (4) at once; one beyond that is `429`. Request bodies over `MaxRequestBodyBytes` (4 MiB) are `413`.
 3. **The compose file set no limits on the toolchain container.** A program can start processes of its own, each with a fresh per-process allowance, so `prlimit` alone is not a ceiling. The container now has limits on processes (1024), memory (2 GB) and CPUs (4), a read-only file system with an in-memory `/tmp`, no capabilities and `no-new-privileges`.
 4. **The client waited for ever, and Stop could throw into the page.** The client now gives up on a request after `ToolchainClient:RequestTimeout` (2 minutes, longer than the slowest compile); an open event stream is not subject to it. Stop gives up after 10 seconds and never throws.
-5. **A program ended by the CPU limit was reported as having exited with code 152.** It is now reported as `timedOut`, the same as the wall-clock limit, which is what the same endless loop produced in Phase 1.
+5. **A program ended by the CPU limit was reported as having exited with an odd code.** It is now reported as `timedOut`, the same as the wall-clock limit, which is what the same endless loop produced in Phase 1. The CPU limit is set as a soft limit with a hard one a second later, because only the soft limit ends a program with a signal that says why.
 6. **The contract tests had gaps.** They now own their test programs (no file linked from another project), run one class at a time so that they need only one free run slot, omit `env` when there is none, and assert content types for real (three assertions had been skipped when the header was missing). New tests: `429` at the run limit and the slot coming back, `413` for an oversized body, `400` for a body that is not JSON.
 
 The end-to-end script's isolation check now first proves the toolchain container answers its own health check, so a container that is not running can no longer pass as "no route out". It also reports whether public names resolve from inside it.
 
 Additions to the contract table: `POST /compile` can answer `429`; any request can answer `413`.
+
+### The freeze under emulation, looked at properly
+
+Amendment 8 recorded that a .NET process had twice frozen under amd64 emulation. With more tests it became frequent (four test runs in five), so it was investigated instead of worked around:
+
+- In a frozen process every thread, including the runtime's own signal, timer and socket threads, is parked in the kernel on a priority-inheritance lock of its own. That is not something .NET does; it is the emulator stopping every thread, and never starting them again. `SIGTERM` is ignored and exited child processes are never collected.
+- It happens within about five seconds of start, never later. Runs that get past that point finish.
+- The tests that start processes, run on their own, did not freeze in five runs out of five. The same tests run beside the component and web tests froze four times in five. So the trigger is a process that is compiling a great deal of its own code while it also starts other processes.
+- Serialising process starts, replacing `vfork` with `fork`, turning off write-xor-execute, tiered compilation, concurrent collection and signal-based suspension, and a much larger first-generation budget were each tried and each still froze.
+- The emulator was also seen to abort the process outright (exit 133) with an assertion about another process's `/proc` entry.
+
+What was done: every test that starts a process lives in `Blazemoji.Test.Toolchain`, and the Docker script and the image's test stage run that namespace on its own, apart from the rest. A run that froze or was aborted is tried again, up to three times; a test that fails is never retried. None of this is needed on real x86_64.
+
+What it means for the service: it compiles far less of its own code than a test run does, and it never froze in the browser test runs, but the same emulator runs it on an Apple Silicon Mac. If Run Code ever stops answering there, restart the toolchain container.

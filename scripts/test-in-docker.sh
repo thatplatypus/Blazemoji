@@ -6,9 +6,13 @@
 # which is rebuilt only when the toolchain stage of the Dockerfile changes. NuGet packages are
 # kept in the "blazemoji-nuget" volume between runs.
 #
-# Under amd64 emulation the .NET test process has occasionally frozen outright (every thread
-# parked, no test started). The run is therefore given 15 minutes and killed if it overruns;
-# run it again if that happens.
+# Under amd64 emulation on Apple Silicon a .NET process can stop for good: the emulator parks
+# every thread and never wakes them. It happens when the process is compiling a lot of its own
+# code while it also starts other processes, which is exactly what a test run does in its
+# first seconds. The emulator has also been seen to abort the process outright. So the tests
+# that start processes (everything in Blazemoji.Test.Toolchain) run on their own, the rest run
+# afterwards, and a run that froze or was aborted is tried again, up to three times. A test
+# that fails is never retried.
 #
 #   scripts/test-in-docker.sh                      run everything
 #   scripts/test-in-docker.sh --output Detailed    extra arguments go to dotnet test
@@ -27,7 +31,35 @@ docker run --rm --platform linux/amd64 \
     cd /host
     tar -cf - --exclude=./.git --exclude=bin --exclude=obj --exclude=./.superpowers --exclude=./.cerberus . | tar -xf - -C /src
     cd /src
-    timeout -k 10 900 dotnet test --project Blazemoji.Test/Blazemoji.Test.csproj -c Release --timeout 5m "$@" -- --fail-skips on
+    extra="$*"
+
+    # run_tests <project> <arguments for the test host...>
+    # Exit codes 124 and 137 are the outer timeout ending a frozen process, and 133 is the
+    # emulator aborting it. Those are tried again; anything else is the answer.
+    run_tests() {
+      project="$1"
+      shift
+      attempt=1
+      while :; do
+        status=0
+        timeout -k 10 300 dotnet test --project "$project" -c Release --timeout 4m $extra -- --fail-skips on "$@" || status=$?
+        case "$status" in
+          124|133|137)
+            if [ "$attempt" -ge 3 ]; then
+              return "$status"
+            fi
+            attempt=$((attempt + 1))
+            echo "The test process froze or was aborted by the emulator (exit $status). Trying again." >&2
+            ;;
+          *)
+            return "$status"
+            ;;
+        esac
+      done
+    }
+
+    run_tests Blazemoji.Test/Blazemoji.Test.csproj --filter-namespace Blazemoji.Test.Toolchain
+    run_tests Blazemoji.Test/Blazemoji.Test.csproj --filter-not-namespace Blazemoji.Test.Toolchain
 
     # The contract tests are black-box: they are pointed at a running toolchain service and
     # know nothing else about it. The service was built with the tests above.
@@ -43,5 +75,5 @@ docker run --rm --platform linux/amd64 \
       sleep 1
     done
 
-    TOOLCHAIN_BASE_URL=http://127.0.0.1:5290 timeout -k 10 600 dotnet test --project Blazemoji.Toolchain.ContractTests/Blazemoji.Toolchain.ContractTests.csproj -c Release --timeout 5m "$@" -- --fail-skips on
+    TOOLCHAIN_BASE_URL=http://127.0.0.1:5290 run_tests Blazemoji.Toolchain.ContractTests/Blazemoji.Toolchain.ContractTests.csproj
   ' sh "$@"

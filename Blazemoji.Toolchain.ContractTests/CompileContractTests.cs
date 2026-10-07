@@ -127,7 +127,11 @@ namespace Blazemoji.Toolchain.ContractTests
             Assert.SkipWhen(ToolchainService.BaseUrl is null, ToolchainService.SkipReason);
             var files = new Dictionary<string, string> { ["main.🍇"] = Programs.Hello + "💭 " + new string('x', 16 * 1024 * 1024) };
 
-            using var response = await ToolchainService.PostCompileAsync(new { files, entry = "main.🍇" }, Cancellation);
+            // Asking first is what lets the answer be read: a service is free to hang up on a
+            // body this size, and then there is no status to see.
+            using var request = new HttpRequestMessage(HttpMethod.Post, "compile") { Content = ToolchainService.Json(new { files, entry = "main.🍇" }) };
+            request.Headers.ExpectContinue = true;
+            using var response = await ToolchainService.Http.SendAsync(request, Cancellation);
 
             response.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
         }

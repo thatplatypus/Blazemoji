@@ -1,8 +1,7 @@
-using Blazemoji.Test.Toolchain;
 using Blazemoji.Toolchain;
 using Blazemoji.Toolchain.Local;
 
-namespace Blazemoji.Test
+namespace Blazemoji.Test.Toolchain
 {
     public class SampleProgramsTests
     {

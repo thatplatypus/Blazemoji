@@ -160,7 +160,10 @@ namespace Blazemoji.Toolchain.Local
                 command.InsertRange(0,
                 [
                     prlimit,
-                    $"--cpu={_options.CpuSeconds}",
+                    // Soft limit, then a hard one a second later. At the soft limit the program is
+                    // sent a signal that says why it is being ended, which is how a run comes to be
+                    // reported as out of time; the hard limit is for a program that ignores it.
+                    $"--cpu={_options.CpuSeconds}:{_options.CpuSeconds + 1}",
                     $"--as={_options.MemoryBytes}",
                     $"--fsize={_options.MaxFileBytes}",
                     $"--nofile={_options.MaxOpenFiles}",
