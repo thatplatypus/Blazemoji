@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 
-namespace Blazemoji.Toolchain
+namespace Blazemoji.Toolchain.Local
 {
     /// <summary>
     /// A running program. Output is read only as fast as the caller enumerates the events, so a

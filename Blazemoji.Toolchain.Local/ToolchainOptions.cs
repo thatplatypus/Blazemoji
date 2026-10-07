@@ -1,4 +1,4 @@
-namespace Blazemoji.Toolchain
+namespace Blazemoji.Toolchain.Local
 {
     public sealed class ToolchainOptions
     {

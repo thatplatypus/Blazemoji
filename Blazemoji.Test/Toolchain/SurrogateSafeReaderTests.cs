@@ -1,5 +1,6 @@
 using System.Text;
 using Blazemoji.Toolchain;
+using Blazemoji.Toolchain.Local;
 
 namespace Blazemoji.Test.Toolchain
 {

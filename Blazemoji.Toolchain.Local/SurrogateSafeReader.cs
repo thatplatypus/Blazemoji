@@ -1,4 +1,4 @@
-namespace Blazemoji.Toolchain
+namespace Blazemoji.Toolchain.Local
 {
     /// <summary>
     /// Reads text in chunks that never end between the two halves of a surrogate pair, so that

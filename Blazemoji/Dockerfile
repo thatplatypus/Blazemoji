@@ -16,12 +16,16 @@ WORKDIR /src
 COPY global.json ./
 COPY Blazemoji/Blazemoji.csproj Blazemoji/
 COPY Blazemoji.Toolchain/Blazemoji.Toolchain.csproj Blazemoji.Toolchain/
+COPY Blazemoji.Toolchain.Local/Blazemoji.Toolchain.Local.csproj Blazemoji.Toolchain.Local/
+COPY Blazemoji.Toolchain.Service/Blazemoji.Toolchain.Service.csproj Blazemoji.Toolchain.Service/
 COPY Blazemoji.Test/Blazemoji.Test.csproj Blazemoji.Test/
 # The test project references the app and the toolchain, so restoring and building it covers
 # all three. The browser tests run on the host and are left out of the image.
 RUN dotnet restore Blazemoji.Test/Blazemoji.Test.csproj
 COPY Blazemoji/ Blazemoji/
 COPY Blazemoji.Toolchain/ Blazemoji.Toolchain/
+COPY Blazemoji.Toolchain.Local/ Blazemoji.Toolchain.Local/
+COPY Blazemoji.Toolchain.Service/ Blazemoji.Toolchain.Service/
 COPY Blazemoji.Test/ Blazemoji.Test/
 RUN dotnet build Blazemoji.Test/Blazemoji.Test.csproj -c $BUILD_CONFIGURATION --no-restore
 

@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Blazemoji.Toolchain
+namespace Blazemoji.Toolchain.Local
 {
     /// <summary>
     /// Runs the Emojicode compiler and the programs it produces as local processes.

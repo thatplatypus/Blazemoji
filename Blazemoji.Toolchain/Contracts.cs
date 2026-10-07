@@ -17,7 +17,7 @@ namespace Blazemoji.Toolchain
         Warning,
     }
 
-    /// <param name="Timeout">Overrides <see cref="ToolchainOptions.RunTimeout"/> for this run.</param>
+    /// <param name="Timeout">Overrides the toolchain's own time limit for this run, where the toolchain allows it.</param>
     public sealed record RunRequest(
         string BuildId,
         IReadOnlyDictionary<string, string>? Environment = null,

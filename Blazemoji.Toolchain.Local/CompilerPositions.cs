@@ -1,4 +1,4 @@
-namespace Blazemoji.Toolchain
+namespace Blazemoji.Toolchain.Local
 {
     /// <summary>
     /// The compiler counts characters from zero on the first line of a file and from one on

@@ -13,7 +13,7 @@ curl -fsSL "https://github.com/emojicode/emojicode/archive/refs/tags/$TAG.tar.gz
 docker build -q -f Blazemoji/Dockerfile --target sdk-toolchain -t "$IMAGE" . > /dev/null
 
 docker run --rm --platform linux/amd64 \
-  -v "$PWD/Blazemoji":/compiler:ro \
+  -v "$PWD/Blazemoji.Toolchain.Local":/compiler:ro \
   -v "$WORK":/pkgsrc:ro \
   -v "$PWD/Blazemoji.Toolchain.Service/package-docs":/out \
   -v "$PWD/docker/generate-package-docs.sh":/generate.sh:ro \

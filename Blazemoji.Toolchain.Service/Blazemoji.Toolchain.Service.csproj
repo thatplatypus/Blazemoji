@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Blazemoji.Toolchain\Blazemoji.Toolchain.csproj" />
+    <ProjectReference Include="..\Blazemoji.Toolchain.Local\Blazemoji.Toolchain.Local.csproj" />
   </ItemGroup>
 
   <ItemGroup>

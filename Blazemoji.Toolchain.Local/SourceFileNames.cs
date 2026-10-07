@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Blazemoji.Toolchain
+namespace Blazemoji.Toolchain.Local
 {
     /// <summary>
     /// Source file names come from the caller, are written to disk, and reach the compiler's

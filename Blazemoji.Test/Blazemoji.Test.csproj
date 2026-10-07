@@ -35,6 +35,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Blazemoji\Blazemoji.csproj" />
     <ProjectReference Include="..\Blazemoji.Toolchain\Blazemoji.Toolchain.csproj" />
+    <ProjectReference Include="..\Blazemoji.Toolchain.Local\Blazemoji.Toolchain.Local.csproj" />
     <ProjectReference Include="..\Blazemoji.Toolchain.Service\Blazemoji.Toolchain.Service.csproj" />
   </ItemGroup>
 

@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace Blazemoji.Toolchain
+namespace Blazemoji.Toolchain.Local
 {
     internal sealed record ProcessResult(int ExitCode, string Stdout, string Stderr, bool TimedOut);
 

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Blazemoji.Toolchain
+namespace Blazemoji.Toolchain.Local
 {
     /// <summary>
     /// Reads what <c>emojicodec --json</c> prints on stdout.
