@@ -19,8 +19,14 @@ namespace Blazemoji.Services.Projects
     /// </remarks>
     public sealed class LocalStorageProjectStore(ILocalStorageService localStorage) : IProjectStore
     {
-        private const string IndexKey = "blazemoji.projects";
-        private const string ProjectKeyPrefix = "blazemoji.project.";
+        /// <summary>
+        /// Every key this store uses starts with this. Whatever else shares the browser's
+        /// storage (the library's saved snippets) leaves such keys alone.
+        /// </summary>
+        public const string KeyPrefix = "blazemoji.";
+
+        private const string IndexKey = KeyPrefix + "projects";
+        private const string ProjectKeyPrefix = KeyPrefix + "project.";
         private const string FileKeyInfix = ".file.";
 
         private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)

@@ -1,3 +1,5 @@
+using Blazemoji.Services.Projects;
+
 
 namespace Blazemoji.Services.Library
 {
@@ -22,7 +24,14 @@ namespace Blazemoji.Services.Library
                 await _localStorageService.RemoveItemAsync(key);
         }
 
-        private static bool IsSnippetKey(string key) => key.Contains(".🍇") || key.Contains(".emojic");
+        /// <summary>
+        /// A snippet is kept under the name it was saved with, which ends like a file's. A
+        /// project keeps each of its files under a key that ends the same way, and those
+        /// belong to the project store.
+        /// </summary>
+        private static bool IsSnippetKey(string key) =>
+            !key.StartsWith(LocalStorageProjectStore.KeyPrefix, StringComparison.Ordinal)
+            && (key.Contains(".🍇") || key.Contains(".emojic"));
 
         public async Task<List<EmojicFile>> GetAllSamplesAsync()
         {
