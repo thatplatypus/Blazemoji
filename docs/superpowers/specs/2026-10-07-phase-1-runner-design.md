@@ -162,3 +162,15 @@ NSubstitute is added now for `IToolchain`. bUnit is added now.
 3. The output panel keeps the last 5,000 lines.
 4. Default output cap 4 MiB and run timeout 30 s.
 5. Plain State classes without Mythetech.Framework, because the Framework is `net11.0` only.
+
+## Amendments during implementation
+
+1. **Events are pulled, not pumped.** Section 2 says each chunk is published on a bounded channel. Instead `ReadEventsAsync` reads both pipes itself and yields as the caller enumerates. There is no background task to leave unawaited, and a slow reader slows the program through its pipes. Consequence for Phase 2: the HTTP service needs its own per-run pump and replay buffer, which it needs anyway because a client can connect after output has started.
+2. **An Emojicode panic goes to stdout.** A program that unwraps an empty optional prints `🤯 Program panicked: ...` on stdout, not stderr, and exits with 134. The crash test pins that instead of expecting stderr.
+3. **Run mechanics are tested with shell scripts.** A script placed where a compiled program would be lets streaming, stop, timeout, output limit, environment and cleanup be tested on macOS as well as in Docker. Tests against real Emojicode binaries cover only what depends on them.
+4. **Notifications are trailing-edge.** The first output schedules one announcement 50 ms later. There is no immediate announcement. A burst followed by silence is still shown, which was the requirement.
+5. **Stop also cancels a compile in progress.**
+6. **Two page-load races that predate this phase were fixed**, because the new browser tests exposed them. `App.razor` loaded Blazor before Monaco, and even in the right order Monaco defines its global a little after its script runs. BlazorMonaco silently skips creating the editor when that global is missing, so about one cold page load in four ended with no editor and a dead circuit. Blazor is now started from the Monaco loader's ready callback.
+7. **Docker hygiene.** Every `docker build --target test` left an untagged 1.75 GB image, which filled the Docker disk during this phase. Tests now normally run through `scripts/test-in-docker.sh`, which copies the sources into a throwaway container and leaves nothing behind. The Dockerfile test stage remains, documented with `--output type=cacheonly`, and now fails on a skipped test or after five minutes instead of hanging. The Docker stages build the test project, not the solution, so the browser test project stays out of the image.
+8. **A heavy-allocation test runs alone.** Under amd64 emulation, the existing million-key test stalled itself and every process-starting test for about 20 seconds when run beside them. It is in its own non-parallel collection.
+
