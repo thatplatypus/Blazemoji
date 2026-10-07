@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Text;
 using Blazemoji.Toolchain.Http;
 
 namespace Blazemoji.Toolchain.Local
@@ -18,6 +19,8 @@ namespace Blazemoji.Toolchain.Local
             AllowAutoRedirect = false,
             AutomaticDecompression = DecompressionMethods.None,
             ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestHeaderEncodingSelector = (_, _) => Encoding.UTF8,
+            ResponseHeaderEncodingSelector = (_, _) => Encoding.UTF8,
         });
 
         public int Port => port;

@@ -380,6 +380,9 @@ namespace Blazemoji.Test.Service
         [InlineData("\\..\\..\\compile")]
         [InlineData("/./x")]
         [InlineData("/x/..")]
+        [InlineData("/a%00b")]
+        [InlineData("/a%0d%0ab")]
+        [InlineData("/a%7Fb")]
         public async Task A_path_that_would_climb_out_of_the_programs_address_space_is_refused_unsent(string path)
         {
             var sent = new List<string>();

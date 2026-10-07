@@ -146,15 +146,24 @@ namespace Blazemoji.Toolchain.Service
                 return;
             }
 
+            var passedOn = response.Headers
+                .Where(header => !ProgramHttp.IsHopByHop(header.Key) && !ProgramHttp.IsContentLength(header.Key) && !header.Key.Equals(ProxyReasons.Header, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            // The server refuses to send such a header. Left to it, the refusal would reach
+            // the caller as a 500 that looks like the program's own.
+            if (passedOn.Any(header => !ProgramHttp.CanBeSentAsHeader(header.Key, header.Value)))
+            {
+                await WriteProxyProblemAsync(context, ProgramResponseOutcome.BadResponse);
+                return;
+            }
+
             context.Response.StatusCode = response.StatusCode;
             if (response.ReasonPhrase is { Length: > 0 } reason && context.Features.Get<IHttpResponseFeature>() is { } feature)
                 feature.ReasonPhrase = reason;
 
-            foreach (var (name, value) in response.Headers)
-            {
-                if (!ProgramHttp.IsHopByHop(name) && !ProgramHttp.IsContentLength(name) && !name.Equals(ProxyReasons.Header, StringComparison.OrdinalIgnoreCase))
-                    context.Response.Headers.Append(name, value);
-            }
+            foreach (var (name, value) in passedOn)
+                context.Response.Headers.Append(name, value);
 
             if (!HttpMethods.IsHead(context.Request.Method) && StatusAllowsABody(response.StatusCode))
             {

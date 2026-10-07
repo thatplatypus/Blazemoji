@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -41,6 +42,16 @@ namespace Blazemoji.Toolchain.Http
                 client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
 
                 client.Timeout = options.RequestTimeout > TimeSpan.Zero ? options.RequestTimeout : TimeSpan.FromMinutes(2);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                // What comes back through the service can be a program's own response. A
+                // redirect or a cookie in it is something to show, never something to act
+                // on: following one would send this client wherever the program says.
+                AllowAutoRedirect = false,
+                UseCookies = false,
+                RequestHeaderEncodingSelector = (_, _) => Encoding.UTF8,
+                ResponseHeaderEncodingSelector = (_, _) => Encoding.UTF8,
             });
         }
     }

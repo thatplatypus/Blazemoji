@@ -4,6 +4,7 @@ using System.Text;
 using Blazemoji.Toolchain;
 using Blazemoji.Toolchain.Local;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -24,6 +25,7 @@ namespace Blazemoji.Test.Toolchain
         {
             var builder = WebApplication.CreateSlimBuilder();
             builder.Logging.ClearProviders();
+            builder.WebHost.ConfigureKestrel(kestrel => kestrel.ResponseHeaderEncodingSelector = _ => Encoding.UTF8);
             _program = builder.Build();
             _program.Urls.Add("http://127.0.0.1:0");
 
@@ -52,6 +54,11 @@ namespace Blazemoji.Test.Toolchain
             });
             _program.MapGet("/big", () => new string('x', 64 * 1024));
             _program.MapGet("/redirect", () => Results.Redirect("/echo/after-redirect"));
+            _program.MapGet("/emoji-header", (HttpContext context) =>
+            {
+                context.Response.Headers["X-Mood"] = "🍇 fresh";
+                return "ok";
+            });
 
             await _program.StartAsync(TestContext.Current.CancellationToken);
             _port = new Uri(_program.Urls.First()).Port;
@@ -126,6 +133,28 @@ namespace Blazemoji.Test.Toolchain
             var response = await endpoint.SendAsync(Get("echo/plain"), TestContext.Current.CancellationToken);
 
             Encoding.UTF8.GetString(response.Body).ShouldContain("/echo/plain");
+        }
+
+        [Fact]
+        public async Task A_request_header_value_outside_ascii_is_sent_as_utf8()
+        {
+            using var endpoint = new ProgramEndpoint(_port, Generous, 1024 * 1024);
+
+            var response = await endpoint.SendAsync(new ProgramRequest("GET", "/echo/x", [new("X-Test", "José 🍇")], []), TestContext.Current.CancellationToken);
+
+            response.Outcome.ShouldBe(ProgramResponseOutcome.Answered);
+            Encoding.UTF8.GetString(response.Body).ShouldContain("x-test=José 🍇");
+        }
+
+        [Fact]
+        public async Task A_header_the_program_wrote_in_utf8_is_read_as_utf8()
+        {
+            using var endpoint = new ProgramEndpoint(_port, Generous, 1024 * 1024);
+
+            var response = await endpoint.SendAsync(Get("/emoji-header"), TestContext.Current.CancellationToken);
+
+            response.Outcome.ShouldBe(ProgramResponseOutcome.Answered);
+            response.Headers.ShouldContain(new KeyValuePair<string, string>("X-Mood", "🍇 fresh"));
         }
 
         [Fact]
