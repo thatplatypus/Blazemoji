@@ -147,6 +147,7 @@ namespace Blazemoji.E2E
         [InlineData("↪️ 🤜🤛", 6, "↪️ ")]
         [InlineData("➡️ 🍿🍆", 6, "➡️ ")]
         [InlineData("🍨🐚🍆", 5, "🍨")]
+        [InlineData("😀 🔤🔤", 6, "😀 ")]
         public async Task Backspace_between_an_opener_and_its_closer_takes_both_and_undo_brings_both_back(string text, int column, string left)
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
@@ -167,6 +168,7 @@ namespace Blazemoji.E2E
         [InlineData("😀 🔤❌🔤🍇🍉🔤", 11, "😀 🔤❌🔤🍉🔤", "inside a string, after a quote that is part of it")]
         [InlineData("😀 🔤a🔤🔤b🔤", 9, "😀 🔤a🔤b🔤", "between two strings")]
         [InlineData("🏁 🍇 🍉", 6, "🏁  🍉", "with something between them")]
+        [InlineData("😀 🔤❌🔤🔤", 9, "😀 🔤❌🔤", "between a quote that is part of a string and the one that ends it")]
         public async Task Backspace_takes_one_emoji_where_the_two_are_not_an_empty_pair(string text, int column, string left, string where)
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
@@ -177,6 +179,53 @@ namespace Blazemoji.E2E
 
             await ShouldShowAsync(editor, left, $"1:{column - 2}");
             where.ShouldNotBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_quote_typed_and_taken_back_leaves_nothing_behind()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await PutAsync(editor, "😀 ", 1, 4);
+            await editor.Page.Keyboard.PressAsync("Shift+Quote");
+            await ShouldShowAsync(editor, "😀 🔤🔤", "1:6");
+
+            await editor.Page.Keyboard.PressAsync("Backspace");
+
+            // A quote left behind would make the rest of the file a string, and every key plain.
+            await ShouldShowAsync(editor, "😀 ", "1:4");
+        }
+
+        [Fact]
+        public async Task The_key_for_a_block_comment_leaves_the_cursor_inside_the_comment()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await PutAsync(editor, "line1\n\nline3", 2, 1);
+
+            await editor.Page.Keyboard.PressAsync("ControlOrMeta+Shift+Slash");
+            await ShouldShowAsync(editor, "line1\n💭🔜\n🔚💭\nline3", "2:5");
+
+            await editor.Page.Keyboard.TypeAsync(" note");
+            await ShouldShowAsync(editor, "line1\n💭🔜 note\n🔚💭\nline3", "2:10");
+        }
+
+        [Fact]
+        public async Task A_key_pressed_in_the_find_box_is_typed_there_and_not_into_the_file()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            const string text = "😀 🔤Hello World!🔤❗️";
+            await PutAsync(editor, text, 1, 1);
+            await editor.Page.Keyboard.PressAsync("ControlOrMeta+f");
+            var find = editor.Page.Locator(".monaco-editor .find-widget .find-part textarea").First;
+            await Assertions.Expect(find).ToBeFocusedAsync();
+            await editor.Page.Keyboard.TypeAsync("World");
+
+            await editor.Page.Keyboard.PressAsync("Shift+Digit1");
+
+            await Assertions.Expect(find).ToHaveValueAsync("World!");
+            (await ShownAsync(editor)).Text.ShouldBe(text);
         }
 
         [Fact]

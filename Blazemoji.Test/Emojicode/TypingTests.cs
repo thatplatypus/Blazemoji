@@ -92,6 +92,30 @@ namespace Blazemoji.Test.Emojicode
         }
 
         [Fact]
+        public void A_quote_after_an_escaped_escape_ends_the_string_as_any_other_does()
+        {
+            // ❌❌ is one ❌ written out, so the quote after it is not escaped.
+            Type("🔤", "😀 🔤a❌❌|🔤").ShouldBe("😀 🔤a❌❌🔤|");
+            Type("🔤", "😀 🔤a❌❌❌|🔤").ShouldBe("😀 🔤a❌❌❌🔤|🔤");
+        }
+
+        [Fact]
+        public void The_marks_of_a_block_comment_are_typed_together_and_the_cursor_is_left_inside()
+        {
+            const string both = "💭🔜\r\n🔚💭";
+
+            Type(both, "a\n|\nb").ShouldBe("a\n💭🔜|\r\n🔚💭\nb");
+            Typing.For(both).ShouldBe(new TypingEdit(0, 0, both, 4, 4));
+            Typing.DependsOnWhatIsAround(both).ShouldBeFalse();
+        }
+
+        [Fact]
+        public void Text_typed_without_looking_around_goes_in_with_the_cursor_after_it()
+        {
+            Typing.For("😀").ShouldBe(new TypingEdit(0, 0, "😀", 2, 2));
+        }
+
+        [Fact]
         public void An_escaped_quote_is_typed_even_in_front_of_the_closing_one()
         {
             Type("🔤", "😀 🔤She said ❌|🔤").ShouldBe("😀 🔤She said ❌🔤|🔤");
@@ -168,7 +192,6 @@ namespace Blazemoji.Test.Emojicode
         [InlineData("😀")]
         [InlineData("x")]
         [InlineData("❗")]
-        [InlineData("💭🔜\r\n🔚💭")]
         public void Anything_that_is_not_half_of_a_pair_is_just_typed(string typed)
         {
             Type(typed, "🍇 |🍉").ShouldBe("🍇 " + typed + "|🍉");

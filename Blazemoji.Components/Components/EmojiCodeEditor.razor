@@ -27,11 +27,18 @@
     private const string LanguageId = "emojiscript";
     private const string EditorId = "emojiEditor";
 
+    // Emojicode is written with two spaces.
+    private const int IndentSize = 2;
+
+    // Monaco's name for "the cursor is in the text", as opposed to in the Find box.
+    private const string WhileTypingInTheText = "editorTextFocus";
+
     // How long typing has to pause before the text is handed on to be kept.
     private static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(400);
 
     // One Monaco model per open file, so each keeps its own text, undo history and markers.
     private readonly Dictionary<string, TextModel> _models = [];
+    private TextModel? _shown;
 
     private StandaloneCodeEditor _editor = default!;
     private BlazorMonaco.Selection _selection = default!;
@@ -72,8 +79,8 @@
             Language = LanguageId,
             Value = string.Empty,
 
-            // Emojicode is written with two spaces. A file that is indented with tabs keeps them.
-            TabSize = 2,
+            // A file that is indented some other way keeps its own.
+            TabSize = IndentSize,
             InsertSpaces = true,
 
             // Plain words are how emoji are looked up by name, so a suggestion is nearly always
@@ -173,6 +180,7 @@
         }
 
         await _editor.SetModel(model);
+        _shown = model;
     }
 
     /// <summary>
@@ -183,6 +191,9 @@
     {
         foreach (var key in _models.Keys.Where(key => !keys.Contains(key)).ToList())
         {
+            if (ReferenceEquals(_shown, _models[key]))
+                _shown = null;
+
             await _models[key].DisposeModel();
             _models.Remove(key);
         }
@@ -246,10 +257,12 @@
 
     private async Task AddCommand(int keybinding)
     {
+        // In the Find box these keys must type what is printed on them, into the box. Left to
+        // act there, they typed their emoji over the match in the file.
         await _editor.AddCommand(keybinding, async (args) =>
         {
             await TypeAsync(EmojicodeKeybindings.Keybindings[keybinding], keybinding);
-        });
+        }, WhileTypingInTheText);
     }
 
     /// <summary>
@@ -267,7 +280,7 @@
             var looksAround = Typing.DependsOnWhatIsAround(text) || (keybinding is { } key && EmojicodeKeybindings.CanDependOnContext(key));
             if (!looksAround || await _language.AroundCursorAsync(EditorId) is not { } around)
             {
-                await _language.TypeAsync(EditorId, TypingEdit.Plain(text), text, stamp: null);
+                await _language.TypeAsync(EditorId, Typing.For(text), text, stamp: null);
                 return;
             }
 
@@ -310,6 +323,11 @@
     public async Task SetCodeAsync(string code)
     {
         await _editor.SetValue(code);
+
+        // Monaco looks at how a file is indented when the file is opened, and not again when
+        // its text is replaced. A sample written with tabs would go on being given spaces.
+        if (_shown is { } model)
+            await model.DetectIndentation(true, IndentSize);
     }
 
     /// <summary>

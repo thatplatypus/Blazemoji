@@ -71,6 +71,89 @@ namespace Blazemoji.E2E
             await ShouldHaveThePagesColoursAsync(editor, "34,34,38");
         }
 
+        // Every kind of text the editor draws against everything it is drawn on, as the
+        // ratio WCAG asks to be 4.5 or more. Each answer is "what on what: ratio" for one that is not.
+        private const string TextThatIsHardToRead =
+            """
+            () => {
+                const parse = colour => (colour.match(/[\d.]+/g) ?? []).map(Number);
+                const hex = colour => { const value = colour.trim().slice(1); const part = at => parseInt(value.slice(at, at + 2), 16); return [part(0), part(2), part(4), value.length > 6 ? part(6) / 255 : 1]; };
+                const read = colour => colour.trim().startsWith('#') ? hex(colour) : (([r, g, b, a = 1]) => [r, g, b, a])(parse(colour));
+                const over = (top, bottom) => top.slice(0, 3).map((part, at) => part * top[3] + bottom[at] * (1 - top[3]));
+                const light = ([r, g, b]) => { const line = part => { const s = part / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }; return 0.2126 * line(r) + 0.7152 * line(g) + 0.0722 * line(b); };
+                const ratio = (a, b) => { const [more, less] = [light(a), light(b)].sort((x, y) => y - x); return (more + 0.05) / (less + 0.05); };
+
+                const editor = document.querySelector('.monaco-editor');
+                const theme = getComputedStyle(editor);
+                const page = read(theme.getPropertyValue('--vscode-editor-background'));
+                const span = word => [...document.querySelectorAll('.monaco-editor .view-line span span')].find(candidate => candidate.textContent.includes(word));
+                const texts = { code: span('plain'), comment: span('remark'), string: span('written') };
+                const grounds = ['editor-background', 'editor-selectionBackground', 'editor-inactiveSelectionBackground', 'editor-findMatchBackground', 'editor-findMatchHighlightBackground',
+                    'editor-wordHighlightBackground', 'editor-wordHighlightStrongBackground', 'editor-selectionHighlightBackground', 'editor-lineHighlightBackground', 'editorBracketMatch-background',
+                    'editorSuggestWidget-selectedBackground'];
+                const hard = [];
+                for (const ground of grounds) {
+                    const value = theme.getPropertyValue('--vscode-' + ground);
+                    if (!value.trim()) { hard.push(ground + ': not set'); continue; }
+                    const behind = over(read(value), page);
+                    for (const [name, element] of Object.entries(texts)) {
+                        if (!element) { hard.push(name + ': not found'); continue; }
+                        const contrast = ratio(parse(getComputedStyle(element).color), behind);
+                        if (contrast < 4.5) hard.push(`${name} on ${ground}: ${contrast.toFixed(2)}`);
+                    }
+                }
+                return hard;
+            }
+            """;
+
+        [Theory]
+        [InlineData(ColorScheme.Light)]
+        [InlineData(ColorScheme.Dark)]
+        public async Task Code_comments_and_strings_can_be_read_on_everything_the_editor_draws_them_on(ColorScheme scheme)
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser, scheme);
+            await ShouldHaveThePagesColoursAsync(editor, scheme == ColorScheme.Dark ? "34,34,38" : "255,255,255");
+            await editor.SetCodeAsync("💭 remark\n🏁 🍇 12 ➡️ plain 🍉\n😀 🔤written🔤❗️");
+
+            // The text is drawn first and coloured a moment later. Until it is, all of it is the
+            // colour of code, and measuring then would say nothing about comments or strings.
+            const string coloured =
+                """
+                () => {
+                    const colour = word => { const span = [...document.querySelectorAll('.monaco-editor .view-line span span')].find(candidate => candidate.textContent.includes(word)); return span ? getComputedStyle(span).color : null; };
+                    const [code, comment, text] = [colour('plain'), colour('remark'), colour('written')];
+                    return Boolean(code && comment && text) && comment !== code && text !== code;
+                }
+                """;
+            await editor.Page.WaitForFunctionAsync(coloured, null, new PageWaitForFunctionOptions { Timeout = 10_000 });
+
+            var hard = await editor.Page.EvaluateAsync<string[]>(TextThatIsHardToRead);
+
+            hard.ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task Every_flat_dark_shape_in_a_long_file_is_marked_and_the_marks_of_a_block_comment_are_among_them()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await editor.SetCodeAsync("💭🔜 a 🔚💭\n" + string.Concat(Enumerable.Repeat("a ➕ b\n", 1100)));
+
+            await Assertions.Expect(editor.Page.Locator(".monaco-editor .view-line .flat-dark-glyph").First).ToHaveTextAsync("🔜");
+            await Assertions.Expect(editor.Page.Locator(".monaco-editor .view-line .flat-dark-glyph").Nth(1)).ToHaveTextAsync("🔚");
+            // The marks are made once per frame, a moment after the text changes.
+            const string marked = "() => monaco.editor.getEditors()[0].getModel().getAllDecorations().filter(mark => mark.options.inlineClassName === 'flat-dark-glyph').length";
+            var count = await editor.Page.EvaluateAsync<int>(marked);
+            for (var attempt = 0; attempt < 100 && count != 1102; attempt++)
+            {
+                await Task.Delay(50, TestContext.Current.CancellationToken);
+                count = await editor.Page.EvaluateAsync<int>(marked);
+            }
+
+            count.ShouldBe(1102);
+        }
+
         [Fact]
         public async Task Documentation_is_written_as_quietly_as_a_comment_and_code_is_not()
         {

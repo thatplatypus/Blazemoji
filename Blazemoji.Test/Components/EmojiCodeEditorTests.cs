@@ -1,4 +1,5 @@
 using Blazemoji.Components;
+using Blazemoji.Emojicode;
 using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Interop;
 using Blazemoji.Services.Projects;
@@ -229,6 +230,35 @@ namespace Blazemoji.Test.Components
             syntax.Completed.Select(pair => pair[0] + pair[1]).ShouldBe(["🍇🍉", "🤜🤛", "🍿🍆", "🐚🍆", "🔤🔤"]);
             syntax.LineComment.ShouldBe("💭");
             syntax.BlockComment.ShouldBe(["💭🔜", "🔚💭"]);
+            syntax.Escape.ShouldBe("❌");
+        }
+
+        [Fact]
+        public void The_keys_for_emoji_only_act_while_the_text_has_the_keyboard()
+        {
+            // Without this a key pressed in the Find box types over the match in the file.
+            Render<EmojiCodeEditor>();
+
+            var keys = JSInterop.Invocations["blazorMonaco.editor.addCommand"]
+                .Where(invocation => EmojicodeKeybindings.Keybindings.ContainsKey(Convert.ToInt32(invocation.Arguments[1])))
+                .ToList();
+            keys.Count.ShouldBe(EmojicodeKeybindings.Keybindings.Count);
+            keys.ShouldAllBe(invocation => (string?)invocation.Arguments[2] == "editorTextFocus");
+        }
+
+        [Fact]
+        public async Task Text_put_in_place_of_a_files_text_is_looked_at_for_how_it_is_indented()
+        {
+            ModelsAreMadeAtOnce();
+            var cut = Render<EmojiCodeEditor>();
+            await cut.InvokeAsync(() => cut.Instance.OpenFileAsync("one", "🏁 🍇 🍉"));
+
+            await cut.InvokeAsync(() => cut.Instance.SetCodeAsync("🏁 🍇\n\t😀 🔤tabs🔤❗️\n🍉"));
+
+            var looked = JSInterop.Invocations["blazorMonaco.editor.model.detectIndentation"].ShouldHaveSingleItem();
+            looked.Arguments[0].ShouldBe("inmemory://blazemoji/1");
+            looked.Arguments[1].ShouldBe(true);
+            looked.Arguments[2].ShouldBe(2);
         }
 
         [Fact]

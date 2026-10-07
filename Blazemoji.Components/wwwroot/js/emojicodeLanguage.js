@@ -68,12 +68,15 @@ export function type(editorId, typed) {
     const edit = stale
         ? { removeBefore: 0, removeAfter: 0, text: typed.plain, selectionStart: typed.plain.length, selectionEnd: typed.plain.length }
         : typed;
+    // Monaco writes every line end the way the file already does, which can make the text
+    // shorter or longer than it was counted in .NET. The cursor is counted in what goes in.
+    const asTheFileEndsLines = (text) => text.replace(/\r\n|\r|\n/g, model.getEOL());
     const start = model.getOffsetAt(selection.getStartPosition()) - edit.removeBefore;
     const end = model.getOffsetAt(selection.getEndPosition()) + edit.removeAfter;
     editor.pushUndoStop();
-    editor.executeEdits(TYPED, [{ range: rangeOf(model, start, end), text: edit.text, forceMoveMarkers: true }], () => {
-        const from = model.getPositionAt(start + edit.selectionStart);
-        const to = model.getPositionAt(start + edit.selectionEnd);
+    editor.executeEdits(TYPED, [{ range: rangeOf(model, start, end), text: asTheFileEndsLines(edit.text), forceMoveMarkers: true }], () => {
+        const from = model.getPositionAt(start + asTheFileEndsLines(edit.text.slice(0, edit.selectionStart)).length);
+        const to = model.getPositionAt(start + asTheFileEndsLines(edit.text.slice(0, edit.selectionEnd)).length);
         return [new monaco.Selection(from.lineNumber, from.column, to.lineNumber, to.column)];
     });
     editor.pushUndoStop();
@@ -110,22 +113,30 @@ function emojiEndingAtCursor(editor) {
     const start = before.length - tail.length + last.index;
     return new monaco.Range(position.lineNumber, start + 1, position.lineNumber, position.column);
 }
-// Monaco's own numbering of what a token is: 0 is code, the others are comments and strings.
-const CODE = 0;
-// False inside a string or a comment, going by Monaco's colouring of the line. Where that
-// cannot be asked, the position counts as code.
-function isInCode(model, lineNumber, column) {
-    const tokenization = model.tokenization;
-    if (!tokenization?.getLineTokens) {
-        return true;
-    }
-    tokenization.forceTokenization?.(lineNumber);
-    const tokens = tokenization.getLineTokens(lineNumber);
-    return tokens.getStandardTokenType(tokens.findTokenIndexAtOffset(column - 1)) === CODE;
+// What the text typed next at a position would be inside of, going by the colouring rules
+// the editor already has: everything before the position is coloured with one more letter
+// after it, and the letter's colour is the answer. That reads the file from its start, so
+// it is only asked when Backspace sits between two halves of a pair.
+function insideAt(model, position) {
+    const before = model.getValueInRange(new monaco.Range(1, 1, position.lineNumber, position.column));
+    const lines = monaco.editor.tokenize(before + "x", model.getLanguageId());
+    const last = lines[lines.length - 1];
+    const kind = last?.[last.length - 1]?.type ?? "";
+    return kind.startsWith("string") ? "string" : kind.startsWith("comment") ? "comment" : "code";
 }
-// The range of an opener and its closer with the cursor between them and nothing else, in
-// code. Null for anything else.
-function emptyPairAroundCursor(editor, pairs) {
+// True when the text ends with an odd number of the escape mark: the next character is escaped.
+function endsEscaping(text, escape) {
+    let marks = 0;
+    while (text.endsWith(escape.repeat(marks + 1))) {
+        marks++;
+    }
+    return marks % 2 === 1;
+}
+// The range of an opener and its closer with the cursor between them and nothing else.
+// Two different halves (🍇🍉) count in code. Two that are the same (🔤🔤) count when the
+// first has just opened a string, and not when it ended one and the second begins another.
+// Null for anything else.
+function emptyPairAroundCursor(editor, syntax) {
     const selections = editor.getSelections();
     if (!selections || selections.length !== 1 || !selections[0].isEmpty()) {
         return null;
@@ -135,11 +146,18 @@ function emptyPairAroundCursor(editor, pairs) {
     const line = model.getLineContent(position.lineNumber);
     const before = line.slice(0, position.column - 1);
     const after = line.slice(position.column - 1);
-    const pair = pairs.find(([open, close]) => before.endsWith(open) && after.startsWith(close));
-    if (!pair || !isInCode(model, position.lineNumber, position.column)) {
+    const pair = syntax.completed.find(([open, close]) => before.endsWith(open) && after.startsWith(close));
+    if (!pair) {
         return null;
     }
-    return new monaco.Range(position.lineNumber, position.column - pair[0].length, position.lineNumber, position.column + pair[1].length);
+    const [open, close] = pair;
+    const inside = insideAt(model, position);
+    const empty = open === close
+        ? inside === "string" && !endsEscaping(before.slice(0, before.length - open.length), syntax.escape)
+        : inside === "code";
+    return empty
+        ? new monaco.Range(position.lineNumber, position.column - open.length, position.lineNumber, position.column + close.length)
+        : null;
 }
 // Two things Monaco's Backspace does for other languages and not for this one.
 //
@@ -149,12 +167,13 @@ function emptyPairAroundCursor(editor, pairs) {
 // lost its second half. Here Backspace takes such an emoji whole.
 //
 // And between an opener and the closer that came with it, it takes both, but only for
-// brackets of one UTF-16 unit. Here it does for 🍇🍉 and the other pairs with two different
-// halves. 🔤🔤 is left out: the cursor between two of those may be between two strings.
+// brackets of one UTF-16 unit. Here it does for 🍇🍉 and the other pairs, and for the 🔤🔤 of
+// a string that has just been opened: one 🔤 left behind would turn the rest of the file
+// into a string.
 //
 // Every other case (a plain character, a selection, several cursors, an accent typed after
 // its letter) is left to Monaco, by not touching the key at all.
-function keepPairsAndEmojiWhole(editor, languageId, removedTogether) {
+function keepPairsAndEmojiWhole(editor, languageId, syntax) {
     return editor.onKeyDown((pressed) => {
         if (pressed.keyCode !== monaco.KeyCode.Backspace || pressed.ctrlKey || pressed.altKey || pressed.metaKey || pressed.browserEvent?.isComposing) {
             return;
@@ -162,7 +181,7 @@ function keepPairsAndEmojiWhole(editor, languageId, removedTogether) {
         if (editor.getModel()?.getLanguageId() !== languageId || editor.getOption(monaco.editor.EditorOption.readOnly)) {
             return;
         }
-        const taken = emptyPairAroundCursor(editor, removedTogether) ?? emojiEndingAtCursor(editor);
+        const taken = emptyPairAroundCursor(editor, syntax) ?? emojiEndingAtCursor(editor);
         if (!taken) {
             return;
         }
@@ -177,9 +196,12 @@ function keepPairsAndEmojiWhole(editor, languageId, removedTogether) {
 // cannot be seen on a dark page. No colour setting reaches an emoji, so each one is marked
 // and the style sheet turns the marked ones light when the editor is dark. The symbols that
 // are only an emoji with a selector after them are matched with it; without it they are
-// plain text and already take the text's colour. Black shapes with a meaning of their own
-// (⚫ ⬛) are not here: turned light they would be their white twins.
-const FLAT_DARK_GLYPHS = "➕|➖|➗|➰|➿|💱|💲|[✖✔〰™©®]\uFE0F";
+// plain text and already take the text's colour. 🔜 and 🔚, which begin and end a block
+// comment, are of the same kind. Black shapes with a meaning of their own (⚫ ⬛) are not
+// here: turned light they would be their white twins.
+const FLAT_DARK_GLYPHS = "➕|➖|➗|➰|➿|💱|💲|🔙|🔚|🔛|🔜|🔝|[✖✔〰™©®♠♣]\uFE0F";
+// Monaco stops looking after 999 matches unless it is told how many to find.
+const EVERY_MATCH = 1000000;
 const FLAT_DARK_GLYPH_CLASS = "flat-dark-glyph";
 function markFlatDarkGlyphs(editor, languageId) {
     const marks = editor.createDecorationsCollection();
@@ -188,7 +210,7 @@ function markFlatDarkGlyphs(editor, languageId) {
         waiting = 0;
         const model = editor.getModel();
         marks.set(model?.getLanguageId() === languageId
-            ? model.findMatches(FLAT_DARK_GLYPHS, false, true, true, null, false).map((match) => ({ range: match.range, options: { inlineClassName: FLAT_DARK_GLYPH_CLASS } }))
+            ? model.findMatches(FLAT_DARK_GLYPHS, false, true, true, null, false, EVERY_MATCH).map((match) => ({ range: match.range, options: { inlineClassName: FLAT_DARK_GLYPH_CLASS } }))
             : []);
     };
     // Once for however many changes arrive before the next frame is drawn.
@@ -208,16 +230,15 @@ function markFlatDarkGlyphs(editor, languageId) {
     };
 }
 // What the editor does for each Monaco editor on the page.
-function attach(editor, languageId, removedTogether) {
-    const hooks = [keepPairsAndEmojiWhole(editor, languageId, removedTogether), markFlatDarkGlyphs(editor, languageId)];
+function attach(editor, languageId, syntax) {
+    const hooks = [keepPairsAndEmojiWhole(editor, languageId, syntax), markFlatDarkGlyphs(editor, languageId)];
     return { dispose: () => hooks.forEach(hook => hook.dispose()) };
 }
 export function register(languageId, dotNet, syntax) {
-    const removedTogether = syntax.completed.filter(([open, close]) => open !== close);
     // Editors that are already there, and any made later.
-    const editorHooks = monaco.editor.getEditors().map((editor) => attach(editor, languageId, removedTogether));
+    const editorHooks = monaco.editor.getEditors().map((editor) => attach(editor, languageId, syntax));
     const registrations = [
-        monaco.editor.onDidCreateEditor((editor) => editorHooks.push(attach(editor, languageId, removedTogether))),
+        monaco.editor.onDidCreateEditor((editor) => editorHooks.push(attach(editor, languageId, syntax))),
         // From this Monaco shows which closer belongs to which opener, indents the line after
         // an opener, wraps a selection when an opener is typed by the system's own emoji
         // picker, and can comment lines out. It does not complete pairs: it finds a pair by
@@ -325,6 +346,33 @@ function over(top, bottom) {
 function isDark(colour) {
     return (0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b) / 255 < 0.5;
 }
+// How light a solid colour is, and how far apart two are, as WCAG measures them.
+function lightness(colour) {
+    const linear = (part) => {
+        const share = part / 255;
+        return share <= 0.03928 ? share / 12.92 : Math.pow((share + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * linear(colour.r) + 0.7152 * linear(colour.g) + 0.0722 * linear(colour.b);
+}
+function contrast(one, other) {
+    const [more, less] = [lightness(one), lightness(other)].sort((a, b) => b - a);
+    return (more + 0.05) / (less + 0.05);
+}
+// The least contrast text may have with what it is drawn on.
+const READABLE = 4.5;
+// A colour washed over the surface, for a selection, a match and the like: as strong as
+// asked for, or as much weaker as it takes for every kind of text to stay readable on it.
+// A selection is drawn behind text of each colour the editor uses, so a wash that suits the
+// page's text can still drown a string or a comment.
+function wash(colour, strongest, surface, texts) {
+    for (let strength = strongest; strength > 0.02; strength -= 0.02) {
+        const washed = over(faded(colour, strength), surface);
+        if (texts.every(text => contrast(text, washed) >= READABLE)) {
+            return faded(colour, strength);
+        }
+    }
+    return faded(colour, 0.02);
+}
 const LIGHT_THEME = "blazemoji-light";
 const DARK_THEME = "blazemoji-dark";
 // Gives every editor on the page the page's own colours, read from the palette MudBlazor
@@ -332,6 +380,8 @@ const DARK_THEME = "blazemoji-dark";
 // .NET only has to say when the page's colours have changed. Emoji keep their own colours
 // whatever is set here, so there is little to colour: what is written inside a string takes
 // the accent, comments are quieter than code, and everything else is the page's text colour.
+// A selection or a match is a wash of the page's second colour, never so strong that any of
+// those three stops being readable on it.
 // A page with no such palette is left with the theme Monaco has.
 export function applyTheme() {
     const page = getComputedStyle(document.documentElement);
@@ -350,23 +400,26 @@ export function applyTheme() {
             names.forEach(name => colours[name] = hexOf(colour));
         }
     };
+    // The three colours text is written in, as they come out on the page.
+    const texts = [over(ink, surface), over(quiet, surface), over(accent, surface)];
+    const washed = (colour, strongest) => wash(colour, strongest, surface, texts);
+    const marker = read("secondary") ?? accent;
     set(surface, "editor.background", "editorGutter.background", "editorWidget.background", "editorHoverWidget.background", "editorSuggestWidget.background", "minimap.background");
-    set(over(ink, surface), "editor.foreground", "editorLineNumber.activeForeground", "editorWidget.foreground", "editorSuggestWidget.foreground", "editorSuggestWidget.selectedForeground");
-    set(over(quiet, surface), "editorLineNumber.foreground");
-    set(accent, "editorCursor.foreground", "editorBracketMatch.border", "editorSuggestWidget.highlightForeground", "editorSuggestWidget.focusHighlightForeground", "editorLink.activeForeground", "focusBorder");
-    set(faded(accent, 0.3), "editor.selectionBackground");
-    set(faded(accent, 0.18), "editor.inactiveSelectionBackground", "editorBracketMatch.background", "editor.wordHighlightStrongBackground", "editorSuggestWidget.selectedBackground");
-    set(faded(accent, 0.12), "editor.selectionHighlightBackground", "editor.wordHighlightBackground");
-    set(faded(ink, 0.05), "editor.lineHighlightBackground", "list.hoverBackground");
+    set(texts[0], "editor.foreground", "editorLineNumber.activeForeground", "editorWidget.foreground", "editorSuggestWidget.foreground", "editorSuggestWidget.selectedForeground");
+    set(texts[1], "editorLineNumber.foreground");
+    set(accent, "editorCursor.foreground", "editorBracketMatch.border", "editor.findMatchBorder", "editorSuggestWidget.highlightForeground", "editorSuggestWidget.focusHighlightForeground", "editorLink.activeForeground", "focusBorder");
+    set(washed(marker, 0.5), "editor.selectionBackground", "editor.findMatchBackground");
+    set(washed(marker, 0.28), "editor.inactiveSelectionBackground", "editor.findMatchHighlightBackground");
+    set(washed(accent, 0.18), "editorBracketMatch.background", "editorSuggestWidget.selectedBackground");
+    set(washed(ink, 0.14), "editor.wordHighlightStrongBackground");
+    set(washed(ink, 0.1), "editor.selectionHighlightBackground", "editor.wordHighlightBackground");
+    set(washed(ink, 0.05), "editor.lineHighlightBackground", "list.hoverBackground");
     set(faded(ink, 0), "editor.lineHighlightBorder", "editorOverviewRuler.border");
     set(lines, "editorIndentGuide.background", "editorIndentGuide.background1", "editorWhitespace.foreground", "editorWidget.border", "editorHoverWidget.border", "editorSuggestWidget.border");
     set(faded(ink, 0.38), "editorIndentGuide.activeBackground", "editorIndentGuide.activeBackground1");
     set(faded(ink, 0.16), "scrollbarSlider.background");
     set(faded(ink, 0.24), "scrollbarSlider.hoverBackground");
     set(faded(ink, 0.32), "scrollbarSlider.activeBackground");
-    const found = read("secondary");
-    set(found && faded(found, 0.45), "editor.findMatchHighlightBackground");
-    set(found && faded(found, 0.8), "editor.findMatchBackground");
     set(read("error"), "editorError.foreground");
     set(read("warning"), "editorWarning.foreground");
     set(read("info"), "editorInfo.foreground");
