@@ -1,37 +1,21 @@
-#See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
+# check=skip=FromPlatformFlagConstDisallowed
+# Emojicode ships x86_64 Linux binaries only, so every stage is linux/amd64.
+# Build from the repository root:
+#   docker build -f Blazemoji/Dockerfile --target test .     run the tests
+#   docker build -f Blazemoji/Dockerfile -t blazemoji .      build the app image
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
-USER app
-WORKDIR /app
-EXPOSE 80
-EXPOSE 443
-EXPOSE 8080
-EXPOSE 8081
-
-USER root
-
-RUN apt-get update 
-RUN apt-get install -y g++ 
-RUN apt-get install -y libncurses5
-
-USER app
-
-FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
+COPY docker/install-toolchain-deps.sh /tmp/install-toolchain-deps.sh
+RUN /tmp/install-toolchain-deps.sh
 WORKDIR /src
-COPY ["Blazemoji/Blazemoji.csproj", "Blazemoji/"]
-RUN dotnet restore "Blazemoji/Blazemoji.csproj"
+COPY global.json Blazemoji.sln ./
+COPY Blazemoji/Blazemoji.csproj Blazemoji/
+COPY Blazemoji.Test/Blazemoji.Test.csproj Blazemoji.Test/
+RUN dotnet restore Blazemoji.sln
+COPY Blazemoji/ Blazemoji/
+COPY Blazemoji.Test/ Blazemoji.Test/
+RUN dotnet build Blazemoji.sln -c $BUILD_CONFIGURATION --no-restore
 
-WORKDIR "/src/Blazemoji/"
-COPY /Blazemoji/ .
-
-RUN dotnet build "Blazemoji.csproj" -c $BUILD_CONFIGURATION -o /app/build --no-restore
-
-FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "Blazemoji.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
-
-FROM base AS final
-WORKDIR /app
-COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "Blazemoji.dll"]
+FROM build AS test
+RUN dotnet test --solution Blazemoji.sln -c $BUILD_CONFIGURATION --no-build
