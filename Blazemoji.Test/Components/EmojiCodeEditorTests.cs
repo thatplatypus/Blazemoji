@@ -7,6 +7,8 @@ using Blazemoji.Shared.State;
 using BlazorMonaco;
 using BlazorMonaco.Editor;
 using Bunit;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor.Services;
 using NSubstitute;
@@ -16,9 +18,12 @@ namespace Blazemoji.Test.Components
     public sealed class EmojiCodeEditorTests : BunitContext
     {
         private const string CreateModel = "blazorMonaco.editor.createModel";
-        private const string ExecuteEdits = "blazorMonaco.editor.executeEdits";
-        private const string TextBeforeCursor = "textBeforeCursor";
+        private const string AroundCursor = "aroundCursor";
+        private const string TypeFunction = "type";
+        private const string ApplyTheme = "applyTheme";
         private const int ExclamationKey = (int)KeyMod.Shift | (int)KeyCode.Digit1;
+        private const int GrapesKey = (int)KeyMod.Shift | (int)KeyCode.BracketLeft;
+        private const int WatermelonKey = (int)KeyMod.Shift | (int)KeyCode.BracketRight;
 
         private readonly BunitJSModuleInterop _module;
 
@@ -81,16 +86,15 @@ namespace Blazemoji.Test.Components
             (await cut.InvokeAsync(() => cut.Instance.GetCodeAsync("never opened"))).ShouldBeNull();
         }
 
-        private IRenderedComponent<EmojiCodeEditor> RenderWithTheCursorAfter(string textBeforeCursor)
+        /// <summary>The editor with the cursor at the end of <paramref name="before"/> and <paramref name="after"/> following it on the line.</summary>
+        private IRenderedComponent<EmojiCodeEditor> RenderWithTheCursorAfter(string before, string after = "", string selected = "")
         {
-            _module.Setup<string>(TextBeforeCursor, _ => true).SetResult(textBeforeCursor);
-            JSInterop.Setup<Selection>("blazorMonaco.editor.getSelection", _ => true)
-                .SetResult(new Selection { StartLineNumber = 1, StartColumn = 1, EndLineNumber = 1, EndColumn = 1, PositionLineNumber = 1, PositionColumn = 1 });
+            _module.Setup<AroundCursorAnswer>(AroundCursor, _ => true).SetResult(new AroundCursorAnswer(before, selected, after, "as it was read"));
             return Render<EmojiCodeEditor>();
         }
 
-        private string? TextTyped() =>
-            JSInterop.Invocations[ExecuteEdits].Select(invocation => ((List<IdentifiedSingleEditOperation>)invocation.Arguments[2]!).Single().Text).SingleOrDefault();
+        private IReadOnlyList<TypedText> Typed() =>
+            _module.Invocations[TypeFunction].Select(invocation => (TypedText)invocation.Arguments[1]!).ToList();
 
         [Theory]
         [InlineData("😀 🔤Hello World", "!")]
@@ -103,7 +107,7 @@ namespace Blazemoji.Test.Components
 
             await cut.InvokeAsync(() => cut.Instance.Editor.CommandCallback(ExclamationKey));
 
-            cut.WaitForAssertion(() => TextTyped().ShouldBe(typed));
+            cut.WaitForAssertion(() => Typed().ShouldHaveSingleItem().Text.ShouldBe(typed));
         }
 
         [Fact]
@@ -113,8 +117,196 @@ namespace Blazemoji.Test.Components
 
             await cut.InvokeAsync(() => cut.Instance.Editor.CommandCallback((int)KeyMod.CtrlCmd | (int)KeyCode.KeyP));
 
-            cut.WaitForAssertion(() => TextTyped().ShouldBe("😀"));
-            _module.Invocations[TextBeforeCursor].ShouldBeEmpty();
+            cut.WaitForAssertion(() => Typed().ShouldHaveSingleItem().Text.ShouldBe("😀"));
+            _module.Invocations[AroundCursor].ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task The_key_for_grapes_brings_the_watermelon_and_leaves_the_cursor_between_them()
+        {
+            var cut = RenderWithTheCursorAfter("🏁 ");
+
+            await cut.InvokeAsync(() => cut.Instance.Editor.CommandCallback(GrapesKey));
+
+            cut.WaitForAssertion(() => Typed().ShouldHaveSingleItem().ShouldBe(new TypedText(0, 0, "🍇🍉", 2, 2, "🍇", "as it was read")));
+        }
+
+        [Fact]
+        public async Task The_key_for_grapes_is_a_plain_brace_inside_a_string_and_brings_nothing()
+        {
+            var cut = RenderWithTheCursorAfter("😀 🔤");
+
+            await cut.InvokeAsync(() => cut.Instance.Editor.CommandCallback(GrapesKey));
+
+            cut.WaitForAssertion(() => Typed().ShouldHaveSingleItem().ShouldBe(new TypedText(0, 0, "{", 1, 1, "{", "as it was read")));
+        }
+
+        [Fact]
+        public async Task The_key_for_watermelon_steps_over_one_that_is_already_there()
+        {
+            var cut = RenderWithTheCursorAfter("🏁 🍇", after: "🍉");
+
+            await cut.InvokeAsync(() => cut.Instance.Editor.CommandCallback(WatermelonKey));
+
+            cut.WaitForAssertion(() => Typed().ShouldHaveSingleItem().ShouldBe(new TypedText(0, 2, "🍉", 2, 2, "🍉", "as it was read")));
+        }
+
+        [Fact]
+        public async Task An_emoji_put_in_from_the_toolbox_is_paired_like_one_from_a_key()
+        {
+            var cut = RenderWithTheCursorAfter("↪️ ");
+
+            await cut.InvokeAsync(() => cut.Instance.InsertTextAsync("🤜"));
+
+            Typed().ShouldHaveSingleItem().Text.ShouldBe("🤜🤛");
+        }
+
+        [Fact]
+        public async Task An_emoji_that_is_no_half_of_a_pair_is_put_in_without_asking_where_the_cursor_is()
+        {
+            var cut = RenderWithTheCursorAfter("↪️ ");
+
+            await cut.InvokeAsync(() => cut.Instance.InsertTextAsync("👍"));
+
+            Typed().ShouldHaveSingleItem().ShouldBe(new TypedText(0, 0, "👍", 2, 2, "👍", null));
+            _module.Invocations[AroundCursor].ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task With_no_editor_to_look_around_in_the_text_is_still_handed_over_as_typed()
+        {
+            var cut = Render<EmojiCodeEditor>();
+
+            await cut.InvokeAsync(() => cut.Instance.InsertTextAsync("🍇"));
+
+            Typed().ShouldHaveSingleItem().ShouldBe(new TypedText(0, 0, "🍇", 2, 2, "🍇", null));
+        }
+
+        [Fact]
+        public async Task A_second_key_waits_for_the_first_to_be_typed_before_it_looks_around()
+        {
+            // The browser has not answered the first key yet when the second is pressed.
+            var firstLook = _module.Setup<AroundCursorAnswer>(AroundCursor, _ => true);
+            var cut = Render<EmojiCodeEditor>();
+            await cut.InvokeAsync(() => cut.Instance.Editor.CommandCallback(GrapesKey));
+            await cut.InvokeAsync(() => cut.Instance.Editor.CommandCallback(WatermelonKey));
+
+            _module.Invocations[AroundCursor].Count.ShouldBe(1);
+            Typed().ShouldBeEmpty();
+
+            firstLook.SetResult(new AroundCursorAnswer("🏁 ", string.Empty, string.Empty, "first"));
+
+            await EventuallyAsync(() => Typed().Select(typed => typed.Plain).ShouldBe(["🍇", "🍉"]));
+            _module.Invocations[AroundCursor].Count.ShouldBe(2);
+        }
+
+        // Typing renders nothing, so there is no render to wait for.
+        private static async Task EventuallyAsync(Action assertion)
+        {
+            for (var attempt = 0; attempt < 100; attempt++)
+            {
+                try
+                {
+                    assertion();
+                    return;
+                }
+                catch (ShouldAssertException)
+                {
+                    await Task.Delay(20, Xunit.TestContext.Current.CancellationToken);
+                }
+            }
+
+            assertion();
+        }
+
+        [Fact]
+        public void The_language_is_registered_with_the_pairs_and_comments_of_emojicode()
+        {
+            Render<EmojiCodeEditor>();
+
+            var syntax = (LanguageSyntax)_module.Invocations["register"].ShouldHaveSingleItem().Arguments[2]!;
+            syntax.Matched.Select(pair => pair[0] + pair[1]).ShouldBe(["🍇🍉", "🤜🤛", "🍿🍆", "🐚🍆"]);
+            syntax.Completed.Select(pair => pair[0] + pair[1]).ShouldBe(["🍇🍉", "🤜🤛", "🍿🍆", "🐚🍆", "🔤🔤"]);
+            syntax.LineComment.ShouldBe("💭");
+            syntax.BlockComment.ShouldBe(["💭🔜", "🔚💭"]);
+        }
+
+        [Fact]
+        public void The_editor_indents_with_two_spaces_as_emojicode_is_written()
+        {
+            var cut = Render<EmojiCodeEditor>();
+
+            var options = cut.Instance.Editor.ConstructionOptions!(cut.Instance.Editor);
+            options.TabSize.ShouldBe(2);
+            options.InsertSpaces.ShouldBe(true);
+        }
+
+        [Fact]
+        public void The_editor_takes_its_colours_from_the_page_when_it_starts()
+        {
+            Render<EmojiCodeEditor>();
+
+            _module.Invocations[ApplyTheme].Count.ShouldBe(1);
+        }
+
+        [Fact]
+        public void The_editor_takes_its_colours_again_when_the_page_goes_dark_or_light()
+        {
+            var cut = Render<ThemedHost>(parameters => parameters.Add(host => host.Dark, false));
+            _module.Invocations[ApplyTheme].Count.ShouldBe(1);
+
+            cut.Render(parameters => parameters.Add(host => host.Dark, true));
+            _module.Invocations[ApplyTheme].Count.ShouldBe(2);
+
+            cut.Render(parameters => parameters.Add(host => host.Dark, false));
+            _module.Invocations[ApplyTheme].Count.ShouldBe(3);
+        }
+
+        [Fact]
+        public void A_render_that_changes_nothing_about_dark_or_light_leaves_the_colours_alone()
+        {
+            var cut = Render<ThemedHost>(parameters => parameters.Add(host => host.Dark, true));
+            var applied = _module.Invocations[ApplyTheme].Count;
+
+            cut.Render(parameters => parameters.Add(host => host.Dark, true));
+
+            _module.Invocations[ApplyTheme].Count.ShouldBe(applied);
+        }
+
+        [Fact]
+        public async Task The_page_going_dark_while_the_editor_is_still_starting_is_not_missed()
+        {
+            // The browser is still reading the light colours when the page goes dark.
+            var firstColours = _module.SetupVoid(ApplyTheme, _ => true);
+            var cut = Render<ThemedHost>(parameters => parameters.Add(host => host.Dark, false));
+            _module.Invocations[ApplyTheme].Count.ShouldBe(1);
+
+            cut.Render(parameters => parameters.Add(host => host.Dark, true));
+            _module.Invocations[ApplyTheme].Count.ShouldBe(1);
+
+            firstColours.SetVoidResult();
+
+            await EventuallyAsync(() => _module.Invocations[ApplyTheme].Count.ShouldBe(2));
+        }
+
+        /// <summary>A page that tells what is inside it whether it is dark, as the web host's layout does.</summary>
+        private sealed class ThemedHost : ComponentBase
+        {
+            [Parameter]
+            public bool Dark { get; set; }
+
+            protected override void BuildRenderTree(RenderTreeBuilder builder)
+            {
+                builder.OpenComponent<CascadingValue<bool>>(0);
+                builder.AddComponentParameter(1, nameof(CascadingValue<bool>.Name), "DarkMode");
+                builder.AddComponentParameter(2, nameof(CascadingValue<bool>.Value), Dark);
+                builder.AddComponentParameter(3, nameof(CascadingValue<bool>.ChildContent), (RenderFragment)(inner =>
+                {
+                    inner.OpenComponent<EmojiCodeEditor>(0);
+                    inner.CloseComponent();
+                }));
+                builder.CloseComponent();
+            }
         }
     }
 }

@@ -1,3 +1,4 @@
+using Blazemoji.Emojicode.Editing;
 using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Shared.State;
 using Microsoft.JSInterop;
@@ -10,6 +11,22 @@ namespace Blazemoji.Interop
     public sealed record HoverAnswer(int Start, int End, string Markdown);
 
     public sealed record SignatureAnswer(string Label, string Documentation, IReadOnlyList<string> Parameters, int ActiveParameter);
+
+    /// <summary>What Monaco is told about the language's pairs and comments. Each pair is its opener and its closer.</summary>
+    public sealed record LanguageSyntax(IReadOnlyList<string[]> Matched, IReadOnlyList<string[]> Completed, string LineComment, string[] BlockComment);
+
+    /// <param name="Stamp">Names the text and the selection as they were when this was read.</param>
+    public sealed record AroundCursorAnswer(string Before, string Selected, string After, string Stamp)
+    {
+        public TextAroundCursor Text => new(Before, Selected, After);
+    }
+
+    /// <summary>
+    /// A <see cref="TypingEdit"/> on its way to the editor.
+    /// </summary>
+    /// <param name="Plain">What was typed. It goes in as it is if the text or the selection has changed since <paramref name="Stamp"/>.</param>
+    /// <param name="Stamp">The <see cref="AroundCursorAnswer.Stamp"/> the edit was worked out from. Null for an edit that looked at nothing.</param>
+    public sealed record TypedText(int RemoveBefore, int RemoveAfter, string Text, int SelectionStart, int SelectionEnd, string Plain, string? Stamp);
 
     /// <summary>
     /// The link between Monaco's language providers and <see cref="ICodeIntelligence"/>. The
@@ -26,7 +43,15 @@ namespace Blazemoji.Interop
         private const string ModulePath = "./_content/Blazemoji.Components/js/emojicodeLanguage.js";
         private const string RegisterFunction = "register";
         private const string DisposeFunction = "dispose";
-        private const string TextBeforeCursorFunction = "textBeforeCursor";
+        private const string AroundCursorFunction = "aroundCursor";
+        private const string TypeFunction = "type";
+        private const string ApplyThemeFunction = "applyTheme";
+
+        private static readonly LanguageSyntax _syntax = new(
+            [.. EmojicodePairs.Matched.Select(pair => new[] { pair.Open, pair.Close })],
+            [.. EmojicodePairs.Completed.Select(pair => new[] { pair.Open, pair.Close })],
+            EmojicodePairs.LineComment,
+            [EmojicodePairs.BlockComment.Open, EmojicodePairs.BlockComment.Close]);
 
         private IJSObjectReference? _module;
         private IJSObjectReference? _registration;
@@ -42,12 +67,28 @@ namespace Blazemoji.Interop
                 return;
 
             _self = DotNetObjectReference.Create(this);
-            _registration = await (await ModuleAsync()).InvokeAsync<IJSObjectReference>(RegisterFunction, languageId, _self);
+            _registration = await (await ModuleAsync()).InvokeAsync<IJSObjectReference>(RegisterFunction, languageId, _self, _syntax);
         }
 
-        /// <summary>The text from the start of the file to the cursor, in the editor with this element id.</summary>
-        public async Task<string> TextBeforeCursorAsync(string editorId) =>
-            await (await ModuleAsync()).InvokeAsync<string>(TextBeforeCursorFunction, editorId) ?? string.Empty;
+        /// <summary>
+        /// The text around the cursor of the editor with this element id. Null when there is no
+        /// such editor, or it has nothing open.
+        /// </summary>
+        public async Task<AroundCursorAnswer?> AroundCursorAsync(string editorId) =>
+            await (await ModuleAsync()).InvokeAsync<AroundCursorAnswer?>(AroundCursorFunction, editorId);
+
+        /// <summary>Types into the editor with this element id, and gives it the keyboard.</summary>
+        /// <param name="plain">What was typed, before <paramref name="edit"/> was made of it.</param>
+        /// <param name="stamp">The <see cref="AroundCursorAnswer.Stamp"/> that <paramref name="edit"/> was worked out from, if it was worked out from anything.</param>
+        public async Task TypeAsync(string editorId, TypingEdit edit, string plain, string? stamp) =>
+            await (await ModuleAsync()).InvokeVoidAsync(
+                TypeFunction,
+                editorId,
+                new TypedText(edit.RemoveBefore, edit.RemoveAfter, edit.Text, edit.SelectionStart, edit.SelectionEnd, plain, stamp));
+
+        /// <summary>Gives every editor the colours the page has now.</summary>
+        public async Task ApplyThemeAsync() =>
+            await (await ModuleAsync()).InvokeVoidAsync(ApplyThemeFunction);
 
         private async Task<IJSObjectReference> ModuleAsync() =>
             _module ??= await js.InvokeAsync<IJSObjectReference>("import", ModulePath);

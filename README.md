@@ -28,6 +28,7 @@ Features include:
 - Light / Dark theme built in
 - Emojicode quick reference toolbox
 - Code editor keybindings for common emojis like `shift`+`"` turns into `🔤`
+- Pairs that close themselves: typing `🍇`, `🤜`, `🍿`, `🐚` or `🔤` brings its closer, and the editor shows which `🍉` belongs to which `🍇`
 - Library of sample scripts with support for saving scripts in local storage
 - More coming soon
   - Researching syntax highlighting in monaco for ☁️ and 🔤

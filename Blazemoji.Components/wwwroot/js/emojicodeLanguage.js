@@ -1,6 +1,8 @@
-// Registers Monaco's completion, hover and signature help providers for Emojicode.
-// The providers hold no knowledge of the language: each one hands the text and the cursor's
-// offset to .NET and turns the answer into the shape Monaco wants.
+// What the editor needs from Monaco for Emojicode: its completion, hover and signature help
+// providers, its pairs and comments, typing, and its colours.
+// Nothing here knows the language. The providers hand the text and the cursor's offset to
+// .NET and turn the answer into the shape Monaco wants; the pairs and what a key types come
+// from .NET too.
 //
 // Written in Scripts/emojicodeLanguage.ts and compiled by scripts/build-js.sh to
 // wwwroot/js/emojicodeLanguage.js. The compiled file is committed so that building the app
@@ -24,17 +26,59 @@ function kindOf(kind) {
         default: return kinds.Text;
     }
 }
-// Everything from the start of the file to the cursor of the editor in the element with this
-// id. What a key should type depends on whether that text ends inside a string or a comment,
-// and .NET is where that is worked out.
-export function textBeforeCursor(editorId) {
-    const editor = monaco.editor.getEditors().find((candidate) => candidate.getContainerDomNode()?.id === editorId);
+const TYPED = "blazemoji.typed";
+function editorWithId(editorId) {
+    return monaco.editor.getEditors().find((candidate) => candidate.getContainerDomNode()?.id === editorId);
+}
+// Names the text and the selection as they are now, so that an edit worked out from them can
+// tell whether they are still the same when it arrives.
+function stampOf(editor) {
+    const model = editor.getModel();
+    return `${model.uri}@${model.getVersionId()}@${editor.getSelection()}`;
+}
+// What is around the cursor of the editor in the element with this id: everything before the
+// selection, the selection, and the rest of its last line. .NET works out from these what a
+// key should type. Null when there is no such editor or it has nothing open.
+export function aroundCursor(editorId) {
+    const editor = editorWithId(editorId);
     const model = editor?.getModel();
-    const position = editor?.getPosition();
-    if (!model || !position) {
-        return "";
+    const selection = editor?.getSelection();
+    if (!model || !selection) {
+        return null;
     }
-    return model.getValueInRange(new monaco.Range(1, 1, position.lineNumber, position.column));
+    const end = selection.getEndPosition();
+    return {
+        before: model.getValueInRange(new monaco.Range(1, 1, selection.startLineNumber, selection.startColumn)),
+        selected: model.getValueInRange(selection),
+        after: model.getLineContent(end.lineNumber).slice(end.column - 1),
+        stamp: stampOf(editor),
+    };
+}
+// Types into the editor in the element with this id and gives it the keyboard. An edit that
+// was worked out from text or a selection that has since changed is not applied: what was
+// typed goes in as it is, where the cursor is now.
+export function type(editorId, typed) {
+    const editor = editorWithId(editorId);
+    const model = editor?.getModel();
+    const selection = editor?.getSelection();
+    if (!model || !selection) {
+        return;
+    }
+    const stale = typed.stamp !== null && typed.stamp !== stampOf(editor);
+    const edit = stale
+        ? { removeBefore: 0, removeAfter: 0, text: typed.plain, selectionStart: typed.plain.length, selectionEnd: typed.plain.length }
+        : typed;
+    const start = model.getOffsetAt(selection.getStartPosition()) - edit.removeBefore;
+    const end = model.getOffsetAt(selection.getEndPosition()) + edit.removeAfter;
+    editor.pushUndoStop();
+    editor.executeEdits(TYPED, [{ range: rangeOf(model, start, end), text: edit.text, forceMoveMarkers: true }], () => {
+        const from = model.getPositionAt(start + edit.selectionStart);
+        const to = model.getPositionAt(start + edit.selectionEnd);
+        return [new monaco.Selection(from.lineNumber, from.column, to.lineNumber, to.column)];
+    });
+    editor.pushUndoStop();
+    editor.revealPosition(editor.getPosition());
+    editor.focus();
 }
 // The browser's own knowledge of where one written character ends and the next begins.
 const graphemes = typeof Intl !== "undefined" && "Segmenter" in Intl
@@ -66,13 +110,51 @@ function emojiEndingAtCursor(editor) {
     const start = before.length - tail.length + last.index;
     return new monaco.Range(position.lineNumber, start + 1, position.lineNumber, position.column);
 }
-// Monaco's Backspace takes a whole emoji only when the emoji's first character is in a table
-// Monaco carries. Much of Emojicode is written with emoji that are not: ↩️ ↪️ ◀️ ▶️ ⬅️ ⁉️ are
-// each a plain symbol followed by a selector, and Backspace took the selector and left the
-// symbol; 🤷‍♀️ lost its second half. Here Backspace takes such an emoji whole. Every other
-// case (a plain character, a selection, several cursors, an accent typed after its letter)
-// is left to Monaco, by not touching the key at all.
-function keepEmojiWhole(editor, languageId) {
+// Monaco's own numbering of what a token is: 0 is code, the others are comments and strings.
+const CODE = 0;
+// False inside a string or a comment, going by Monaco's colouring of the line. Where that
+// cannot be asked, the position counts as code.
+function isInCode(model, lineNumber, column) {
+    const tokenization = model.tokenization;
+    if (!tokenization?.getLineTokens) {
+        return true;
+    }
+    tokenization.forceTokenization?.(lineNumber);
+    const tokens = tokenization.getLineTokens(lineNumber);
+    return tokens.getStandardTokenType(tokens.findTokenIndexAtOffset(column - 1)) === CODE;
+}
+// The range of an opener and its closer with the cursor between them and nothing else, in
+// code. Null for anything else.
+function emptyPairAroundCursor(editor, pairs) {
+    const selections = editor.getSelections();
+    if (!selections || selections.length !== 1 || !selections[0].isEmpty()) {
+        return null;
+    }
+    const position = selections[0].getPosition();
+    const model = editor.getModel();
+    const line = model.getLineContent(position.lineNumber);
+    const before = line.slice(0, position.column - 1);
+    const after = line.slice(position.column - 1);
+    const pair = pairs.find(([open, close]) => before.endsWith(open) && after.startsWith(close));
+    if (!pair || !isInCode(model, position.lineNumber, position.column)) {
+        return null;
+    }
+    return new monaco.Range(position.lineNumber, position.column - pair[0].length, position.lineNumber, position.column + pair[1].length);
+}
+// Two things Monaco's Backspace does for other languages and not for this one.
+//
+// It takes a whole emoji only when the emoji's first character is in a table Monaco carries.
+// Much of Emojicode is written with emoji that are not: ↩️ ↪️ ◀️ ▶️ ⬅️ ⁉️ are each a plain
+// symbol followed by a selector, and Backspace took the selector and left the symbol; 🤷‍♀️
+// lost its second half. Here Backspace takes such an emoji whole.
+//
+// And between an opener and the closer that came with it, it takes both, but only for
+// brackets of one UTF-16 unit. Here it does for 🍇🍉 and the other pairs with two different
+// halves. 🔤🔤 is left out: the cursor between two of those may be between two strings.
+//
+// Every other case (a plain character, a selection, several cursors, an accent typed after
+// its letter) is left to Monaco, by not touching the key at all.
+function keepPairsAndEmojiWhole(editor, languageId, removedTogether) {
     return editor.onKeyDown((pressed) => {
         if (pressed.keyCode !== monaco.KeyCode.Backspace || pressed.ctrlKey || pressed.altKey || pressed.metaKey || pressed.browserEvent?.isComposing) {
             return;
@@ -80,22 +162,72 @@ function keepEmojiWhole(editor, languageId) {
         if (editor.getModel()?.getLanguageId() !== languageId || editor.getOption(monaco.editor.EditorOption.readOnly)) {
             return;
         }
-        const emoji = emojiEndingAtCursor(editor);
-        if (!emoji) {
+        const taken = emptyPairAroundCursor(editor, removedTogether) ?? emojiEndingAtCursor(editor);
+        if (!taken) {
             return;
         }
         pressed.preventDefault();
         pressed.stopPropagation();
         editor.pushUndoStop();
-        editor.executeEdits("blazemoji.backspace", [{ range: emoji, text: "", forceMoveMarkers: true }]);
+        editor.executeEdits("blazemoji.backspace", [{ range: taken, text: "", forceMoveMarkers: true }]);
         editor.pushUndoStop();
     });
 }
-export function register(languageId, dotNet) {
+// ➕ ➖ ➗ ✖️ and a few like them are drawn by emoji fonts as one flat dark grey shape, which
+// cannot be seen on a dark page. No colour setting reaches an emoji, so each one is marked
+// and the style sheet turns the marked ones light when the editor is dark. The symbols that
+// are only an emoji with a selector after them are matched with it; without it they are
+// plain text and already take the text's colour. Black shapes with a meaning of their own
+// (⚫ ⬛) are not here: turned light they would be their white twins.
+const FLAT_DARK_GLYPHS = "➕|➖|➗|➰|➿|💱|💲|[✖✔〰™©®]\uFE0F";
+const FLAT_DARK_GLYPH_CLASS = "flat-dark-glyph";
+function markFlatDarkGlyphs(editor, languageId) {
+    const marks = editor.createDecorationsCollection();
+    let waiting = 0;
+    const mark = () => {
+        waiting = 0;
+        const model = editor.getModel();
+        marks.set(model?.getLanguageId() === languageId
+            ? model.findMatches(FLAT_DARK_GLYPHS, false, true, true, null, false).map((match) => ({ range: match.range, options: { inlineClassName: FLAT_DARK_GLYPH_CLASS } }))
+            : []);
+    };
+    // Once for however many changes arrive before the next frame is drawn.
+    const soon = () => {
+        if (!waiting) {
+            waiting = requestAnimationFrame(mark);
+        }
+    };
+    mark();
+    const listeners = [editor.onDidChangeModelContent(soon), editor.onDidChangeModel(soon)];
+    return {
+        dispose() {
+            cancelAnimationFrame(waiting);
+            listeners.forEach(listener => listener.dispose());
+            marks.clear();
+        },
+    };
+}
+// What the editor does for each Monaco editor on the page.
+function attach(editor, languageId, removedTogether) {
+    const hooks = [keepPairsAndEmojiWhole(editor, languageId, removedTogether), markFlatDarkGlyphs(editor, languageId)];
+    return { dispose: () => hooks.forEach(hook => hook.dispose()) };
+}
+export function register(languageId, dotNet, syntax) {
+    const removedTogether = syntax.completed.filter(([open, close]) => open !== close);
     // Editors that are already there, and any made later.
-    const editorHooks = monaco.editor.getEditors().map((editor) => keepEmojiWhole(editor, languageId));
+    const editorHooks = monaco.editor.getEditors().map((editor) => attach(editor, languageId, removedTogether));
     const registrations = [
-        monaco.editor.onDidCreateEditor((editor) => editorHooks.push(keepEmojiWhole(editor, languageId))),
+        monaco.editor.onDidCreateEditor((editor) => editorHooks.push(attach(editor, languageId, removedTogether))),
+        // From this Monaco shows which closer belongs to which opener, indents the line after
+        // an opener, wraps a selection when an opener is typed by the system's own emoji
+        // picker, and can comment lines out. It does not complete pairs: it finds a pair by
+        // one UTF-16 unit and an emoji is two, so that is done in .NET (see type above).
+        monaco.languages.setLanguageConfiguration(languageId, {
+            comments: { lineComment: syntax.lineComment, blockComment: syntax.blockComment },
+            brackets: syntax.matched,
+            autoClosingPairs: [],
+            surroundingPairs: syntax.completed.map(([open, close]) => ({ open, close })),
+        }),
         monaco.languages.registerCompletionItemProvider(languageId, {
             triggerCharacters: [".", ":"],
             async provideCompletionItems(model, position) {
@@ -161,4 +293,97 @@ export function register(languageId, dotNet) {
             editorHooks.forEach(hook => hook.dispose());
         },
     };
+}
+// A colour as MudBlazor writes it into the page: rgba(34,34,38,1), or #222226 with or without
+// two more digits for how solid it is. Null for anything else.
+function colourOf(value) {
+    const text = value.trim();
+    const hex = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(text);
+    if (hex) {
+        const rgb = parseInt(hex[1], 16);
+        return { r: rgb >> 16, g: (rgb >> 8) & 255, b: rgb & 255, a: hex[2] ? parseInt(hex[2], 16) / 255 : 1 };
+    }
+    const parts = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(text);
+    return parts
+        ? { r: Number(parts[1]), g: Number(parts[2]), b: Number(parts[3]), a: parts[4] === undefined ? 1 : Number(parts[4]) }
+        : null;
+}
+function twoDigits(part) {
+    return Math.round(Math.min(255, Math.max(0, part))).toString(16).padStart(2, "0");
+}
+function hexOf(colour) {
+    return `#${twoDigits(colour.r)}${twoDigits(colour.g)}${twoDigits(colour.b)}${colour.a < 1 ? twoDigits(colour.a * 255) : ""}`;
+}
+function faded(colour, by) {
+    return { ...colour, a: colour.a * by };
+}
+// The solid colour that is seen when one colour lies over another.
+function over(top, bottom) {
+    const mix = (above, below) => above * top.a + below * (1 - top.a);
+    return { r: mix(top.r, bottom.r), g: mix(top.g, bottom.g), b: mix(top.b, bottom.b), a: 1 };
+}
+function isDark(colour) {
+    return (0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b) / 255 < 0.5;
+}
+const LIGHT_THEME = "blazemoji-light";
+const DARK_THEME = "blazemoji-dark";
+// Gives every editor on the page the page's own colours, read from the palette MudBlazor
+// writes into it. The editor then matches whatever theme its host has, light or dark, and
+// .NET only has to say when the page's colours have changed. Emoji keep their own colours
+// whatever is set here, so there is little to colour: what is written inside a string takes
+// the accent, comments are quieter than code, and everything else is the page's text colour.
+// A page with no such palette is left with the theme Monaco has.
+export function applyTheme() {
+    const page = getComputedStyle(document.documentElement);
+    const read = (name) => colourOf(page.getPropertyValue(`--mud-palette-${name}`));
+    const surface = read("surface");
+    const ink = read("text-primary");
+    if (!surface || !ink) {
+        return;
+    }
+    const quiet = read("text-secondary") ?? faded(ink, 0.7);
+    const accent = read("primary") ?? ink;
+    const lines = read("lines-default") ?? faded(ink, 0.14);
+    const colours = {};
+    const set = (colour, ...names) => {
+        if (colour) {
+            names.forEach(name => colours[name] = hexOf(colour));
+        }
+    };
+    set(surface, "editor.background", "editorGutter.background", "editorWidget.background", "editorHoverWidget.background", "editorSuggestWidget.background", "minimap.background");
+    set(over(ink, surface), "editor.foreground", "editorLineNumber.activeForeground", "editorWidget.foreground", "editorSuggestWidget.foreground", "editorSuggestWidget.selectedForeground");
+    set(over(quiet, surface), "editorLineNumber.foreground");
+    set(accent, "editorCursor.foreground", "editorBracketMatch.border", "editorSuggestWidget.highlightForeground", "editorSuggestWidget.focusHighlightForeground", "editorLink.activeForeground", "focusBorder");
+    set(faded(accent, 0.3), "editor.selectionBackground");
+    set(faded(accent, 0.18), "editor.inactiveSelectionBackground", "editorBracketMatch.background", "editor.wordHighlightStrongBackground", "editorSuggestWidget.selectedBackground");
+    set(faded(accent, 0.12), "editor.selectionHighlightBackground", "editor.wordHighlightBackground");
+    set(faded(ink, 0.05), "editor.lineHighlightBackground", "list.hoverBackground");
+    set(faded(ink, 0), "editor.lineHighlightBorder", "editorOverviewRuler.border");
+    set(lines, "editorIndentGuide.background", "editorIndentGuide.background1", "editorWhitespace.foreground", "editorWidget.border", "editorHoverWidget.border", "editorSuggestWidget.border");
+    set(faded(ink, 0.38), "editorIndentGuide.activeBackground", "editorIndentGuide.activeBackground1");
+    set(faded(ink, 0.16), "scrollbarSlider.background");
+    set(faded(ink, 0.24), "scrollbarSlider.hoverBackground");
+    set(faded(ink, 0.32), "scrollbarSlider.activeBackground");
+    const found = read("secondary");
+    set(found && faded(found, 0.45), "editor.findMatchHighlightBackground");
+    set(found && faded(found, 0.8), "editor.findMatchBackground");
+    set(read("error"), "editorError.foreground");
+    set(read("warning"), "editorWarning.foreground");
+    set(read("info"), "editorInfo.foreground");
+    // A token's colour cannot be see-through, so each is the solid colour it comes to on the page.
+    const solid = (colour) => hexOf(over(colour, surface)).slice(1);
+    const dark = isDark(surface);
+    const name = dark ? DARK_THEME : LIGHT_THEME;
+    monaco.editor.defineTheme(name, {
+        base: dark ? "vs-dark" : "vs",
+        inherit: true,
+        rules: [
+            { token: "", foreground: solid(ink) },
+            { token: "comment", foreground: solid(quiet) },
+            { token: "string", foreground: solid(accent) },
+            { token: "variable", foreground: solid(ink) },
+        ],
+        colors: colours,
+    });
+    monaco.editor.setTheme(name);
 }

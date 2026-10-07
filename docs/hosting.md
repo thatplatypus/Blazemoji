@@ -50,7 +50,7 @@ The web host also raises the size of a message from the browser to 4 MiB (`AddHu
 
 ## In the page shell
 
-1. MudBlazor's providers (`MudThemeProvider`, `MudPopoverProvider`, `MudDialogProvider`, `MudSnackbarProvider`) and its style sheet and script. The theme is the host's: the web host's is `Blazemoji/Layout/Theme.cs`, and `MainLayout.razor` switches Monaco between its light and dark themes when MudBlazor's dark mode changes.
+1. MudBlazor's providers (`MudThemeProvider`, `MudPopoverProvider`, `MudDialogProvider`, `MudSnackbarProvider`) and its style sheet and script. The theme is the host's: the web host's is `Blazemoji/Layout/Theme.cs`. The editor has no colours of its own. It reads the palette MudBlazor writes into the page (surface, text, primary and so on) and makes its Monaco theme from that, so it matches whatever theme the host has. To have it read them again when the page goes dark or light, cascade a `bool` named `DarkMode` around the editor, as `MainLayout.razor` does; a host whose colours never change needs nothing.
 2. The style sheets `_content/Blazemoji.Components/blazemoji.css` and the host's own `<HostAssembly>.styles.css`, which pulls in the components' scoped styles. `blazemoji.css` gives the editor a height of 83% of the window (`.editor`), which suits the web host's layout; a host with a different layout overrides it.
 
    The web host links Bootstrap 5.1 as well, ahead of these. The components do not use its classes, but a few of them draw plain headings, paragraphs and `<pre>` blocks, which Bootstrap's reset styles. Without Bootstrap those take MudBlazor's and the browser's defaults: the same content, slightly different spacing.
