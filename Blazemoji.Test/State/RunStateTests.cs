@@ -465,17 +465,42 @@ namespace Blazemoji.Test.State
         }
 
         [Fact]
-        public async Task A_check_does_not_start_while_a_program_is_running()
+        public async Task A_check_goes_ahead_while_a_program_is_running_and_shows_what_it_finds()
         {
-            CompileSucceeds();
+            var typed = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Typed while the server runs.");
+            _toolchain.CompileAsync(Arg.Is<CompileRequest>(request => !request.CheckOnly), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(true, [], "build-1"));
+            _toolchain.CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(false, [typed], null));
+            _toolchain.StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>()).Returns<IToolchainRun>(_run);
             await using var state = CreateState();
             var running = state.RunAsync(Code);
             await UntilAsync(() => state.Status == RunStatus.Running, advanceTime: false);
-            _toolchain.ClearReceivedCalls();
 
             await state.CheckAsync(Target("typed while running"));
 
-            await _toolchain.DidNotReceive().CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
+            state.Status.ShouldBe(RunStatus.Running);
+            state.Diagnostics.ShouldBe([typed]);
+            state.DiagnosticsAreFromARun.ShouldBeFalse();
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task A_check_does_not_start_while_a_program_is_being_built()
+        {
+            var building = new TaskCompletionSource<CompileResult>();
+            _toolchain.CompileAsync(Arg.Is<CompileRequest>(request => !request.CheckOnly), Arg.Any<CancellationToken>()).Returns(building.Task);
+            _toolchain.StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>()).Returns<IToolchainRun>(_run);
+            await using var state = CreateState();
+            var running = state.RunAsync(Code);
+            state.Status.ShouldBe(RunStatus.Compiling);
+
+            await state.CheckAsync(Target("typed while building"));
+
+            await _toolchain.DidNotReceive().CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly), Arg.Any<CancellationToken>());
+            building.SetResult(new CompileResult(true, [], "build-1"));
+            await UntilAsync(() => state.Status == RunStatus.Running, advanceTime: false);
             _run.Exit();
             await running;
         }
