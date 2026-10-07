@@ -100,5 +100,27 @@ namespace Blazemoji.Test.Intelligence
             SourceReader.Read(string.Empty).ShouldBeEmpty();
             SourceReader.Read("  \n\t ").ShouldBeEmpty();
         }
+
+        [Theory]
+        [InlineData("", TextContext.Code)]
+        [InlineData("😀 ", TextContext.Code)]
+        [InlineData("😀 🔤Hello", TextContext.String)]
+        [InlineData("😀 🔤", TextContext.String)]
+        [InlineData("😀 🔤Hello🔤", TextContext.Code)]
+        [InlineData("😀 🔤Hello🔤❗️\n😀 🔤again", TextContext.String)]
+        [InlineData("😀 🔤a quote ❌🔤 inside", TextContext.String)]
+        [InlineData("😀 🔤one\ntwo", TextContext.String)]
+        [InlineData("💭 a note", TextContext.Comment)]
+        [InlineData("💭 a note\n", TextContext.Code)]
+        [InlineData("💭 a note with 🔤 in it", TextContext.Comment)]
+        [InlineData("💭🔜 a block\nof notes", TextContext.Comment)]
+        [InlineData("💭🔜 a block 🔚💭 ", TextContext.Code)]
+        [InlineData("📗 what a method does", TextContext.Comment)]
+        [InlineData("📗 what a method does 📗\n", TextContext.Code)]
+        [InlineData("📘 what a package does", TextContext.Comment)]
+        public void Where_some_text_ends_is_code_a_string_or_a_comment(string text, TextContext expected)
+        {
+            SourceReader.ContextAtEnd(text).ShouldBe(expected);
+        }
     }
 }

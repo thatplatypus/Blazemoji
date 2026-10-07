@@ -17,6 +17,17 @@ namespace Blazemoji.Emojicode.Intelligence
         Text,
     }
 
+    /// <summary>What kind of text a position is in.</summary>
+    public enum TextContext
+    {
+        Code,
+
+        /// <summary>Between a 🔤 and the 🔤 that closes it.</summary>
+        String,
+
+        Comment,
+    }
+
     /// <param name="Start">Offset of the first UTF-16 unit in the source.</param>
     /// <param name="End">Offset just past the last one.</param>
     /// <param name="Line">1-based.</param>
@@ -114,6 +125,59 @@ namespace Blazemoji.Emojicode.Intelligence
         }
 
         /// <summary>
+        /// What the end of <paramref name="source"/> is inside of. Given the text before the
+        /// cursor, this says whether the next character typed is code, part of a string, or
+        /// part of a comment.
+        /// </summary>
+        public static TextContext ContextAtEnd(string source)
+        {
+            var position = 0;
+            while (position < source.Length)
+            {
+                if (StartsWith(source, position, BlockCommentOpen))
+                {
+                    if (!Closes(source, position + BlockCommentOpen.Length, BlockCommentClose, out position))
+                        return TextContext.Comment;
+                }
+                else if (StartsWith(source, position, LineComment))
+                {
+                    if (!Closes(source, position, "\n", out position))
+                        return TextContext.Comment;
+                }
+                else if (StartsWith(source, position, Documentation))
+                {
+                    if (!Closes(source, position + Documentation.Length, Documentation, out position))
+                        return TextContext.Comment;
+                }
+                else if (StartsWith(source, position, PackageDocumentation))
+                {
+                    if (!Closes(source, position + PackageDocumentation.Length, PackageDocumentation, out position))
+                        return TextContext.Comment;
+                }
+                else if (StartsWith(source, position, StringQuote))
+                {
+                    var line = 0;
+                    var closed = SkipString(source, position + StringQuote.Length, ref line, out position);
+                    if (!closed)
+                        return TextContext.String;
+                }
+                else
+                {
+                    position += StringInfo.GetNextTextElementLength(source, position);
+                }
+            }
+
+            return TextContext.Code;
+        }
+
+        private static bool Closes(string source, int from, string closing, out int after)
+        {
+            var end = source.IndexOf(closing, from, StringComparison.Ordinal);
+            after = end < 0 ? source.Length : end + closing.Length;
+            return end >= 0;
+        }
+
+        /// <summary>
         /// A letter, digit or underscore standing on its own. A digit that starts a keycap emoji
         /// (1️⃣) is part of that emoji, not of a number.
         /// </summary>
@@ -146,6 +210,14 @@ namespace Blazemoji.Emojicode.Intelligence
 
         private static int SkipString(string source, int position, ref int line)
         {
+            SkipString(source, position, ref line, out var end);
+            return end;
+        }
+
+        /// <returns>False when the source ends before the string does.</returns>
+        private static bool SkipString(string source, int position, ref int line, out int end)
+        {
+            end = source.Length;
             while (position < source.Length)
             {
                 if (StartsWith(source, position, Escape))
@@ -158,7 +230,10 @@ namespace Blazemoji.Emojicode.Intelligence
                 }
 
                 if (StartsWith(source, position, StringQuote))
-                    return position + StringQuote.Length;
+                {
+                    end = position + StringQuote.Length;
+                    return true;
+                }
 
                 if (source[position] == '\n')
                     line++;
@@ -166,7 +241,7 @@ namespace Blazemoji.Emojicode.Intelligence
                 position++;
             }
 
-            return source.Length;
+            return false;
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿@using BlazorMonaco.Editor
 @using BlazorMonaco;
 @using Blazemoji.Toolchain
+@using Blazemoji.Emojicode.Intelligence
 @using Blazemoji.Interop
 @implements IDisposable
 @inject IJSRuntime _jsRuntime
@@ -14,7 +15,7 @@
 
 <BlazorMonaco.Editor.StandaloneCodeEditor @ref="_editor" 
     CssClass="@("editor " + (_initializing ? "invisible" : ""))" 
-    Id="emojiEditor"
+    Id="@EditorId"
     OnDidInit="InitEditor"
     OnDidBlurEditorText="SetPosition"
     OnDidChangeModelContent="OnContentChanged"
@@ -23,6 +24,7 @@
 @code {
     private const string MarkerOwner = "emojicodec";
     private const string LanguageId = "emojiscript";
+    private const string EditorId = "emojiEditor";
 
     // How long typing has to pause before the text is handed on to be kept.
     private static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(400);
@@ -148,7 +150,7 @@
     {
         foreach (var keybinding in EmojicodeKeybindings.Keybindings)
         {
-            await AddCommand(keybinding.Key, keybinding.Value);
+            await AddCommand(keybinding.Key);
         }
 
         await _editor.AddCommand((int)KeyMod.CtrlCmd | (int)KeyCode.KeyE, async (args) =>
@@ -186,12 +188,25 @@
         });
     }
 
-    private async Task AddCommand(int keybinding, string text)
+    private async Task AddCommand(int keybinding)
     {
         await _editor.AddCommand(keybinding, async (args) =>
         {
-            await InsertTextAsync(text);
+            await InsertTextAsync(await TextForKeyAsync(keybinding));
         });
+    }
+
+    /// <summary>
+    /// A key that stands for an emoji in code types what is printed on it inside a string or
+    /// a comment. Only those keys need to know where the cursor is.
+    /// </summary>
+    private async Task<string> TextForKeyAsync(int keybinding)
+    {
+        var context = EmojicodeKeybindings.CanDependOnContext(keybinding)
+            ? SourceReader.ContextAtEnd(await _language.TextBeforeCursorAsync(EditorId))
+            : TextContext.Code;
+
+        return EmojicodeKeybindings.TextFor(keybinding, context);
     }
 
     private async Task SetPosition()

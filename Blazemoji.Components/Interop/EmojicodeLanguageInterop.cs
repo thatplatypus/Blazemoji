@@ -26,6 +26,7 @@ namespace Blazemoji.Interop
         private const string ModulePath = "./_content/Blazemoji.Components/js/emojicodeLanguage.js";
         private const string RegisterFunction = "register";
         private const string DisposeFunction = "dispose";
+        private const string TextBeforeCursorFunction = "textBeforeCursor";
 
         private IJSObjectReference? _module;
         private IJSObjectReference? _registration;
@@ -40,10 +41,16 @@ namespace Blazemoji.Interop
             if (_registration is not null)
                 return;
 
-            _module = await js.InvokeAsync<IJSObjectReference>("import", ModulePath);
             _self = DotNetObjectReference.Create(this);
-            _registration = await _module.InvokeAsync<IJSObjectReference>(RegisterFunction, languageId, _self);
+            _registration = await (await ModuleAsync()).InvokeAsync<IJSObjectReference>(RegisterFunction, languageId, _self);
         }
+
+        /// <summary>The text from the start of the file to the cursor, in the editor with this element id.</summary>
+        public async Task<string> TextBeforeCursorAsync(string editorId) =>
+            await (await ModuleAsync()).InvokeAsync<string>(TextBeforeCursorFunction, editorId) ?? string.Empty;
+
+        private async Task<IJSObjectReference> ModuleAsync() =>
+            _module ??= await js.InvokeAsync<IJSObjectReference>("import", ModulePath);
 
         [JSInvokable]
         public async Task<IReadOnlyList<CompletionAnswer>> CompleteAsync(string text, int offset)

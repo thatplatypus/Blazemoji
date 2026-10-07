@@ -4,6 +4,7 @@ using Blazemoji.Interop;
 using Blazemoji.Services.Projects;
 using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
+using BlazorMonaco;
 using BlazorMonaco.Editor;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,11 +16,17 @@ namespace Blazemoji.Test.Components
     public sealed class EmojiCodeEditorTests : BunitContext
     {
         private const string CreateModel = "blazorMonaco.editor.createModel";
+        private const string ExecuteEdits = "blazorMonaco.editor.executeEdits";
+        private const string TextBeforeCursor = "textBeforeCursor";
+        private const int ExclamationKey = (int)KeyMod.Shift | (int)KeyCode.Digit1;
+
+        private readonly BunitJSModuleInterop _module;
 
         public EmojiCodeEditorTests()
         {
             JSInterop.Mode = JSRuntimeMode.Loose;
-            JSInterop.SetupModule().SetupModule("register", _ => true);
+            _module = JSInterop.SetupModule();
+            _module.SetupModule("register", _ => true);
             Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
 
             // The editor registers the language's providers, which answer from the open project.
@@ -72,6 +79,42 @@ namespace Blazemoji.Test.Components
             (await cut.InvokeAsync(() => cut.Instance.GetCodeAsync("one"))).ShouldBe("text of one");
             (await cut.InvokeAsync(() => cut.Instance.GetCodeAsync("two"))).ShouldBe("text of two");
             (await cut.InvokeAsync(() => cut.Instance.GetCodeAsync("never opened"))).ShouldBeNull();
+        }
+
+        private IRenderedComponent<EmojiCodeEditor> RenderWithTheCursorAfter(string textBeforeCursor)
+        {
+            _module.Setup<string>(TextBeforeCursor, _ => true).SetResult(textBeforeCursor);
+            JSInterop.Setup<Selection>("blazorMonaco.editor.getSelection", _ => true)
+                .SetResult(new Selection { StartLineNumber = 1, StartColumn = 1, EndLineNumber = 1, EndColumn = 1, PositionLineNumber = 1, PositionColumn = 1 });
+            return Render<EmojiCodeEditor>();
+        }
+
+        private string? TextTyped() =>
+            JSInterop.Invocations[ExecuteEdits].Select(invocation => ((List<IdentifiedSingleEditOperation>)invocation.Arguments[2]!).Single().Text).SingleOrDefault();
+
+        [Theory]
+        [InlineData("😀 🔤Hello World", "!")]
+        [InlineData("💭 What a day", "!")]
+        [InlineData("😀 🔤Hello World🔤", "❗")]
+        [InlineData("", "❗")]
+        public async Task The_exclamation_key_types_a_plain_mark_in_a_string_or_comment_and_the_emoji_in_code(string before, string typed)
+        {
+            var cut = RenderWithTheCursorAfter(before);
+
+            await cut.InvokeAsync(() => cut.Instance.Editor.CommandCallback(ExclamationKey));
+
+            cut.WaitForAssertion(() => TextTyped().ShouldBe(typed));
+        }
+
+        [Fact]
+        public async Task A_shortcut_that_is_the_same_everywhere_does_not_ask_where_the_cursor_is()
+        {
+            var cut = RenderWithTheCursorAfter("😀 🔤Hello World");
+
+            await cut.InvokeAsync(() => cut.Instance.Editor.CommandCallback((int)KeyMod.CtrlCmd | (int)KeyCode.KeyP));
+
+            cut.WaitForAssertion(() => TextTyped().ShouldBe("😀"));
+            _module.Invocations[TextBeforeCursor].ShouldBeEmpty();
         }
     }
 }
