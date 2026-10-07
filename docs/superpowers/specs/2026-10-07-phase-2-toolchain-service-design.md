@@ -93,7 +93,7 @@ A run and its event log are kept for a short time after `exit` (default 2 minute
 
 ## What this does not protect against
 
-All runs share one container and one user. A program can read other runs' files, signal other runs, and exhaust shared limits. The service must not be exposed publicly as it stands.
+All runs share one container and one user. A program can read other runs' files, signal other runs, and exhaust shared limits. It can also call the service's own API on the loopback address, and leave a process behind that outlives its run if that process starts a session of its own. The service must not be exposed publicly as it stands.
 
 **Proposal, not built:** for a public playground, run each build-and-run in its own short-lived sandbox. Azure Container Apps dynamic sessions fit: Hyper-V isolated session pools with a custom container, per-session network egress off by default, a session identifier per request, and idle cooldown. The custom container would be this `toolchain` image; the web app would call the session pool's endpoint with a session id per browser session, and the contract above would not change. Cost and cold-start time need measuring before committing; a pool with a few ready instances is the usual answer. The alternative of one Docker container per run on a single VM (gVisor or Kata runtime) is cheaper to start with and worse to operate.
 
@@ -143,3 +143,17 @@ All runs share one container and one user. A program can read other runs' files,
 8. **Known operational risk under emulation.** On Apple Silicon the service runs under Rosetta, where a .NET process has twice been seen to freeze completely during test runs. If the toolchain container ever stops answering on a Mac, restart it. This has not been seen, and is not expected, on real x86_64.
 9. **Contract tests found nothing to fix.** All 32 passed on their first run against the service, which also means they were never watched failing against it; the in-memory service tests cover the same behaviour independently.
 
+## Changes after the independent review
+
+The review found no critical defects and six important ones. All six are fixed on this branch.
+
+1. **`scripts/test-in-docker.sh` reported success when the unit tests failed.** Its inner script had no `set -e`, and once the contract tests were added after the unit tests the exit status was theirs alone.
+2. **Finished runs were kept without any ceiling.** Forty runs that each hit the output cap held 650 MB within two seconds. Finished runs are now kept up to a count (`MaxRetainedRuns`, 32) and an approximate amount of memory (`MaxRetainedBytes`, 64 MiB), oldest dropped first, the newest always kept. Compiles are limited to `MaxConcurrentCompiles` (4) at once; one beyond that is `429`. Request bodies over `MaxRequestBodyBytes` (4 MiB) are `413`.
+3. **The compose file set no limits on the toolchain container.** A program can start processes of its own, each with a fresh per-process allowance, so `prlimit` alone is not a ceiling. The container now has limits on processes (1024), memory (2 GB) and CPUs (4), a read-only file system with an in-memory `/tmp`, no capabilities and `no-new-privileges`.
+4. **The client waited for ever, and Stop could throw into the page.** The client now gives up on a request after `ToolchainClient:RequestTimeout` (2 minutes, longer than the slowest compile); an open event stream is not subject to it. Stop gives up after 10 seconds and never throws.
+5. **A program ended by the CPU limit was reported as having exited with code 152.** It is now reported as `timedOut`, the same as the wall-clock limit, which is what the same endless loop produced in Phase 1.
+6. **The contract tests had gaps.** They now own their test programs (no file linked from another project), run one class at a time so that they need only one free run slot, omit `env` when there is none, and assert content types for real (three assertions had been skipped when the header was missing). New tests: `429` at the run limit and the slot coming back, `413` for an oversized body, `400` for a body that is not JSON.
+
+The end-to-end script's isolation check now first proves the toolchain container answers its own health check, so a container that is not running can no longer pass as "no route out". It also reports whether public names resolve from inside it.
+
+Additions to the contract table: `POST /compile` can answer `429`; any request can answer `413`.

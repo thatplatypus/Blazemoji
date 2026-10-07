@@ -48,11 +48,31 @@ until curl -s -o /dev/null "http://127.0.0.1:$BLAZEMOJI_PORT/"; do
   sleep 1
 done
 
-# The toolchain service must not be able to reach the outside world.
+# The toolchain service must not be able to reach the outside world. First show that the
+# check can fail at all: the same tool, in the same container, has to be able to reach
+# something. Otherwise a container that is not running would pass as having no route out.
+waited=0
+until docker compose -p "$PROJECT" exec -T toolchain curl -fs -m 5 -o /dev/null http://127.0.0.1:8080/health; do
+  waited=$((waited + 1))
+  if [ "$waited" -gt 60 ]; then
+    echo "The toolchain container did not answer its own health check, so its isolation cannot be checked." >&2
+    docker compose -p "$PROJECT" logs toolchain | tail -40 >&2
+    exit 1
+  fi
+  sleep 1
+done
 if docker compose -p "$PROJECT" exec -T toolchain curl -s -m 5 -o /dev/null https://example.com; then
   echo "The toolchain container reached the internet. It must be on an internal network only." >&2
   exit 1
 fi
-echo "toolchain container has no route out: ok"
+echo "toolchain container answers locally and has no route out: ok"
+
+# Docker's resolver answers on an internal network too. A name that resolves is not a route,
+# but it is worth knowing, because a lookup can carry data out.
+if docker compose -p "$PROJECT" exec -T toolchain getent hosts example.com > /dev/null 2>&1; then
+  echo "note: the toolchain container can resolve public names, though it cannot connect to them"
+else
+  echo "toolchain container cannot resolve public names either"
+fi
 
 BLAZEMOJI_BASE_URL="http://127.0.0.1:$BLAZEMOJI_PORT" dotnet test --project Blazemoji.E2E "$@"

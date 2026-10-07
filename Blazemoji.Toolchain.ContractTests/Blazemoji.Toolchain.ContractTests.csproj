@@ -24,8 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The same small Emojicode programs the toolchain tests use, linked as source. -->
-    <Compile Include="..\Blazemoji.Test\Toolchain\Programs.cs" Link="Programs.cs" />
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

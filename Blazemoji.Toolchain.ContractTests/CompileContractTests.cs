@@ -112,6 +112,27 @@ namespace Blazemoji.Toolchain.ContractTests
         }
 
         [Fact]
+        public async Task A_body_that_is_not_json_is_a_400()
+        {
+            Assert.SkipWhen(ToolchainService.BaseUrl is null, ToolchainService.SkipReason);
+
+            using var response = await ToolchainService.Http.PostAsync("compile", new StringContent("{ not json", System.Text.Encoding.UTF8, "application/json"), Cancellation);
+
+            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        }
+
+        [Fact]
+        public async Task A_body_far_larger_than_any_program_is_a_413()
+        {
+            Assert.SkipWhen(ToolchainService.BaseUrl is null, ToolchainService.SkipReason);
+            var files = new Dictionary<string, string> { ["main.🍇"] = Programs.Hello + "💭 " + new string('x', 16 * 1024 * 1024) };
+
+            using var response = await ToolchainService.PostCompileAsync(new { files, entry = "main.🍇" }, Cancellation);
+
+            response.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
+        }
+
+        [Fact]
         public async Task An_entry_that_is_not_one_of_the_files_is_a_400_problem()
         {
             Assert.SkipWhen(ToolchainService.BaseUrl is null, ToolchainService.SkipReason);
@@ -167,7 +188,7 @@ namespace Blazemoji.Toolchain.ContractTests
             using var response = await ToolchainService.Http.GetAsync("packages/s/documentation.json", Cancellation);
 
             response.StatusCode.ShouldBe(HttpStatusCode.OK);
-            response.Content.Headers.ContentType?.MediaType.ShouldBe("application/json");
+            ToolchainService.MediaType(response).ShouldBe("application/json");
             var types = (await ToolchainService.ReadJsonAsync(response, Cancellation)).GetProperty("types").EnumerateArray().ToList();
             var stringType = types.First(t => t.GetProperty("name").GetString() == "🔡");
             stringType.GetProperty("methods").GetArrayLength().ShouldBeGreaterThan(0);

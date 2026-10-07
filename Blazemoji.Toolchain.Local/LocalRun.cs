@@ -12,6 +12,9 @@ namespace Blazemoji.Toolchain.Local
     {
         private const int NoEndRequested = -1;
 
+        // 128 + SIGXCPU, how a process ended by that signal is reported.
+        private const int KilledByCpuLimit = 128 + 24;
+
         // How long output may still arrive after the program itself has gone. Anything holding
         // the pipes open beyond this is a process the program left behind, not the program.
         private static readonly TimeSpan DrainGrace = TimeSpan.FromMilliseconds(250);
@@ -132,8 +135,7 @@ namespace Blazemoji.Toolchain.Local
             _clock.Stop();
             EndStrays();
 
-            var reason = EndRequested ? (RunEndReason)_requestedEnd : RunEndReason.Exited;
-            yield return new ExitEvent(_process.ExitCode, reason, _clock.Elapsed);
+            yield return new ExitEvent(_process.ExitCode, ReasonForExit(_process.ExitCode), _clock.Elapsed);
         }
 
         public Task StopAsync()
@@ -191,6 +193,19 @@ namespace Blazemoji.Toolchain.Local
         internal string? RunDirectory => _runDirectory;
 
         private bool EndRequested => Volatile.Read(ref _requestedEnd) != NoEndRequested;
+
+        /// <summary>
+        /// A program that uses up its CPU time is ended by the kernel, not by this class, and
+        /// would otherwise look like a program that chose to exit with an odd code. To the
+        /// person who wrote the endless loop it is the same thing as the wall-clock limit.
+        /// </summary>
+        private RunEndReason ReasonForExit(int exitCode)
+        {
+            if (EndRequested)
+                return (RunEndReason)_requestedEnd;
+
+            return exitCode == KilledByCpuLimit ? RunEndReason.TimedOut : RunEndReason.Exited;
+        }
 
         private void End(RunEndReason reason)
         {

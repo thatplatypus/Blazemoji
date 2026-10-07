@@ -22,7 +22,7 @@ namespace Blazemoji.Toolchain.Service
             return app;
         }
 
-        private static async Task<IResult> CompileAsync(CompileRequestBody body, IToolchain toolchain, PackageCatalog catalog, CancellationToken cancellationToken)
+        private static async Task<IResult> CompileAsync(CompileRequestBody body, IToolchain toolchain, PackageCatalog catalog, CompileGate gate, CancellationToken cancellationToken)
         {
             if (body.Files is null || body.Files.Count == 0)
                 return BadRequest("At least one file is required.");
@@ -36,10 +36,20 @@ namespace Blazemoji.Toolchain.Service
             if (body.Packages is { Length: > 0 } requested && requested.Except(catalog.Names(), StringComparer.Ordinal).Any())
                 return BadRequest("An unknown package was requested.");
 
-            var result = await toolchain.CompileAsync(new CompileRequest(body.Files, body.Entry), cancellationToken);
-            var response = new CompileResponseBody(result.Ok, result.Diagnostics.Select(DiagnosticBody.From).ToList(), result.BuildId);
+            if (!gate.TryEnter())
+                return Problem("Too many programs are being compiled. Try again shortly.", StatusCodes.Status429TooManyRequests);
 
-            return Results.Json(response, ToolchainJson.Options);
+            try
+            {
+                var result = await toolchain.CompileAsync(new CompileRequest(body.Files, body.Entry), cancellationToken);
+                var response = new CompileResponseBody(result.Ok, result.Diagnostics.Select(DiagnosticBody.From).ToList(), result.BuildId);
+
+                return Results.Json(response, ToolchainJson.Options);
+            }
+            finally
+            {
+                gate.Leave();
+            }
         }
 
         private static async Task<IResult> StartRunAsync(StartRunBody body, IToolchain toolchain, IBuildStore builds, RunRegistry registry, CancellationToken cancellationToken)

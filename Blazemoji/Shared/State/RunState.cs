@@ -126,10 +126,18 @@ namespace Blazemoji.Shared.State
         {
             _stopRequested = true;
 
-            if (_run is { } run)
-                await run.StopAsync();
-            else if (_compileCancellation is { } compiling)
-                await compiling.CancelAsync();
+            try
+            {
+                if (_run is { } run)
+                    await run.StopAsync();
+                else if (_compileCancellation is { } compiling)
+                    await compiling.CancelAsync();
+            }
+            catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidOperationException)
+            {
+                // Stop is a button. A toolchain that cannot be reached must not take the page down.
+                logger.LogError(exception, "The run could not be asked to stop");
+            }
         }
 
         public async ValueTask DisposeAsync()

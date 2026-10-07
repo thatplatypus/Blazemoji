@@ -67,6 +67,22 @@ namespace Blazemoji.Test.Toolchain
         }
 
         [Fact]
+        public async Task A_program_ended_by_the_cpu_time_limit_is_reported_as_timed_out()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create();
+
+            // The signal the kernel sends a process that has used up its CPU time.
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "kill -XCPU $$; sleep 30");
+
+            await using var run = await toolchain.StartRunAsync(new RunRequest(buildId), Cancellation);
+            var finished = await run.RunToEndAsync(Cancellation);
+
+            finished.Exit.Reason.ShouldBe(RunEndReason.TimedOut);
+            finished.Exit.ExitCode.ShouldBe(128 + 24);
+        }
+
+        [Fact]
         public async Task Stop_ends_a_running_program()
         {
             Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);

@@ -24,8 +24,8 @@ namespace Blazemoji.Test.Service
 
         private HttpToolchain CreateClient() => new(_factory.CreateClient(), NullLogger<HttpToolchain>.Instance);
 
-        private static HttpToolchain ClientOver(HttpMessageHandler handler) =>
-            new(new HttpClient(handler) { BaseAddress = new Uri("http://toolchain.test") }, NullLogger<HttpToolchain>.Instance);
+        private static HttpToolchain ClientOver(HttpMessageHandler handler, TimeSpan? timeout = null) =>
+            new(new HttpClient(handler) { BaseAddress = new Uri("http://toolchain.test"), Timeout = timeout ?? TimeSpan.FromSeconds(100) }, NullLogger<HttpToolchain>.Instance);
 
         private async Task<IToolchainRun> StartRunAsync(HttpToolchain client)
         {
@@ -241,6 +241,91 @@ namespace Blazemoji.Test.Service
 
         private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
             new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+
+        [Fact]
+        public async Task A_compile_refused_because_the_service_is_busy_carries_the_services_reason()
+        {
+            var handler = new ScriptedHandler(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent("{\"title\":\"Too many programs are being compiled. Try again shortly.\"}", Encoding.UTF8, "application/problem+json"),
+            });
+
+            var result = await ClientOver(handler).CompileAsync(ToolchainFixture.SingleFile("x"), Cancellation);
+
+            result.Ok.ShouldBeFalse();
+            result.Diagnostics.ShouldHaveSingleItem().Message.ShouldBe("Too many programs are being compiled. Try again shortly.");
+        }
+
+        [Fact]
+        public async Task A_compile_the_service_never_answers_is_a_failed_build_once_the_client_gives_up()
+        {
+            var result = await ClientOver(new SilentHandler(), TimeSpan.FromMilliseconds(200)).CompileAsync(ToolchainFixture.SingleFile("x"), Cancellation);
+
+            result.Ok.ShouldBeFalse();
+            result.Diagnostics.ShouldHaveSingleItem().Message.ShouldBe("The toolchain service did not answer in time.");
+        }
+
+        [Fact]
+        public async Task A_compile_the_caller_cancels_is_still_a_cancellation()
+        {
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Cancellation);
+            cancellation.CancelAfter(TimeSpan.FromMilliseconds(100));
+
+            await Should.ThrowAsync<OperationCanceledException>(
+                () => ClientOver(new SilentHandler(), TimeSpan.FromSeconds(30)).CompileAsync(ToolchainFixture.SingleFile("x"), cancellation.Token));
+        }
+
+        [Fact]
+        public async Task A_run_the_service_never_answers_fails_to_start_once_the_client_gives_up()
+        {
+            await using var run = await ClientOver(new SilentHandler(), TimeSpan.FromMilliseconds(200))
+                .StartRunAsync(new RunRequest(ToolchainServiceFactory.KnownBuild), Cancellation);
+
+            var finished = await run.RunToEndAsync(Cancellation);
+
+            finished.Exit.Reason.ShouldBe(RunEndReason.FailedToStart);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Stopping_a_run_when_the_service_is_gone_or_silent_does_not_throw(bool silent)
+        {
+            var started = false;
+            HttpMessageHandler afterStart = silent ? new SilentHandler() : new FailingHandler();
+            var handler = new RoutingHandler(request =>
+            {
+                if (started)
+                    return afterStart;
+
+                started = true;
+                return new ScriptedHandler(_ => new HttpResponseMessage(HttpStatusCode.Created)
+                {
+                    Content = new StringContent("{\"runId\":\"abc\"}", Encoding.UTF8, "application/json"),
+                });
+            });
+            var run = await ClientOver(handler, TimeSpan.FromMilliseconds(200)).StartRunAsync(new RunRequest(ToolchainServiceFactory.KnownBuild), Cancellation);
+
+            // Awaited directly: a cancelled task would slip past Should.NotThrowAsync.
+            await run.StopAsync();
+            await run.DisposeAsync();
+        }
+
+        /// <summary>Accepts every request and never answers, as a frozen service does.</summary>
+        private sealed class SilentHandler : HttpMessageHandler
+        {
+            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                throw new InvalidOperationException("unreachable");
+            }
+        }
+
+        private sealed class RoutingHandler(Func<HttpRequestMessage, HttpMessageHandler> route) : HttpMessageHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+                new HttpMessageInvoker(route(request), disposeHandler: false).SendAsync(request, cancellationToken);
+        }
 
         private sealed class FailingHandler : HttpMessageHandler
         {

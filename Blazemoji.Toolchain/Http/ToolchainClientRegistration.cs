@@ -13,6 +13,13 @@ namespace Blazemoji.Toolchain.Http
         /// compile and run Emojicode: the web app and a desktop host point it at their service.
         /// </summary>
         public string BaseUrl { get; set; } = "http://localhost:5290";
+
+        /// <summary>
+        /// How long to wait for the service to answer one request. Longer than the slowest
+        /// compile the service allows. Reading a run's event stream is not subject to it once
+        /// the stream has opened.
+        /// </summary>
+        public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromMinutes(2);
     }
 
     public static class ToolchainClientRegistration
@@ -27,13 +34,13 @@ namespace Blazemoji.Toolchain.Http
 
             return services.AddHttpClient<IToolchain, HttpToolchain>((provider, client) =>
             {
-                var baseUrl = provider.GetRequiredService<IOptions<ToolchainClientOptions>>().Value.BaseUrl;
+                var options = provider.GetRequiredService<IOptions<ToolchainClientOptions>>().Value;
+                var baseUrl = options.BaseUrl;
 
                 // A trailing slash makes the routes resolve under any path the address carries.
                 client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
 
-                // An event stream lasts as long as the program runs; the run's own limits bound it.
-                client.Timeout = Timeout.InfiniteTimeSpan;
+                client.Timeout = options.RequestTimeout > TimeSpan.Zero ? options.RequestTimeout : TimeSpan.FromMinutes(2);
             });
         }
     }

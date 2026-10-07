@@ -228,6 +228,24 @@ namespace Blazemoji.Test.State
         }
 
         [Fact]
+        public async Task A_run_that_fails_to_stop_does_not_throw_into_the_page()
+        {
+            CompileSucceeds();
+            _run.StopFailure = new HttpRequestException("Connection refused");
+            var logger = new RecordingLogger<RunState>();
+            await using var state = new RunState(_toolchain, logger, _time);
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.Status == RunStatus.Running, advanceTime: false);
+
+            await Should.NotThrowAsync(() => state.StopAsync());
+
+            logger.Entries.ShouldContain(entry => entry.Level == LogLevel.Error && entry.Exception is HttpRequestException);
+            _run.StopFailure = null;
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
         public async Task Stop_with_nothing_running_does_nothing()
         {
             await using var state = CreateState();

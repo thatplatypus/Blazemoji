@@ -82,6 +82,45 @@ namespace Blazemoji.Test.Service
         }
 
         [Fact]
+        public async Task A_compile_beyond_the_concurrency_limit_is_a_429_until_one_finishes()
+        {
+            _factory.MaxConcurrentCompiles = 1;
+            var compiling = new TaskCompletionSource<CompileResult>();
+            _factory.Toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(compiling.Task);
+            var client = Client;
+            var body = new CompileRequestBody(new() { ["main.🍇"] = "x" }, "main.🍇");
+
+            var first = client.PostAsJsonAsync(ToolchainRoutes.Compile, body, ToolchainJson.Options, Cancellation);
+            while (_factory.Toolchain.ReceivedCalls().Count() == 0)
+                await Task.Delay(5, Cancellation);
+            var refused = await client.PostAsJsonAsync(ToolchainRoutes.Compile, body, ToolchainJson.Options, Cancellation);
+
+            refused.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
+            (await ProblemTitleAsync(refused)).ShouldBe("Too many programs are being compiled. Try again shortly.");
+
+            compiling.SetResult(new CompileResult(true, [], "build-1"));
+            (await first).StatusCode.ShouldBe(HttpStatusCode.OK);
+            var afterwards = await client.PostAsJsonAsync(ToolchainRoutes.Compile, body, ToolchainJson.Options, Cancellation);
+            afterwards.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task A_compile_that_throws_gives_its_place_back()
+        {
+            _factory.MaxConcurrentCompiles = 1;
+            _factory.Toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns<CompileResult>(_ => throw new InvalidOperationException("boom"), _ => new CompileResult(true, [], "build-2"));
+            var client = Client;
+            var body = new CompileRequestBody(new() { ["main.🍇"] = "x" }, "main.🍇");
+
+            var failed = await client.PostAsJsonAsync(ToolchainRoutes.Compile, body, ToolchainJson.Options, Cancellation);
+            var next = await client.PostAsJsonAsync(ToolchainRoutes.Compile, body, ToolchainJson.Options, Cancellation);
+
+            failed.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+            next.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+
+        [Fact]
         public async Task A_failed_compile_is_still_a_200_with_diagnostics_and_no_build_id()
         {
             _factory.Toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())

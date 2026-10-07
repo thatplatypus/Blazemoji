@@ -11,11 +11,21 @@ namespace Blazemoji.Toolchain.Service
     /// </summary>
     public sealed class EventLog
     {
+        // What one event costs beyond its text: the event object, the string object and the
+        // list slot. Many tiny events hold far more memory than their characters suggest.
+        private const int BytesPerEvent = 64;
+
         private readonly Lock _gate = new();
         private readonly List<RunEvent> _events = [];
         private TaskCompletionSource _changed = NewSignal();
+        private long _approximateBytes;
 
         public bool IsComplete { get; private set; }
+
+        /// <summary>
+        /// Roughly the memory this log holds, for deciding how many finished runs to keep.
+        /// </summary>
+        public long ApproximateBytes => Interlocked.Read(ref _approximateBytes);
 
         public void Append(RunEvent runEvent)
         {
@@ -23,6 +33,12 @@ namespace Blazemoji.Toolchain.Service
             lock (_gate)
             {
                 _events.Add(runEvent);
+                _approximateBytes += BytesPerEvent + runEvent switch
+                {
+                    StdoutEvent output => output.Text.Length * sizeof(char),
+                    StderrEvent error => error.Text.Length * sizeof(char),
+                    _ => 0,
+                };
                 if (runEvent is ExitEvent)
                     IsComplete = true;
 

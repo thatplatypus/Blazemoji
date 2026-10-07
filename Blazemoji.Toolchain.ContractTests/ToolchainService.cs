@@ -48,10 +48,25 @@ namespace Blazemoji.Toolchain.ContractTests
 
         public static async Task<string> StartRunAsync(string buildId, CancellationToken cancellationToken, Dictionary<string, string>? env = null)
         {
-            using var response = await Http.PostAsync("runs", Json(new { buildId, env }), cancellationToken);
+            using var response = await PostRunAsync(buildId, cancellationToken, env);
             response.StatusCode.ShouldBe(HttpStatusCode.Created);
             return (await ReadJsonAsync(response, cancellationToken)).GetProperty("runId").GetString()!;
         }
+
+        /// <summary>
+        /// "env" is optional in the contract, so it is left out when there is none to send.
+        /// </summary>
+        public static Task<HttpResponseMessage> PostRunAsync(string buildId, CancellationToken cancellationToken, Dictionary<string, string>? env = null)
+        {
+            var body = new Dictionary<string, object> { ["buildId"] = buildId };
+            if (env is not null)
+                body["env"] = env;
+
+            return Http.PostAsync("runs", Json(body), cancellationToken);
+        }
+
+        public static string MediaType(HttpResponseMessage response) =>
+            response.Content.Headers.ContentType.ShouldNotBeNull("the response has no Content-Type").MediaType.ShouldNotBeNull();
 
         public static async Task<string> BuildAndStartAsync(string code, CancellationToken cancellationToken) =>
             await StartRunAsync(await BuildAsync(code, cancellationToken), cancellationToken);
@@ -65,7 +80,7 @@ namespace Blazemoji.Toolchain.ContractTests
         public static async Task ShouldBeProblemAsync(HttpResponseMessage response, HttpStatusCode status, CancellationToken cancellationToken)
         {
             response.StatusCode.ShouldBe(status);
-            response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
+            MediaType(response).ShouldBe("application/problem+json");
             (await ReadJsonAsync(response, cancellationToken)).GetProperty("title").GetString().ShouldNotBeNullOrWhiteSpace();
         }
 
@@ -81,7 +96,7 @@ namespace Blazemoji.Toolchain.ContractTests
             var clock = Stopwatch.StartNew();
             using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.StatusCode.ShouldBe(HttpStatusCode.OK);
-            response.Content.Headers.ContentType?.MediaType.ShouldBe("text/event-stream");
+            MediaType(response).ShouldBe("text/event-stream");
 
             var events = new List<ReceivedEvent>();
             await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);

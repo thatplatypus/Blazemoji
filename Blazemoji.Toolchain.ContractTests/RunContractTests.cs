@@ -81,6 +81,63 @@ namespace Blazemoji.Toolchain.ContractTests
         }
 
         [Fact]
+        public async Task A_run_beyond_the_services_limit_is_a_429_problem_and_a_place_comes_back_when_one_ends()
+        {
+            Assert.SkipWhen(ToolchainService.BaseUrl is null, ToolchainService.SkipReason);
+            const int MostToTry = 33;
+            var buildId = await ToolchainService.BuildAsync(Programs.Forever, Cancellation);
+            var running = new List<string>();
+            try
+            {
+                HttpResponseMessage? refused = null;
+                while (refused is null && running.Count < MostToTry)
+                {
+                    var response = await ToolchainService.PostRunAsync(buildId, Cancellation);
+                    if (response.StatusCode == HttpStatusCode.Created)
+                    {
+                        running.Add((await ToolchainService.ReadJsonAsync(response, Cancellation)).GetProperty("runId").GetString()!);
+                        response.Dispose();
+                    }
+                    else
+                    {
+                        refused = response;
+                    }
+                }
+
+                Assert.SkipWhen(refused is null, $"The service accepted {MostToTry} programs at once, so its limit is beyond what this test tries.");
+                using (refused)
+                    await ToolchainService.ShouldBeProblemAsync(refused!, HttpStatusCode.TooManyRequests, Cancellation);
+
+                using var stopped = await ToolchainService.Http.DeleteAsync($"runs/{running[0]}", Cancellation);
+                await ToolchainService.ReadEventsAsync(running[0], Cancellation);
+                running.RemoveAt(0);
+
+                // The place is given back when the run ends, which can be a moment after its
+                // last event has been read.
+                HttpStatusCode status;
+                var attempts = 0;
+                do
+                {
+                    await Task.Delay(100, Cancellation);
+                    using var again = await ToolchainService.PostRunAsync(buildId, Cancellation);
+                    status = again.StatusCode;
+                    if (status == HttpStatusCode.Created)
+                        running.Add((await ToolchainService.ReadJsonAsync(again, Cancellation)).GetProperty("runId").GetString()!);
+                }
+                while (status == HttpStatusCode.TooManyRequests && ++attempts < 50);
+
+                status.ShouldBe(HttpStatusCode.Created);
+            }
+            finally
+            {
+                foreach (var runId in running)
+                {
+                    using var response = await ToolchainService.Http.DeleteAsync($"runs/{runId}", CancellationToken.None);
+                }
+            }
+        }
+
+        [Fact]
         public async Task Delete_stops_a_running_program()
         {
             Assert.SkipWhen(ToolchainService.BaseUrl is null, ToolchainService.SkipReason);

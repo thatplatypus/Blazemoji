@@ -25,6 +25,8 @@ namespace Blazemoji.Test.Service
 
         public int MaxConcurrentRuns { get; set; } = 8;
 
+        public int MaxConcurrentCompiles { get; set; } = 4;
+
         public ToolchainServiceFactory()
         {
             ((IBuildStore)Toolchain).HasBuild(KnownBuild).Returns(true);
@@ -50,6 +52,7 @@ namespace Blazemoji.Test.Service
                 services.Configure<ToolchainServiceOptions>(options =>
                 {
                     options.MaxConcurrentRuns = MaxConcurrentRuns;
+                    options.MaxConcurrentCompiles = MaxConcurrentCompiles;
                     options.PackageDocumentationPath = _packageDocs;
                 });
             });

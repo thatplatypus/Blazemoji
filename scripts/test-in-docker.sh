@@ -22,6 +22,7 @@ docker run --rm --platform linux/amd64 \
   -v "$PWD":/host:ro \
   -v blazemoji-nuget:/root/.nuget/packages \
   "$IMAGE" sh -c '
+    set -e
     mkdir /src
     cd /host
     tar -cf - --exclude=./.git --exclude=bin --exclude=obj --exclude=./.superpowers --exclude=./.cerberus . | tar -xf - -C /src

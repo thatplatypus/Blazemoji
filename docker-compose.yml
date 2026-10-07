@@ -16,6 +16,21 @@ services:
     platform: linux/amd64
     networks:
       - sandbox
+    # A program can start processes of its own, and each of those gets a fresh per-process
+    # allowance of CPU time and memory. These are the ceilings for everything the service
+    # runs, taken together, so that no program can use up the machine Docker runs on.
+    pids_limit: 1024
+    mem_limit: 2g
+    cpus: 4
+    # Nothing is writable but /tmp, which lives in memory, counts towards the memory ceiling
+    # and is where builds and runs are kept. It must allow execution: programs are built there.
+    read_only: true
+    tmpfs:
+      - /tmp:exec,size=768m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   web:
     image: blazemoji-web

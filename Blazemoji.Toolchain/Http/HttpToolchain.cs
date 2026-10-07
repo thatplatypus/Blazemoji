@@ -29,8 +29,11 @@ namespace Blazemoji.Toolchain.Http
                         return new CompileResult(result.Ok, result.Diagnostics.Select(diagnostic => diagnostic.ToDiagnostic()).ToList(), result.BuildId);
                 }
 
-                if (response.StatusCode == HttpStatusCode.BadRequest && await ProblemTitleAsync(response, cancellationToken) is { } reason)
+                if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.TooManyRequests
+                    && await ProblemTitleAsync(response, cancellationToken) is { } reason)
+                {
                     return Failed(reason);
+                }
 
                 logger.LogError("The toolchain service answered a compile request with {StatusCode}", (int)response.StatusCode);
                 return Failed("The toolchain service could not compile the program.");
@@ -39,6 +42,11 @@ namespace Blazemoji.Toolchain.Http
             {
                 logger.LogError(exception, "The toolchain service could not be reached");
                 return Failed("The toolchain service could not be reached.");
+            }
+            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogError(exception, "The toolchain service did not answer a compile request in time");
+                return Failed("The toolchain service did not answer in time.");
             }
         }
 
@@ -53,7 +61,7 @@ namespace Blazemoji.Toolchain.Http
                 if (response.StatusCode == HttpStatusCode.Created
                     && await response.Content.ReadFromJsonAsync<RunStartedBody>(ToolchainJson.Options, cancellationToken) is { } started)
                 {
-                    return new HttpRun(http, started.RunId);
+                    return new HttpRun(http, started.RunId, logger);
                 }
 
                 logger.LogError("The toolchain service answered a run request with {StatusCode}", (int)response.StatusCode);
@@ -61,6 +69,10 @@ namespace Blazemoji.Toolchain.Http
             catch (HttpRequestException exception)
             {
                 logger.LogError(exception, "The toolchain service could not be reached");
+            }
+            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogError(exception, "The toolchain service did not answer a run request in time");
             }
 
             return new NeverStartedRun();
@@ -93,8 +105,11 @@ namespace Blazemoji.Toolchain.Http
         private static CompileResult Failed(string message) =>
             new(false, [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, message)], null);
 
-        private sealed class HttpRun(HttpClient http, string runId) : IToolchainRun
+        private sealed class HttpRun(HttpClient http, string runId, ILogger logger) : IToolchainRun
         {
+            // Stopping is asked for by someone waiting at a button, or by a session closing.
+            private static readonly TimeSpan StopPatience = TimeSpan.FromSeconds(10);
+
             private int _readerTaken;
             private bool _ended;
 
@@ -138,9 +153,21 @@ namespace Blazemoji.Toolchain.Http
                 throw new IOException("The event stream ended before the run did.");
             }
 
+            /// <summary>
+            /// Never throws: if the service cannot be reached there is nothing more a caller
+            /// could do about the program, and the service ends runs itself at their limits.
+            /// </summary>
             public async Task StopAsync()
             {
-                using var response = await http.DeleteAsync(Relative(ToolchainRoutes.Run(runId)));
+                using var patience = new CancellationTokenSource(StopPatience);
+                try
+                {
+                    using var response = await http.DeleteAsync(Relative(ToolchainRoutes.Run(runId)), patience.Token);
+                }
+                catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException)
+                {
+                    logger.LogError(exception, "The toolchain service could not be asked to stop run {RunId}", runId);
+                }
             }
 
             public async Task WriteInputAsync(string text, bool endOfInput = false, CancellationToken cancellationToken = default)
@@ -160,14 +187,7 @@ namespace Blazemoji.Toolchain.Http
                     return;
 
                 _ended = true;
-                try
-                {
-                    await StopAsync();
-                }
-                catch (HttpRequestException)
-                {
-                    // The service is gone, and the run with it.
-                }
+                await StopAsync();
             }
 
             private static T Read<T>(ServerSentEvent serverEvent) =>

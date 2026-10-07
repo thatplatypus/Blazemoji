@@ -45,6 +45,32 @@ namespace Blazemoji.Test.Service
         }
 
         [Fact]
+        public void A_request_to_the_service_is_given_up_on_after_a_while()
+        {
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddToolchainClient(new ConfigurationBuilder().AddInMemoryCollection([]).Build());
+
+            var client = services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IToolchain));
+
+            // Long enough for the slowest compile the service allows, and not for ever.
+            client.Timeout.ShouldBe(TimeSpan.FromMinutes(2));
+        }
+
+        [Fact]
+        public void The_time_to_give_up_after_can_be_configured()
+        {
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddToolchainClient(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["ToolchainClient:RequestTimeout"] = "00:00:45" }).Build());
+
+            var client = services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IToolchain));
+
+            client.Timeout.ShouldBe(TimeSpan.FromSeconds(45));
+        }
+
+        [Fact]
         public async Task A_base_address_with_a_path_keeps_its_path()
         {
             var (toolchain, requests) = Build(new() { ["ToolchainClient:BaseUrl"] = "http://gateway.test/toolchain/" });

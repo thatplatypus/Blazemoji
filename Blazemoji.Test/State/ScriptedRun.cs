@@ -20,6 +20,9 @@ namespace Blazemoji.Test.State
 
         public bool Ended { get; private set; }
 
+        /// <summary>Makes <see cref="StopAsync"/> fail, as it does when the toolchain cannot be reached.</summary>
+        public Exception? StopFailure { get; set; }
+
         public void Emit(RunEvent runEvent) => _events.Writer.TryWrite(runEvent).ShouldBeTrue();
 
         public void Exit(int? exitCode = 0, RunEndReason reason = RunEndReason.Exited)
@@ -44,6 +47,9 @@ namespace Blazemoji.Test.State
         public Task StopAsync()
         {
             StopCalls++;
+            if (StopFailure is not null)
+                return Task.FromException(StopFailure);
+
             if (!Ended)
                 Exit(137, RunEndReason.Stopped);
 

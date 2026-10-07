@@ -16,6 +16,7 @@ namespace Blazemoji.Toolchain.Service
             services.AddSingleton<IToolchain>(provider => provider.GetRequiredService<LocalToolchain>());
             services.AddSingleton<IBuildStore>(provider => provider.GetRequiredService<LocalToolchain>());
             services.AddSingleton<RunRegistry>();
+            services.AddSingleton<CompileGate>();
             services.AddSingleton<PackageCatalog>();
             services.AddHostedService<RunPumpService>();
 

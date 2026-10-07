@@ -55,6 +55,9 @@ namespace Blazemoji.Toolchain.Service
                     session.Log.Append(new ExitEvent(null, RunEndReason.Stopped, TimeSpan.Zero));
 
                 registry.MarkEnded(session, timeProvider.GetUtcNow());
+
+                foreach (var dropped in registry.RemoveOverBudget())
+                    await dropped.Run.DisposeAsync();
             }
         }
 
