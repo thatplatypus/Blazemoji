@@ -47,7 +47,7 @@
                 </MudToolBar>
                 <div class="open-file" data-testid="open-file">@_projectState.Current.Name / @_projectState.OpenPath</div>
             </MudPaper>
-            <EmojiCodeEditor EmojiPickerOpened="@OpenEmojiPickerAsync" Ready="OnEditorReady" ContentSettled="SyncOpenFileAsync" @ref="_editor" />
+            <EmojiCodeEditor EmojiPickerOpened="@OpenEmojiPickerAsync" Ready="OnEditorReady" ContentSettled="OnContentSettledAsync" @ref="_editor" />
         </MudItem>
         <MudItem xs="3">
             <MudPaper Height="100%">
@@ -175,11 +175,24 @@
     protected async Task RunEmojiCodeClicked()
     {
         await SyncOpenFileAsync();
+        await _runState.RunAsync(CurrentTarget());
+    }
 
+    /// <summary>
+    /// Typing has paused: keep what was typed, and ask the compiler what it makes of it.
+    /// </summary>
+    private async Task OnContentSettledAsync()
+    {
+        await SyncOpenFileAsync();
+        await _runState.CheckAsync(CurrentTarget());
+    }
+
+    private RunTarget CurrentTarget()
+    {
         var project = _projectState.Current;
         _compiledProjectId = project.Id;
         var files = project.Files.ToDictionary(file => file.Path, file => file.Content);
-        await _runState.RunAsync(new RunTarget(files, project.Entry, project.Kind == ProjectKind.Server));
+        return new RunTarget(files, project.Entry, project.Kind == ProjectKind.Server);
     }
 
     private async Task StopClicked()

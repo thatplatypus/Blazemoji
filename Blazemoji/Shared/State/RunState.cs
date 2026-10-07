@@ -25,6 +25,7 @@ namespace Blazemoji.Shared.State
         private CancellationTokenSource? _compileCancellation;
         private bool _stopRequested;
         private bool _server;
+        private int _checks;
         private IReadOnlyDictionary<string, string> _sources = new Dictionary<string, string>();
 
         public RunStatus Status { get; private set; } = RunStatus.Idle;
@@ -48,6 +49,13 @@ namespace Blazemoji.Shared.State
         /// The entry file's text as it was compiled.
         /// </summary>
         public string DiagnosticsSource => _sources.GetValueOrDefault(DiagnosticsEntry, string.Empty);
+
+        /// <summary>
+        /// True when <see cref="Diagnostics"/> are what Run found, false when they are from a
+        /// check made while typing. A failed Run is worth interrupting someone for; a mistake
+        /// half typed is not.
+        /// </summary>
+        public bool DiagnosticsAreFromARun { get; private set; }
 
         /// <summary>
         /// A server program is running and can be sent requests.
@@ -78,6 +86,9 @@ namespace Blazemoji.Shared.State
             // A copy: the caller goes on editing its files while this build is looked at.
             var files = new Dictionary<string, string>(target.Files);
 
+            // Whatever a check of the typing finds from here on is older than this build.
+            _checks++;
+
             ResetOutput();
             ClearDiagnostics();
             Status = RunStatus.Compiling;
@@ -93,6 +104,7 @@ namespace Blazemoji.Shared.State
 
                 Diagnostics = build.Diagnostics;
                 DiagnosticsEntry = target.Entry;
+                DiagnosticsAreFromARun = true;
                 _sources = files;
                 DiagnosticsChanged?.Invoke();
 
@@ -136,6 +148,53 @@ namespace Blazemoji.Shared.State
                 NotifyStateChanged();
             }
         }
+
+        /// <summary>
+        /// Compiles for the problems alone, as someone types: nothing is run and the output is
+        /// left as it is. It stands aside for a run, a later check replaces an earlier one, and
+        /// a check that never reached the compiler changes nothing.
+        /// </summary>
+        public async Task CheckAsync(RunTarget target)
+        {
+            if (Status != RunStatus.Idle || _disposal.IsCancellationRequested)
+                return;
+
+            var check = ++_checks;
+            var files = new Dictionary<string, string>(target.Files);
+
+            CompileResult result;
+            try
+            {
+                result = await toolchain.CompileAsync(new CompileRequest(files, target.Entry, CheckOnly: true), _disposal.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "A check of the code being typed failed");
+                return;
+            }
+
+            if (check != _checks || Status != RunStatus.Idle || NeverReachedTheCompiler(result))
+                return;
+
+            var changed = !result.Diagnostics.SequenceEqual(Diagnostics);
+            Diagnostics = result.Diagnostics;
+            DiagnosticsEntry = target.Entry;
+            DiagnosticsAreFromARun = false;
+            _sources = files;
+            if (changed)
+                DiagnosticsChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// The compiler gives every error a place. A failed result with no place in it came
+        /// from somewhere short of the compiler: the service was busy or could not be reached.
+        /// </summary>
+        private static bool NeverReachedTheCompiler(CompileResult result) =>
+            !result.Ok && !result.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Line > 0);
 
         /// <summary>
         /// Forgets the last build's diagnostics, for when the code they refer to is replaced.

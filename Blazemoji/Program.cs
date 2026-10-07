@@ -1,6 +1,8 @@
 using Blazemoji;
 using Blazemoji.Components;
 using Blazemoji.Services.Library;
+using Blazemoji.Emojicode.Intelligence;
+using Blazemoji.Interop;
 using Blazemoji.Services.Projects;
 using Blazemoji.Shared.State;
 using Blazemoji.Toolchain.Http;
@@ -24,6 +26,10 @@ builder.Services.AddSingleton<IProjectTemplates, FileProjectTemplates>();
 builder.Services.AddScoped<IProjectStore, LocalStorageProjectStore>();
 builder.Services.AddScoped<ProjectState>();
 builder.Services.AddScoped<RequestState>();
+builder.Services.AddSingleton<IEmojiNames, EmojiNames>();
+builder.Services.AddSingleton<ICodeIntelligence, CodeIntelligence>();
+builder.Services.AddScoped<IPackageLibrary, PackageLibrary>();
+builder.Services.AddScoped<EmojicodeLanguageInterop>();
 builder.Services.AddSingleton(new LocalStorageFiles());
 
 //Register emojicode keyword implementations

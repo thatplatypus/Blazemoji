@@ -61,7 +61,7 @@
         RunStatus.Compiling => "Compiling",
         RunStatus.Running => "Running",
         _ when State.LastRun is { } run => Describe(run),
-        _ when HasErrors => "Build failed",
+        _ when HasErrors && State.DiagnosticsAreFromARun => "Build failed",
         _ => "Ready",
     };
 
@@ -82,7 +82,9 @@
 
     private void OnDiagnosticsChanged()
     {
-        if (HasErrors)
+        // A run that failed has nothing else to show. A mistake noticed while someone is still
+        // typing only updates the count on the tab, and leaves them looking at what they chose.
+        if (HasErrors && State.DiagnosticsAreFromARun)
             _activeTab = ProblemsTab;
 
         InvokeAsync(StateHasChanged);

@@ -1,8 +1,10 @@
 ﻿@using BlazorMonaco.Editor
 @using BlazorMonaco;
 @using Blazemoji.Toolchain
+@using Blazemoji.Interop
 @implements IDisposable
 @inject IJSRuntime _jsRuntime
+@inject EmojicodeLanguageInterop _language
 
 <div class="@("text-align-center " + (_initializing ? "d-block" : "d-none"))">
     <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
@@ -53,6 +55,10 @@
             AutomaticLayout = false,
             Language = LanguageId,
             Value = string.Empty,
+
+            // Plain words are how emoji are looked up by name, so a suggestion is nearly always
+            // showing while a name is typed. Enter must still mean a new line; Tab accepts.
+            AcceptSuggestionOnEnter = "off",
             UnicodeHighlight = new UnicodeHighlightOptions{
                 InvisibleCharacters = false,
                 AmbiguousCharacters = false,
@@ -74,6 +80,7 @@
         await SetEditorCommands();
 
         await SetMonarchsTokenProviderAsync();
+        await _language.RegisterAsync(LanguageId);
 
         _initializing = false;
         await Ready.InvokeAsync();

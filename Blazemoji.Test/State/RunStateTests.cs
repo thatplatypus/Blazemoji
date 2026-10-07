@@ -369,6 +369,170 @@ namespace Blazemoji.Test.State
             await running;
         }
 
+        private static RunTarget Target(string code = Code) =>
+            new(new Dictionary<string, string> { ["main.🍇"] = code }, "main.🍇", Server: false);
+
+        [Fact]
+        public async Task A_check_publishes_the_problems_without_running_anything()
+        {
+            var error = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Variable \"nope\" not defined.");
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [error], null));
+            await using var state = CreateState();
+            var diagnosticsChanged = 0;
+            var stateChanged = 0;
+            state.DiagnosticsChanged += () => diagnosticsChanged++;
+            state.StateChanged += () => stateChanged++;
+
+            await state.CheckAsync(Target("broken"));
+
+            state.Diagnostics.ShouldBe([error]);
+            state.SourceOf(error).ShouldBe("broken");
+            state.Status.ShouldBe(RunStatus.Idle);
+            state.Lines.ShouldBeEmpty();
+            state.LastRun.ShouldBeNull();
+            diagnosticsChanged.ShouldBe(1);
+            stateChanged.ShouldBe(0);
+            await _toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly), Arg.Any<CancellationToken>());
+            await _toolchain.DidNotReceive().StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task The_state_says_whether_its_problems_came_from_a_run_or_from_a_check()
+        {
+            var error = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Broken.");
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [error], null));
+            await using var state = CreateState();
+
+            await state.CheckAsync(Target("broken"));
+            var afterCheck = state.DiagnosticsAreFromARun;
+            await state.RunAsync(Target("broken"));
+            var afterRun = state.DiagnosticsAreFromARun;
+            await state.CheckAsync(Target("broken again"));
+
+            afterCheck.ShouldBeFalse();
+            afterRun.ShouldBeTrue();
+            state.DiagnosticsAreFromARun.ShouldBeFalse();
+        }
+
+        [Fact]
+        public async Task A_clean_check_clears_the_problems_of_an_earlier_one()
+        {
+            var error = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Broken.");
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(false, [error], null), new CompileResult(true, [], null));
+            await using var state = CreateState();
+            await state.CheckAsync(Target("broken"));
+
+            await state.CheckAsync(Target("fixed"));
+
+            state.Diagnostics.ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_check_that_finds_the_same_problems_again_tells_nobody()
+        {
+            var error = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Broken.");
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(_ => new CompileResult(false, [error], null));
+            await using var state = CreateState();
+            await state.CheckAsync(Target("broken"));
+            var diagnosticsChanged = 0;
+            state.DiagnosticsChanged += () => diagnosticsChanged++;
+
+            await state.CheckAsync(Target("broken"));
+
+            diagnosticsChanged.ShouldBe(0);
+        }
+
+        [Fact]
+        public async Task A_newer_check_wins_over_an_older_one_that_answers_late()
+        {
+            var late = new TaskCompletionSource<CompileResult>();
+            var fromOld = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 1, 1, "From the old text.");
+            var fromNew = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 1, 1, "From the new text.");
+            _toolchain.CompileAsync(Arg.Is<CompileRequest>(request => request.Files["main.🍇"] == "old"), Arg.Any<CancellationToken>()).Returns(late.Task);
+            _toolchain.CompileAsync(Arg.Is<CompileRequest>(request => request.Files["main.🍇"] == "new"), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(false, [fromNew], null));
+            await using var state = CreateState();
+
+            var older = state.CheckAsync(Target("old"));
+            await state.CheckAsync(Target("new"));
+            late.SetResult(new CompileResult(false, [fromOld], null));
+            await older;
+
+            state.Diagnostics.ShouldBe([fromNew]);
+            state.SourceOf(fromNew).ShouldBe("new");
+        }
+
+        [Fact]
+        public async Task A_check_does_not_start_while_a_program_is_running()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.Status == RunStatus.Running, advanceTime: false);
+            _toolchain.ClearReceivedCalls();
+
+            await state.CheckAsync(Target("typed while running"));
+
+            await _toolchain.DidNotReceive().CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task A_run_started_while_a_check_is_out_is_not_overwritten_by_the_checks_answer()
+        {
+            var late = new TaskCompletionSource<CompileResult>();
+            var fromCheck = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 1, 1, "From the check.");
+            _toolchain.CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly), Arg.Any<CancellationToken>()).Returns(late.Task);
+            _toolchain.CompileAsync(Arg.Is<CompileRequest>(request => !request.CheckOnly), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(true, [], "build-1"));
+            _toolchain.StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>()).Returns<IToolchainRun>(_run);
+            await using var state = CreateState();
+
+            var check = state.CheckAsync(Target("being typed"));
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.Status == RunStatus.Running, advanceTime: false);
+            late.SetResult(new CompileResult(false, [fromCheck], null));
+            await check;
+
+            state.Diagnostics.ShouldBeEmpty();
+            _run.Exit();
+            await running;
+        }
+
+        [Theory]
+        [InlineData("The toolchain service could not be reached.")]
+        [InlineData("Too many programs are being compiled. Try again shortly.")]
+        public async Task A_check_that_never_reached_the_compiler_leaves_the_problems_as_they_were(string message)
+        {
+            var real = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Broken.");
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(
+                    new CompileResult(false, [real], null),
+                    new CompileResult(false, [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, message)], null));
+            await using var state = CreateState();
+            await state.CheckAsync(Target("broken"));
+
+            await state.CheckAsync(Target("broken still"));
+
+            state.Diagnostics.ShouldBe([real]);
+        }
+
+        [Fact]
+        public async Task A_check_that_throws_is_logged_and_changes_nothing()
+        {
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("boom"));
+            var logger = new RecordingLogger<RunState>();
+            await using var state = new RunState(_toolchain, logger, _time);
+
+            await Should.NotThrowAsync(() => state.CheckAsync(Target()));
+
+            state.Diagnostics.ShouldBeEmpty();
+            logger.Entries.ShouldContain(entry => entry.Level == LogLevel.Warning && entry.Exception is InvalidOperationException);
+        }
+
         [Fact]
         public async Task Stop_with_nothing_running_does_nothing()
         {

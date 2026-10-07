@@ -137,6 +137,19 @@ namespace Blazemoji.Test.Components
         }
 
         [Fact]
+        public async Task Problems_found_while_typing_are_counted_on_the_tab_but_do_not_take_over_the_panel()
+        {
+            CompileFails(Error);
+            var cut = Render<OutputPanel>();
+
+            await cut.InvokeAsync(() => _state.CheckAsync(new RunTarget(new Dictionary<string, string> { ["main.🍇"] = Code }, "main.🍇", Server: false)));
+
+            cut.WaitForAssertion(() => cut.Find(".mud-badge").TextContent.Trim().ShouldBe("1"));
+            StatusOf(cut).ShouldBe("Ready");
+            cut.FindAll("[data-testid=problem]").ShouldBeEmpty();
+        }
+
+        [Fact]
         public async Task A_failed_build_is_named_in_the_status_once_the_output_is_shown_again()
         {
             CompileFails(Error);

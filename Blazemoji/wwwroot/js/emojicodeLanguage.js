@@ -1,0 +1,92 @@
+// Registers Monaco's completion, hover and signature help providers for Emojicode.
+// The providers hold no knowledge of the language: each one hands the text and the cursor's
+// offset to .NET and turns the answer into the shape Monaco wants.
+//
+// This file is the source. scripts/build-js.sh compiles it to wwwroot/js/emojicodeLanguage.js,
+// which is committed so that building the app does not need Node.
+// The names of the .NET methods this module calls. They match EmojicodeLanguageInterop.
+const COMPLETE = "CompleteAsync";
+const HOVER = "HoverAsync";
+const SIGNATURE = "SignatureAsync";
+const SHOW_PARAMETERS = "editor.action.triggerParameterHints";
+function rangeOf(model, start, end) {
+    const from = model.getPositionAt(start);
+    const to = model.getPositionAt(end);
+    return new monaco.Range(from.lineNumber, from.column, to.lineNumber, to.column);
+}
+function kindOf(kind) {
+    const kinds = monaco.languages.CompletionItemKind;
+    switch (kind) {
+        case "Method": return kinds.Method;
+        case "Variable": return kinds.Variable;
+        case "Keyword": return kinds.Keyword;
+        default: return kinds.Text;
+    }
+}
+export function register(languageId, dotNet) {
+    const registrations = [
+        monaco.languages.registerCompletionItemProvider(languageId, {
+            triggerCharacters: [".", ":"],
+            async provideCompletionItems(model, position) {
+                const answers = await dotNet.invokeMethodAsync(COMPLETE, model.getValue(), model.getOffsetAt(position));
+                return {
+                    // The list depends on every letter typed, so Monaco is told to ask again.
+                    incomplete: true,
+                    suggestions: answers.map(answer => {
+                        const range = rangeOf(model, answer.replaceStart, answer.replaceEnd);
+                        return {
+                            label: { label: answer.label, description: answer.detail },
+                            kind: kindOf(answer.kind),
+                            insertText: answer.insert,
+                            range,
+                            documentation: { value: answer.documentation },
+                            sortText: String(answer.order).padStart(5, "0"),
+                            // .NET has already chosen what matches. Matching the typed text
+                            // against itself stops Monaco filtering the list a second time.
+                            filterText: model.getValueInRange(range),
+                            // A call that was just started wants its parameters shown.
+                            command: answer.kind === "Method" && answer.insert.endsWith(" ")
+                                ? { id: SHOW_PARAMETERS, title: "Show parameters" }
+                                : undefined,
+                        };
+                    }),
+                };
+            },
+        }),
+        monaco.languages.registerHoverProvider(languageId, {
+            async provideHover(model, position) {
+                const answer = await dotNet.invokeMethodAsync(HOVER, model.getValue(), model.getOffsetAt(position));
+                return answer
+                    ? { range: rangeOf(model, answer.start, answer.end), contents: [{ value: answer.markdown }] }
+                    : null;
+            },
+        }),
+        monaco.languages.registerSignatureHelpProvider(languageId, {
+            signatureHelpTriggerCharacters: [" "],
+            signatureHelpRetriggerCharacters: [" "],
+            async provideSignatureHelp(model, position) {
+                const answer = await dotNet.invokeMethodAsync(SIGNATURE, model.getValue(), model.getOffsetAt(position));
+                if (!answer) {
+                    return null;
+                }
+                return {
+                    value: {
+                        signatures: [{
+                                label: answer.label,
+                                documentation: { value: answer.documentation },
+                                parameters: answer.parameters.map(label => ({ label })),
+                            }],
+                        activeSignature: 0,
+                        activeParameter: answer.activeParameter,
+                    },
+                    dispose() { },
+                };
+            },
+        }),
+    ];
+    return {
+        dispose() {
+            registrations.forEach(registration => registration.dispose());
+        },
+    };
+}
