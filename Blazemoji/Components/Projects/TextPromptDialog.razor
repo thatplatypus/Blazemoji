@@ -1,0 +1,53 @@
+<MudDialog>
+    <DialogContent>
+        <MudTextField T="string"
+                      @bind-Value="_value"
+                      Label="@Label"
+                      HelperText="@HelperText"
+                      Error="@(Problem is not null)"
+                      ErrorText="@Problem"
+                      Immediate="true"
+                      AutoFocus="true"
+                      OnKeyDown="OnKeyDown"
+                      data-testid="prompt-input" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit" data-testid="prompt-confirm">@ConfirmText</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _value = string.Empty;
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Initial { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? HelperText { get; set; }
+
+    /// <summary>Why the previous answer was refused, when this is a second attempt.</summary>
+    [Parameter]
+    public string? Problem { get; set; }
+
+    [Parameter]
+    public string ConfirmText { get; set; } = "OK";
+
+    protected override void OnInitialized() => _value = Initial;
+
+    private void OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            Submit();
+    }
+
+    private void Submit() => Dialog.Close(DialogResult.Ok(_value));
+
+    private void Cancel() => Dialog.Cancel();
+}

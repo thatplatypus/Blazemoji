@@ -1,0 +1,7 @@
+{
+  "name": "Two files",
+  "description": "A program split across two files: main.🍇 includes greeter.🍇 with 📜.",
+  "kind": "program",
+  "entry": "main.🍇",
+  "order": 20
+}

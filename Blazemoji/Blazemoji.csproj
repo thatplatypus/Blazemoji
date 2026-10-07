@@ -27,6 +27,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Project templates are data read at run time: a folder each, under Emojicode/Templates. -->
+    <Content Update="Emojicode\Templates\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Emojicode\Templates\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Emojicode\Samples\InfiniteLoop.🍇">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

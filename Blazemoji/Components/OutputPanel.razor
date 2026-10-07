@@ -3,7 +3,7 @@
 @implements IDisposable
 @inject RunState State
 
-<MudTabs @bind-ActivePanelIndex="_activeTab" Elevation="0" Rounded="false">
+<MudTabs @bind-ActivePanelIndex="_activeTab" Elevation="0" Rounded="false" MinimumTabWidth="72px">
     <MudTabPanel Text="Output">
         <div class="output-panel pa-2">
             <div class="output-status">
@@ -27,7 +27,10 @@
         </div>
     </MudTabPanel>
     <MudTabPanel Text="Problems" BadgeData="@ProblemBadge" BadgeColor="@ProblemBadgeColor">
-        <ProblemsPanel Diagnostics="@State.Diagnostics" ProblemSelected="@ProblemSelected" />
+        <ProblemsPanel Diagnostics="@State.Diagnostics" ShowFiles="@ShowProblemFiles" ProblemSelected="@ProblemSelected" />
+    </MudTabPanel>
+    <MudTabPanel Text="Requests">
+        <RequestPanel />
     </MudTabPanel>
 </MudTabs>
 
@@ -40,6 +43,10 @@
 
     [Parameter]
     public EventCallback<Diagnostic> ProblemSelected { get; set; }
+
+    /// <summary>Say which file each problem is in. Wanted once a project has more than one.</summary>
+    [Parameter]
+    public bool ShowProblemFiles { get; set; }
 
     private bool HasErrors => State.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
 
@@ -87,6 +94,7 @@
         RunEndReason.TimedOut => $"Time limit reached after {Seconds(run.Duration)}",
         RunEndReason.OutputLimit => $"Output limit reached after {Seconds(run.Duration)}",
         RunEndReason.FailedToStart => "Could not start",
+        RunEndReason.Idle => $"Stopped when idle after {Seconds(run.Duration)}",
         _ => $"Exited with code {run.ExitCode} after {Seconds(run.Duration)}",
     };
 

@@ -38,6 +38,18 @@ namespace Blazemoji.Test.Components
         }
 
         [Fact]
+        public void In_a_project_with_several_files_a_problem_says_which_file_it_is_in()
+        {
+            var inUtil = new Diagnostic(DiagnosticSeverity.Error, "shared/util.🍇", 3, 9, "Broken.");
+
+            var cut = Render<ProblemsPanel>(parameters => parameters
+                .Add(p => p.Diagnostics, [inUtil, GlobalWarning])
+                .Add(p => p.ShowFiles, true));
+
+            cut.FindAll("[data-testid=problem-position]").ShouldHaveSingleItem().TextContent.ShouldBe("shared/util.🍇 3:9");
+        }
+
+        [Fact]
         public void A_diagnostic_without_a_location_shows_no_position()
         {
             var cut = Render<ProblemsPanel>(parameters => parameters.Add(p => p.Diagnostics, [GlobalWarning]));

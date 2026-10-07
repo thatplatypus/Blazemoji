@@ -28,6 +28,7 @@ namespace Blazemoji.Test.Components
 
             _state = new RunState(_toolchain, NullLogger<RunState>.Instance, new FakeTimeProvider());
             Services.AddSingleton(_state);
+            Services.AddSingleton(new RequestState(_state));
         }
 
         private void CompileSucceeds(params Diagnostic[] diagnostics)

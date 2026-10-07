@@ -11,10 +11,18 @@ namespace Blazemoji.Services.Library
             _localStorageService = localStorageService;
         }
 
+        /// <summary>
+        /// Removes the saved snippets and nothing else. Projects and settings share the same
+        /// storage and are not the library's to delete.
+        /// </summary>
         public async Task ClearLocalStorageAsync()
         {
-            await _localStorageService.ClearAsync();
+            var keys = await _localStorageService.KeysAsync();
+            foreach (var key in keys.Where(IsSnippetKey).ToList())
+                await _localStorageService.RemoveItemAsync(key);
         }
+
+        private static bool IsSnippetKey(string key) => key.Contains(".🍇") || key.Contains(".emojic");
 
         public async Task<List<EmojicFile>> GetAllSamplesAsync()
         {
@@ -34,7 +42,7 @@ namespace Blazemoji.Services.Library
         {
             var files = new ConcurrentBag<EmojicFile>();
             var keys = await _localStorageService.KeysAsync();
-            var emojicodeKeys = keys.Where(x => x.Contains(".🍇") || x.Contains(".emojic"));
+            var emojicodeKeys = keys.Where(IsSnippetKey);
 
             foreach (var key in emojicodeKeys)
             {

@@ -1,5 +1,8 @@
 @using Blazemoji.Shared.Models.Library;
-<MudTabs Elevation="2" Rounded="false" ApplyEffectsToContainer="true" Centered="true" TabPanelsClass="pa-2" MinimumTabWidth="120px">
+<MudTabs Elevation="2" Rounded="false" ApplyEffectsToContainer="true" Centered="true" TabPanelsClass="pa-2" MinimumTabWidth="88px">
+    <MudTabPanel Text="Files" Icon="@BlazemojiIcons.Files">
+        <ProjectPanel BeforeChange="BeforeProjectChange" />
+    </MudTabPanel>
     <MudTabPanel Text="Toolbox" Icon="@Icons.Material.Filled.Handyman">
         <EmojiToolbox OnEmojicodeInserted="@EmojicodeInserted" CopiedToClipboard="CopiedToClipboard" />
     </MudTabPanel>
@@ -17,6 +20,10 @@
 
     [Parameter]
     public EventCallback CopiedToClipboard { get; set; }
+
+    /// <summary>Raised before the Files tab changes the project. See <see cref="ProjectPanel.BeforeChange"/>.</summary>
+    [Parameter]
+    public EventCallback BeforeProjectChange { get; set; }
 
     private async Task EmojicFileSelected(EmojicFile file)
     {

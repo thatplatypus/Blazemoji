@@ -1,0 +1,251 @@
+@implements IDisposable
+@inject ProjectState State
+@inject IDialogService Dialogs
+
+<div class="project-panel">
+    @if (State.SaveFailed)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" data-testid="save-failed">
+            Changes are not being saved in this browser. They will last until this page is closed.
+        </MudAlert>
+    }
+
+    <div class="project-row">
+        <MudSelect T="string"
+                   Value="@State.Current.Id"
+                   ValueChanged="OpenProjectAsync"
+                   Label="Project"
+                   Dense="true"
+                   Margin="Margin.Dense"
+                   Variant="Variant.Outlined"
+                   data-testid="project-select">
+            @foreach (var project in State.Projects)
+            {
+                <MudSelectItem T="string" @key="project.Id" Value="@project.Id">@project.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudMenu Icon="@BlazemojiIcons.MoreActions" AriaLabel="Project actions" Dense="true" data-testid="project-menu">
+            <MudMenuItem OnClick="NewProjectAsync" data-testid="new-project">New project…</MudMenuItem>
+            <MudMenuItem OnClick="RenameProjectAsync" data-testid="rename-project">Rename…</MudMenuItem>
+            <MudMenuItem OnClick="DeleteProjectAsync" data-testid="delete-project">Delete…</MudMenuItem>
+        </MudMenu>
+    </div>
+
+    <MudSelect T="ProjectKind"
+               Value="@State.Current.Kind"
+               ValueChanged="SetKindAsync"
+               Label="Runs as"
+               HelperText="@KindHelp"
+               Dense="true"
+               Margin="Margin.Dense"
+               Variant="Variant.Outlined"
+               data-testid="project-kind">
+        <MudSelectItem T="ProjectKind" Value="ProjectKind.Program">Program</MudSelectItem>
+        <MudSelectItem T="ProjectKind" Value="ProjectKind.Server">Web server</MudSelectItem>
+    </MudSelect>
+
+    <div class="files-heading">
+        <MudText Typo="Typo.subtitle2">Files</MudText>
+        <MudTooltip Text="New file">
+            <MudIconButton Icon="@BlazemojiIcons.Add" Size="Size.Small" OnClick="NewFileAsync" aria-label="New file" data-testid="new-file" />
+        </MudTooltip>
+    </div>
+
+    <MudTreeView T="string" Dense="true" Hover="true" SelectedValue="@State.OpenPath" SelectedValueChanged="SelectAsync">
+        @Nodes(FileTree.Build(State.Current.Files))
+    </MudTreeView>
+</div>
+
+@code {
+    private const string FolderPrefix = "folder:";
+
+    /// <summary>
+    /// Raised, and awaited, before this panel asks for any change to the project, so that
+    /// whatever is still only in the editor can be handed to the state first.
+    /// </summary>
+    [Parameter]
+    public EventCallback BeforeChange { get; set; }
+
+    private string KindHelp => State.Current.Kind == ProjectKind.Server
+        ? "Keeps running and answers requests from the Requests tab."
+        : "Runs to the end and stops.";
+
+    protected override void OnInitialized() => State.StateChanged += OnStateChanged;
+
+    public void Dispose() => State.StateChanged -= OnStateChanged;
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    private RenderFragment Nodes(IReadOnlyList<FileTreeNode> nodes) => __builder =>
+    {
+        foreach (var node in nodes)
+        {
+            if (node.IsFolder)
+            {
+                <MudTreeViewItem T="string"
+                                 @key="@(FolderPrefix + node.Path)"
+                                 Value="@(FolderPrefix + node.Path)"
+                                 Text="@node.Name"
+                                 Icon="@BlazemojiIcons.Folder"
+                                 IconExpanded="@BlazemojiIcons.FolderOpen"
+                                 Expanded="true">
+                    @Nodes(node.Children)
+                </MudTreeViewItem>
+            }
+            else
+            {
+                <MudTreeViewItem T="string" @key="node.Path" Value="@node.Path" CanExpand="false">
+                    <BodyContent>
+                        <div class="file-row" data-testid="file" data-path="@node.Path">
+                            <MudIcon Icon="@BlazemojiIcons.File" Size="Size.Small" />
+                            <span class="file-name" data-testid="file-name">@node.Name</span>
+                            <MudTooltip Text="The compiler starts from this file">
+                                <MudIcon Icon="@BlazemojiIcons.EntryFile"
+                                         Size="Size.Small"
+                                         Color="Color.Primary"
+                                         Class="@(node.Path == State.Current.Entry ? "entry-flag" : "entry-flag entry-flag-absent")"
+                                         data-testid="@(node.Path == State.Current.Entry ? "entry-flag" : null)" />
+                            </MudTooltip>
+                            <MudMenu Icon="@BlazemojiIcons.MoreActions" Size="Size.Small" Dense="true" AriaLabel="@("Actions for " + node.Name)" data-testid="file-menu">
+                                <MudMenuItem OnClick="@(() => RenameFileAsync(node.Path))" data-testid="rename-file">Rename…</MudMenuItem>
+                                <MudMenuItem OnClick="@(() => SetEntryAsync(node.Path))" Disabled="@(node.Path == State.Current.Entry)" data-testid="set-entry">Set as entry</MudMenuItem>
+                                <MudMenuItem OnClick="@(() => DeleteFileAsync(node.Path))" Disabled="@(State.Current.Files.Count == 1)" data-testid="delete-file">Delete…</MudMenuItem>
+                            </MudMenu>
+                        </div>
+                    </BodyContent>
+                </MudTreeViewItem>
+            }
+        }
+    };
+
+    private async Task SelectAsync(string? value)
+    {
+        if (value is null || value.StartsWith(FolderPrefix, StringComparison.Ordinal))
+        {
+            // A folder is not something to open. Drawing again puts the highlight back on the open file.
+            StateHasChanged();
+            return;
+        }
+
+        await BeforeChange.InvokeAsync();
+        State.SelectFile(value);
+    }
+
+    private async Task OpenProjectAsync(string projectId)
+    {
+        await BeforeChange.InvokeAsync();
+        await State.OpenAsync(projectId);
+    }
+
+    private async Task SetKindAsync(ProjectKind kind)
+    {
+        await BeforeChange.InvokeAsync();
+        await State.SetKindAsync(kind);
+    }
+
+    private async Task SetEntryAsync(string path)
+    {
+        await BeforeChange.InvokeAsync();
+        await State.SetEntryAsync(path);
+    }
+
+    private async Task NewProjectAsync()
+    {
+        NewProjectRequest? previous = null;
+        string? problem = null;
+
+        while (true)
+        {
+            var parameters = new DialogParameters<NewProjectDialog>
+            {
+                { dialog => dialog.Templates, State.Templates },
+                { dialog => dialog.Previous, previous },
+                { dialog => dialog.Problem, problem },
+            };
+            var dialog = await Dialogs.ShowAsync<NewProjectDialog>("New project", parameters, PromptOptions);
+            if (await dialog.Result is not { Canceled: false, Data: NewProjectRequest request })
+                return;
+
+            await BeforeChange.InvokeAsync();
+            problem = await State.CreateAsync(request.Name, request.TemplateId);
+            if (problem is null)
+                return;
+
+            previous = request;
+        }
+    }
+
+    private async Task RenameProjectAsync()
+    {
+        await PromptAsync("Rename project", "Project name", State.Current.Name, null, "Rename", State.RenameProjectAsync);
+    }
+
+    private async Task NewFileAsync()
+    {
+        await PromptAsync("New file", "File name", string.Empty, "For a file in a folder, write the folder first: lib/greeter.🍇", "Create", State.AddFileAsync);
+    }
+
+    private async Task RenameFileAsync(string path)
+    {
+        await PromptAsync("Rename file", "File name", path, "Change the folder part to move the file.", "Rename", name => State.RenameFileAsync(path, name));
+    }
+
+    private async Task DeleteFileAsync(string path)
+    {
+        if (!await ConfirmAsync("Delete file", $"Delete {path}? This cannot be undone."))
+            return;
+
+        await BeforeChange.InvokeAsync();
+        await State.DeleteFileAsync(path);
+    }
+
+    private async Task DeleteProjectAsync()
+    {
+        var project = State.Current;
+        if (!await ConfirmAsync("Delete project", $"Delete the project \"{project.Name}\" and its {project.Files.Count} file(s)? This cannot be undone."))
+            return;
+
+        await State.DeleteProjectAsync(project.Id);
+    }
+
+    /// <summary>
+    /// Asks for a name and hands it to the state. If the state refuses it, asks again with the
+    /// reason shown and what was typed still there.
+    /// </summary>
+    private async Task PromptAsync(string title, string label, string initial, string? help, string confirm, Func<string, Task<string?>> apply)
+    {
+        var value = initial;
+        string? problem = null;
+
+        while (true)
+        {
+            var parameters = new DialogParameters<TextPromptDialog>
+            {
+                { dialog => dialog.Label, label },
+                { dialog => dialog.Initial, value },
+                { dialog => dialog.HelperText, help },
+                { dialog => dialog.Problem, problem },
+                { dialog => dialog.ConfirmText, confirm },
+            };
+            var dialog = await Dialogs.ShowAsync<TextPromptDialog>(title, parameters, PromptOptions);
+            if (await dialog.Result is not { Canceled: false, Data: string answer })
+                return;
+
+            await BeforeChange.InvokeAsync();
+            problem = await apply(answer);
+            if (problem is null)
+                return;
+
+            value = answer;
+        }
+    }
+
+    private async Task<bool> ConfirmAsync(string title, string text)
+    {
+        var parameters = new DialogParameters<Blazemoji.Shared.Components.DestructiveDialog> { { dialog => dialog.Text, text } };
+        var dialog = await Dialogs.ShowAsync<Blazemoji.Shared.Components.DestructiveDialog>(title, parameters, new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall });
+        return await dialog.Result is { Canceled: false };
+    }
+
+    private static DialogOptions PromptOptions => new() { CloseOnEscapeKey = true, FullWidth = true, MaxWidth = MaxWidth.ExtraSmall };
+}

@@ -1,0 +1,86 @@
+.request-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    max-height: 80vh;
+}
+
+.request-line {
+    display: flex;
+    gap: 8px;
+}
+
+.request-line ::deep .request-method {
+    flex: 0 0 7.5rem;
+}
+
+.request-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 2.5rem;
+}
+
+.request-problem {
+    font-size: 0.8125rem;
+}
+
+.response {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.response-summary {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 0.75rem;
+    font-size: 0.8125rem;
+}
+
+.response-request {
+    overflow-wrap: anywhere;
+}
+
+.response-status {
+    font-weight: 600;
+}
+
+.response-facts,
+.response-headers,
+.history-status {
+    color: var(--mud-palette-text-secondary);
+}
+
+.response-headers {
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+}
+
+.response-header-name {
+    color: var(--mud-palette-text-primary);
+}
+
+.response-body {
+    margin: 0;
+    padding: 8px;
+    border-radius: var(--mud-default-borderradius);
+    background-color: var(--mud-palette-background-gray);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    min-height: 2.2em;
+}
+
+.history-request {
+    overflow-wrap: anywhere;
+}
+
+.history-status {
+    margin-left: 0.5rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
