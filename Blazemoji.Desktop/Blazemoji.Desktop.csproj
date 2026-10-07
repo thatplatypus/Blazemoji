@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- SPIKE. A throwaway Hermes host to find out what the editor needs from a desktop
+       window. Not for merging: it borrows source files from the web host by link. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Blazemoji.Desktop</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Mythetech.Hermes.Blazor" Version="1.4.1" />
+    <PackageReference Include="Blazored.LocalStorage" Version="4.5.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Blazemoji.Components\Blazemoji.Components.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Blazemoji\Services\Library\LibraryService.cs" Link="FromTheWebHost\LibraryService.cs" />
+    <Compile Include="..\Blazemoji\Services\Projects\LocalStorageProjectStore.cs" Link="FromTheWebHost\LocalStorageProjectStore.cs" />
+    <Compile Include="..\Blazemoji\Layout\Theme.cs" Link="FromTheWebHost\Theme.cs" />
+    <Compile Include="..\Blazemoji\GlobalUsings.cs" Link="FromTheWebHost\GlobalUsings.cs" />
+    <Content Include="..\Blazemoji\Emojicode\Samples\**" Link="Emojicode\Samples\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Blazemoji\Emojicode\Templates\**" Link="Emojicode\Templates\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Update="wwwroot\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

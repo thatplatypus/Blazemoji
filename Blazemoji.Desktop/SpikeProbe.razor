@@ -1,0 +1,28 @@
+@* SPIKE. Looks at the running page from the inside and writes down what it finds, since
+   nothing outside the window can see into it. Does nothing unless a report path is given. *@
+@using System.Text.Json
+@inject IJSRuntime Js
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var reportPath = Environment.GetEnvironmentVariable("BLAZEMOJI_SPIKE_REPORT");
+        if (!firstRender || string.IsNullOrEmpty(reportPath))
+            return;
+
+        string report;
+        try
+        {
+            var module = await Js.InvokeAsync<IJSObjectReference>("import", "./spike-probe.js");
+            report = await module.InvokeAsync<string>("probe");
+        }
+        catch (Exception exception)
+        {
+            report = JsonSerializer.Serialize(new { failed = exception.ToString() });
+        }
+
+        await File.WriteAllTextAsync(reportPath, report);
+        if (Environment.GetEnvironmentVariable("BLAZEMOJI_SPIKE_QUIT") == "1")
+            Environment.Exit(0);
+    }
+}

@@ -1,0 +1,24 @@
+@inherits LayoutComponentBase
+
+<MudLayout>
+    <MudAppBar Elevation="0" Class="border-b border-solid mud-border-lines-default">
+        <MudText Typo="Typo.h4">🔥 Blazemoji</MudText>
+        <MudSpacer />
+        <MudIconButton data-testid="spike-dark" Icon="@(_isDarkMode ? BlazemojiIcons.LightMode : BlazemojiIcons.DarkMode)" Color="Color.Inherit" OnClick="@(() => _isDarkMode = !_isDarkMode)" />
+    </MudAppBar>
+    <MudMainContent>
+        <CascadingValue Name="DarkMode" Value="@_isDarkMode">
+            @Body
+        </CascadingValue>
+    </MudMainContent>
+</MudLayout>
+
+<MudThemeProvider @bind-IsDarkMode="@_isDarkMode" Theme="_theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+@code {
+    private readonly MudTheme _theme = new Blazemoji.Layout.Theme();
+    private bool _isDarkMode;
+}

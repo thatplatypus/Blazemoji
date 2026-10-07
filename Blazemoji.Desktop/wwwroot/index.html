@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blazemoji</title>
+    <base href="/" />
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    <link href="_content/Blazemoji.Components/blazemoji.css" rel="stylesheet" />
+    <link href="Blazemoji.Desktop.styles.css" rel="stylesheet" />
+    <script>
+        // SPIKE: everything that goes wrong on the page, for the probe to report.
+        window.__problems = [];
+        window.addEventListener('error', event => window.__problems.push('error: ' + (event.message || event.target?.src || event.target?.href || 'unknown')), true);
+        window.addEventListener('unhandledrejection', event => window.__problems.push('rejection: ' + String(event.reason)));
+        const consoleError = console.error.bind(console);
+        console.error = (...args) => { window.__problems.push('console: ' + args.map(String).join(' ').slice(0, 300)); consoleError(...args); };
+    </script>
+</head>
+<body>
+    <div id="app">Loading...</div>
+
+    <script src="_content/BlazorMonaco/jsInterop.js"></script>
+    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
+    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="_framework/blazor.webview.js" autostart="false"></script>
+    <script>
+        require(['vs/editor/editor.main'], function () { Blazor.start(); }, function () { window.__problems.push('monaco did not load'); Blazor.start(); });
+    </script>
+</body>
+</html>
