@@ -32,41 +32,36 @@ Features include:
 - More coming soon
   - Researching syntax highlighting in monaco for ☁️ and 🔤
 
-## Prerquisites
-- Visual Studio 2022 17.9 or later
-- dotnet 8 installed
-- Aspire workload for dotnet 8 (optional, recommended for fast setup)
-- C# installed
-- Visual Studio installed, recommended 2022+
-- [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) installed, windows only
-- Ubuntu 18.04 or later if WSL
-- C++ compiler and linker, such as `clang++` or `g++`, `libncurses5`
-- Docker
+## Prerequisites
+- .NET 10 SDK
+- Docker, for anything that compiles or runs Emojicode
 
-## Installation & Build
-Clone the repo and run 
+Emojicode's only usable release (1.0 beta 2) ships x86_64 Linux binaries, so the compiler runs in a `linux/amd64` container. On Apple Silicon, Docker Desktop emulates it.
 
-```csharp
-dotnet build
-```
-### Unix
-Depending on permissions you may need to add `sudo` infront of these commands.
+## Run the app
 
 ```bash
-apt-get update
-apt-get install libncurses5 -y
-apt-get install g++ -y
+docker build -f Blazemoji/Dockerfile -t blazemoji .
+docker run --rm -p 5080:8080 blazemoji
 ```
 
-## Setup & Configuration
-Blazemoji depends on being launched in a host environment that can execute the `emojicodec` compiler. Blazor can be launched in a WSL environment targetting Linux from Windows, so this is what we'll need to do in order to compile and run the emojicode correctly. To run everything correctly in WSL, you will have to go through the WSL setup and install steps. For some users, this is not an option so we can use a container instead. Blazemoji has a Dockerfile for the `Blazemoji.Compiler` project that will build to the correct OS architecture with dependencies. To communicate with the container from blazemoji, an instance of `rabbitmq` with the management plugin enabled is required.
+Then open http://localhost:5080.
 
-To make all of that easier, there is a .Net 8 Aspire project that can orchestrate all of the above. Simply launch the http setting from `Blazemoji.AppHost` and it should build and run the compiler container, the blazemoji web app, as well as pull and run rabbitmq with management enabled. This should be the fastest way to get started across any OS. The aspire workload is requuired for this.
+`dotnet run --project Blazemoji` also starts the app and is fine for working on the UI, but Run Code only works where the bundled compiler can execute: x86_64 Linux with `g++` and `libtinfo5` installed.
 
 ## Running Tests
-```csharp
-dotnet test
+
+```bash
+docker build -f Blazemoji/Dockerfile --target test .
 ```
+
+This builds the solution and runs every test, including the ones that compile and run the samples with the real compiler.
+
+```bash
+dotnet test --solution Blazemoji.sln
+```
+
+runs the same tests on your machine. The compiler tests skip themselves anywhere other than x86_64 Linux.
 
 ## Emojicode
 See the official [docs](https://www.emojicode.org/docs/) for more information on emojicode. The [language reference](https://www.emojicode.org/docs/reference/) will be very handy for writing emojicode.
