@@ -7,7 +7,7 @@ namespace Blazemoji.Test.Toolchain
 {
     internal static class ToolchainFixture
     {
-        public const string SkipReason = "The Emojicode compiler only runs on linux/amd64. Run the Docker test stage.";
+        public const string SkipReason = "The bundled Emojicode compiler is the linux/amd64 build. Run the Docker test stage.";
 
         public static bool Available =>
             OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
@@ -38,7 +38,8 @@ namespace Blazemoji.Test.Toolchain
 
             var program = Path.Combine(directory, "program");
             File.WriteAllText(program, "#!/bin/sh\n" + script + "\n");
-            File.SetUnixFileMode(program, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(program, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
             return buildId;
         }
