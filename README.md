@@ -54,16 +54,28 @@ The app compiles and runs whatever code it is given, with no sign-in. The comman
 ## Running Tests
 
 ```bash
-docker build -f Blazemoji/Dockerfile --target test .
-```
-
-This builds the solution and runs every test, including the ones that compile and run the samples with the real compiler. Docker caches the stage, so a repeat run with unchanged sources prints nothing; add `--progress=plain --no-cache-filter test` to run the tests again and see the summary.
-
-```bash
 dotnet test --solution Blazemoji.sln
 ```
 
-runs the same tests on your machine. The compiler tests skip themselves anywhere other than x86_64 Linux. On x86_64 Linux they run, and need `g++` and `libtinfo5` installed.
+runs everything that can run on your machine. Tests that need the Emojicode compiler skip themselves anywhere other than x86_64 Linux (there they run, and need `g++` and `libtinfo5`), and the browser tests skip unless they are told where a running app is.
+
+```bash
+scripts/test-in-docker.sh
+```
+
+runs the unit and compiler tests in a throwaway `linux/amd64` container with the real compiler, and leaves nothing behind. This is the one to use day to day.
+
+```bash
+scripts/e2e.sh
+```
+
+builds the app image, starts it, and drives it in a real browser (Playwright): running and stopping programs, live output, compiler errors as editor markers, and the rest of the page. The first run downloads Chromium.
+
+```bash
+docker build -f Blazemoji/Dockerfile --target test --output type=cacheonly --progress=plain .
+```
+
+runs the same tests as `scripts/test-in-docker.sh` as part of an image build, which is what a build server would do. `--output type=cacheonly` stops Docker from keeping a 1.7 GB untagged image every time. Docker caches the stage, so a repeat run with unchanged sources prints nothing; add `--no-cache-filter test` to run the tests again.
 
 ## Emojicode
 See the official [docs](https://www.emojicode.org/docs/) for more information on emojicode. The [language reference](https://www.emojicode.org/docs/reference/) will be very handy for writing emojicode.
