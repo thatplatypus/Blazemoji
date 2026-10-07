@@ -76,12 +76,16 @@ namespace Blazemoji.Emojicode.Intelligence
             if (token.Kind != TokenKind.Symbol)
                 return null;
 
-            var markdown = DescribeCallAt(tokens, index, scope, types)
-                ?? DescribeOperatorAt(tokens, index, scope, types)
-                ?? DescribeType(tokens, index, types)
-                ?? DescribeKeyword(token.Text)
-                ?? DescribeAnyMethod(token.Text, types)
-                ?? DescribeEmoji(token.Text);
+            // What is being called here comes first. When the keyword catalog teaches the same
+            // emoji, its lesson and example follow.
+            var called = DescribeCallAt(tokens, index, scope, types) ?? DescribeOperatorAt(tokens, index, scope, types);
+            var markdown = called is not null && DescribeKeyword(token.Text) is { } lesson
+                ? $"{called}\n\n---\n\n{lesson}"
+                : called
+                    ?? DescribeType(tokens, index, types)
+                    ?? DescribeKeyword(token.Text)
+                    ?? DescribeAnyMethod(token.Text, types)
+                    ?? DescribeEmoji(token.Text);
 
             return markdown is null ? null : new HoverInfo(token.Start, token.End, markdown);
         }
@@ -187,7 +191,8 @@ namespace Blazemoji.Emojicode.Intelligence
             if (methods.Count == 0)
                 return null;
 
-            var subject = receiver.Kind == ExpressionKind.Variable ? tokens[receiver.First].Text : "…";
+            // A receiver without a name is shown as its type: 😀 🔡❗️.
+            var subject = receiver.Kind == ExpressionKind.Variable ? tokens[receiver.First].Text : scope.TypeOf(receiver) ?? "…";
             return (BestFit(methods.Where(method => method.IsAssignment == methods[0].IsAssignment).ToList(), call, scope), subject, CallForm.Method);
         }
 
@@ -407,7 +412,7 @@ namespace Blazemoji.Emojicode.Intelligence
                     if (token == index || (token == index - 1 && text.Length > EmojiText.Bare(tokens[token].Text).Length))
                     {
                         var left = binary.Operands[position];
-                        var subject = position == 0 && left.Kind == ExpressionKind.Variable ? tokens[left.First].Text : "…";
+                        var subject = position == 0 && left.Kind == ExpressionKind.Variable ? tokens[left.First].Text : type ?? "…";
                         return method is null ? null : Document(method, subject, CallForm.Method);
                     }
 

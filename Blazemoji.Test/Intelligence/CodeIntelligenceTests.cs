@@ -538,5 +538,17 @@ namespace Blazemoji.Test.Intelligence
                 }
             }
         }
+
+        [Fact]
+        public void A_call_to_something_the_keyword_catalog_also_teaches_shows_the_call_and_then_the_lesson()
+        {
+            var lesson = Keywords().Single(keyword => keyword.Emoji == "😀").Description;
+
+            var hover = Hover("‸😀 🔤Hello World!🔤❗️").ShouldNotBeNull();
+
+            hover.Markdown.ShouldContain("😀 🔡❗️");
+            hover.Markdown.ShouldContain(lesson);
+            hover.Markdown.IndexOf("😀 🔡❗️", StringComparison.Ordinal).ShouldBeLessThan(hover.Markdown.IndexOf(lesson, StringComparison.Ordinal));
+        }
     }
 }
