@@ -39,6 +39,12 @@ button:disabled .emoji-icon {
     white-space: pre-wrap;
 }
 
+/* The editor marks the emoji that every emoji font draws as one flat dark grey shape
+   (➕ ➖ ➗ ✖️). No text colour reaches an emoji, so on a dark page these are turned light. */
+.monaco-editor.vs-dark .flat-dark-glyph {
+    filter: invert(1);
+}
+
 /* The editor takes the theme's corners. Its own widgets sit outside the part that is clipped. */
 .monaco-editor,
 .monaco-editor .overflow-guard {

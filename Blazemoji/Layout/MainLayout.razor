@@ -1,7 +1,5 @@
 @using Blazemoji.Layout;
-@using Microsoft.JSInterop;
 @using MudBlazor
-@inject IJSRuntime _jsRuntime
 @inherits LayoutComponentBase
 
 <MudLayout>
@@ -64,23 +62,16 @@
             var darkMode = await _mudThemeProvider.GetSystemDarkModeAsync();
             if (darkMode)
             {
-                await ToggleDarkMode();
+                ToggleDarkMode();
             }
 
             StateHasChanged();
         }
     }
 
-    private async Task ToggleDarkMode()
+    // The editor is inside the cascading value above and takes its colours from the page.
+    private void ToggleDarkMode()
     {
         _isDarkMode = !_isDarkMode;
-        if(_isDarkMode)
-        {
-            await BlazorMonaco.Editor.Global.SetTheme(_jsRuntime, "vs-dark");
-        }
-        else
-        {
-            await BlazorMonaco.Editor.Global.SetTheme(_jsRuntime, "vs");
-        }
     }
 }
