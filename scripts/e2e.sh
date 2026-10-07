@@ -24,6 +24,10 @@ take_down() {
 trap take_down EXIT
 take_down
 
+# The images include the Grapevine package and its sample project when they have been built
+# from a local Grapevine checkout. Without them the Grapevine browser test skips itself.
+scripts/build-grapevine.sh --if-needed || echo "Grapevine could not be built; its browser test will be skipped." >&2
+
 # A rebuild after a source change leaves the previous image untagged. Those are removed here
 # so that repeated runs do not pile up images.
 previous_web="$(image_id blazemoji-web)"

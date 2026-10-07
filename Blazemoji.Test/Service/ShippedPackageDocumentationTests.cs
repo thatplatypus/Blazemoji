@@ -14,7 +14,26 @@ namespace Blazemoji.Test.Service
         [Fact]
         public void The_five_stock_packages_are_listed()
         {
-            _catalog.Names().ShouldBe(["files", "json", "s", "sockets", "testtube"]);
+            // Grapevine is listed too once scripts/build-grapevine.sh has put its report in place.
+            _catalog.Names().Where(name => name != "grapevine").ShouldBe(["files", "json", "s", "sockets", "testtube"]);
+        }
+
+        [Fact]
+        [Trait("Requires", "Grapevine")]
+        public void The_grapevine_report_documents_the_routing_methods_of_the_app_type()
+        {
+            Assert.SkipWhen(_catalog.DocumentationPath("grapevine") is null, "The Grapevine package is not built. Run scripts/build-grapevine.sh.");
+            using var document = JsonDocument.Parse(File.ReadAllText(_catalog.DocumentationPath("grapevine")!));
+
+            var app = document.RootElement.GetProperty("types").EnumerateArray().Single(type => type.GetProperty("name").GetString() == "🍷");
+            var methods = app.GetProperty("methods").EnumerateArray().Select(method => method.GetProperty("name").GetString()).ToList();
+
+            // The report writes ✏ without the variation selector that the source has after it.
+            methods.ShouldContain("📥");
+            methods.ShouldContain("📮");
+            methods.ShouldContain("✏");
+            methods.ShouldContain("🗑");
+            methods.ShouldContain("🧱");
         }
 
         [Theory]

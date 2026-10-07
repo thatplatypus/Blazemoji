@@ -22,7 +22,12 @@ cd "$(dirname "$0")/.."
 IMAGE=blazemoji-sdk-toolchain
 docker build -q -f Blazemoji/Dockerfile --target sdk-toolchain -t "$IMAGE" . > /dev/null
 
+# The tests that need the Grapevine package run when it can be built from a local Grapevine
+# checkout, and are left out otherwise.
+scripts/build-grapevine.sh --if-needed || echo "Grapevine could not be built; the tests that need it are left out." >&2
+
 docker run --rm --platform linux/amd64 \
+  ${BLAZEMOJI_TEST_ENV:-} \
   -v "$PWD":/host:ro \
   -v blazemoji-nuget:/root/.nuget/packages \
   "$IMAGE" sh -c '
@@ -58,8 +63,14 @@ docker run --rm --platform linux/amd64 \
       done
     }
 
-    run_tests Blazemoji.Test/Blazemoji.Test.csproj --filter-namespace Blazemoji.Test.Toolchain
-    run_tests Blazemoji.Test/Blazemoji.Test.csproj --filter-not-namespace Blazemoji.Test.Toolchain
+    if [ -f Blazemoji.Toolchain.Local/packages/grapevine/libgrapevine.a ]; then
+      without=""
+    else
+      without="--filter-not-trait Requires=Grapevine"
+    fi
+
+    run_tests Blazemoji.Test/Blazemoji.Test.csproj --filter-namespace Blazemoji.Test.Toolchain $without
+    run_tests Blazemoji.Test/Blazemoji.Test.csproj --filter-not-namespace Blazemoji.Test.Toolchain $without
 
     # The contract tests are black-box: they are pointed at a running toolchain service and
     # know nothing else about it. The service was built with the tests above.
