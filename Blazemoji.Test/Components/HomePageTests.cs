@@ -1,3 +1,5 @@
+using Blazemoji.Emojicode.Intelligence;
+using Blazemoji.Interop;
 using Blazemoji.Pages;
 using Blazemoji.Services.Library;
 using Blazemoji.Services.Projects;
@@ -32,6 +34,7 @@ namespace Blazemoji.Test.Components
         public HomePageTests()
         {
             JSInterop.Mode = JSRuntimeMode.Loose;
+            JSInterop.SetupModule().SetupModule("register", _ => true);
 
             var templates = Substitute.For<IProjectTemplates>();
             templates.All.Returns([new ProjectTemplate("hello-world", "Hello World", "One file.", ProjectKind.Program, "main.🍇", [new ProjectFile("main.🍇", "🏁 🍇 🍉")])]);
@@ -49,6 +52,9 @@ namespace Blazemoji.Test.Components
             Services.AddScoped<RunState>();
             Services.AddScoped<ProjectState>();
             Services.AddScoped<RequestState>();
+            Services.AddSingleton(Substitute.For<ICodeIntelligence>());
+            Services.AddSingleton(Substitute.For<IPackageLibrary>());
+            Services.AddScoped<EmojicodeLanguageInterop>();
         }
 
         private ProjectState Project => Services.GetRequiredService<ProjectState>();

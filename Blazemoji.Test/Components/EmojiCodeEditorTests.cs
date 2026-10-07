@@ -1,7 +1,14 @@
 using Blazemoji.Components;
+using Blazemoji.Emojicode.Intelligence;
+using Blazemoji.Interop;
+using Blazemoji.Services.Projects;
+using Blazemoji.Shared.Models.Projects;
+using Blazemoji.Shared.State;
 using BlazorMonaco.Editor;
 using Bunit;
+using Microsoft.Extensions.DependencyInjection;
 using MudBlazor.Services;
+using NSubstitute;
 
 namespace Blazemoji.Test.Components
 {
@@ -12,7 +19,18 @@ namespace Blazemoji.Test.Components
         public EmojiCodeEditorTests()
         {
             JSInterop.Mode = JSRuntimeMode.Loose;
+            JSInterop.SetupModule().SetupModule("register", _ => true);
             Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
+
+            // The editor registers the language's providers, which answer from the open project.
+            var templates = Substitute.For<IProjectTemplates>();
+            templates.All.Returns([new ProjectTemplate("hello-world", "Hello World", "One file.", ProjectKind.Program, "main.🍇", [new ProjectFile("main.🍇", "🏁 🍇 🍉")])]);
+            Services.AddSingleton(templates);
+            Services.AddSingleton(Substitute.For<IProjectStore>());
+            Services.AddSingleton(Substitute.For<ICodeIntelligence>());
+            Services.AddSingleton(Substitute.For<IPackageLibrary>());
+            Services.AddScoped<ProjectState>();
+            Services.AddScoped<EmojicodeLanguageInterop>();
         }
 
         private void ModelsAreMadeAtOnce()
