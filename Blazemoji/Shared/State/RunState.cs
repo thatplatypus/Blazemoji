@@ -177,7 +177,7 @@ namespace Blazemoji.Shared.State
                 return;
             }
 
-            if (check != _checks || Status != RunStatus.Idle || NeverReachedTheCompiler(result))
+            if (check != _checks || Status != RunStatus.Idle || !result.ReachedCompiler)
                 return;
 
             var changed = !result.Diagnostics.SequenceEqual(Diagnostics);
@@ -188,13 +188,6 @@ namespace Blazemoji.Shared.State
             if (changed)
                 DiagnosticsChanged?.Invoke();
         }
-
-        /// <summary>
-        /// The compiler gives every error a place. A failed result with no place in it came
-        /// from somewhere short of the compiler: the service was busy or could not be reached.
-        /// </summary>
-        private static bool NeverReachedTheCompiler(CompileResult result) =>
-            !result.Ok && !result.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Line > 0);
 
         /// <summary>
         /// Forgets the last build's diagnostics, for when the code they refer to is replaced.

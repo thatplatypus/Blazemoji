@@ -511,13 +511,42 @@ namespace Blazemoji.Test.State
             _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
                 .Returns(
                     new CompileResult(false, [real], null),
-                    new CompileResult(false, [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, message)], null));
+                    new CompileResult(false, [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, message)], null, ReachedCompiler: false));
             await using var state = CreateState();
             await state.CheckAsync(Target("broken"));
 
             await state.CheckAsync(Target("broken still"));
 
             state.Diagnostics.ShouldBe([real]);
+        }
+
+        [Theory]
+        [InlineData("No 🏁 block was found.")]
+        [InlineData("The compiler failed without reporting an error.")]
+        public async Task What_the_compiler_says_without_naming_a_line_still_replaces_the_problems_that_were_there(string message)
+        {
+            var fixedSince = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Broken.");
+            var noPlace = new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, message);
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(false, [fixedSince], null), new CompileResult(false, [noPlace], null));
+            await using var state = CreateState();
+            await state.CheckAsync(Target("broken"));
+
+            await state.CheckAsync(Target("the broken line deleted"));
+
+            state.Diagnostics.ShouldBe([noPlace]);
+        }
+
+        [Fact]
+        public async Task The_first_check_shows_what_the_compiler_said_even_without_a_line()
+        {
+            var crashed = new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, "The compiler failed without reporting an error.");
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [crashed], null));
+            await using var state = CreateState();
+
+            await state.CheckAsync(Target("something the compiler chokes on"));
+
+            state.Diagnostics.ShouldBe([crashed]);
         }
 
         [Fact]
