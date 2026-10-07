@@ -42,7 +42,7 @@ The Emojicode compiler bundled in this repo is the x86_64 Linux build of 1.0 bet
 
 | Project | What it is |
 | --- | --- |
-| `Blazemoji` | The web app: editor, toolbox, output and problems. It holds no compiler. |
+| `Blazemoji` | The web app: projects, editor, toolbox, output, problems and requests. It holds no compiler. |
 | `Blazemoji.Toolchain` | The toolchain contract (`IToolchain`) and `HttpToolchain`, its client. |
 | `Blazemoji.Toolchain.Local` | Compiles and runs programs as local processes. Holds the compiler and stock packages. |
 | `Blazemoji.Toolchain.Service` | A small HTTP service in front of the local toolchain. |
@@ -63,6 +63,26 @@ The app compiles and runs whatever code it is given, with no sign-in, and every 
 
 `dotnet run --project Blazemoji` starts the web app alone, which is fine for working on the UI. Run Code then needs a toolchain service to talk to; `dotnet run --project Blazemoji.Toolchain.Service` provides one where the compiler can execute: x86_64 Linux with `g++` and `libtinfo5` installed.
 
+## Projects
+
+A project is a set of files that are compiled together, a name, and one file marked as the entry: the file handed to the compiler. Other files join in when a file includes them with `📜`, by a path from the including file. The **Files** tab lists them as a tree, and each file has a menu to rename it, make it the entry, or delete it. A name with slashes puts a file in folders (`lib/greeter.🍇`).
+
+Projects are kept in the browser's local storage, so they are still there after a reload and are not shared between browsers. New projects start from a template: a folder under `Blazemoji/Emojicode/Templates` with a `template.json` and the files.
+
+A project runs either as a **Program**, which runs to the end and stops, or as a **Web server**, which keeps running until it is stopped or has had no request for ten minutes. A web server is told which port to listen on through the `PORT` environment variable. While it runs, the **Requests** tab sends it HTTP requests (method, path, headers, body) and shows the status, headers and body that come back.
+
+## Grapevine
+
+Grapevine is an HTTP framework written in Emojicode. It has its own repository, so its package and its Todo sample are not committed here. One script builds them from a local checkout:
+
+```bash
+scripts/build-grapevine.sh
+```
+
+It reads the commit to build from `grapevine.pin`, takes that commit from `~/Code/grapevine` (or `GRAPEVINE_REPO`), builds the package in the toolchain container, and puts three things in place, all ignored by git: the package among the toolchain's packages, its documentation among the package documentation, and the Todo sample as the "Grapevine Todo API" project template. To move to a newer Grapevine, change the commit in `grapevine.pin` and run the script again. `scripts/test-in-docker.sh` and `scripts/e2e.sh` run it for you when the pin has changed.
+
+Without it everything else works: `📦 grapevine 🏠` does not compile and the template is not offered.
+
 ## The toolchain service
 
 Plain HTTP/1.1 and server-sent events, so that it can be reimplemented elsewhere.
@@ -70,11 +90,14 @@ Plain HTTP/1.1 and server-sent events, so that it can be reimplemented elsewhere
 | Request | Answer |
 | --- | --- |
 | `POST /compile` with `{ "files": { "main.🍇": "..." }, "entry": "main.🍇", "packages": [] }` | `{ "ok", "diagnostics": [], "buildId" }`. A failed build is still a 200. |
-| `POST /runs` with `{ "buildId", "env": {} }` | `201` and `{ "runId" }` |
+| `POST /runs` with `{ "buildId", "env": {}, "http": false }` | `201` and `{ "runId" }`. With `"http": true` the program is run as a server: it is given a port in `PORT`, has no wall-clock limit, and is ended when it has had no request for the idle time. |
 | `GET /runs/{id}/events` | An event stream of `stdout`, `stderr` and one final `exit`. Replays from the start, or from after `Last-Event-ID`. |
 | `POST /runs/{id}/stdin` | Appends the body to the program's input; `?eof=true` ends it. |
 | `DELETE /runs/{id}` | Stops the program. |
-| `GET /packages`, `GET /packages/{name}/documentation.json` | The stock packages and the compiler's documentation report for each. |
+| Any method on `/runs/{id}/http/{path}` | Passes the request to a server program and returns its response. A response that comes from the service and not the program (no such run, not a server, ended, not listening yet, timed out) carries an `X-Toolchain-Proxy` header saying which. |
+| `GET /packages`, `GET /packages/{name}/documentation.json` | The bundled packages and the compiler's documentation report for each. |
+
+The compiler only produces an object file. The service links it itself against every bundled package, because the compiler's own link step fails when one package uses another.
 
 Each run gets its own working directory and limits on wall-clock time, processor time, memory, file size and output. `Blazemoji.Toolchain.ContractTests` describes the contract from the outside: point `TOOLCHAIN_BASE_URL` at any implementation and run it.
 
@@ -96,7 +119,7 @@ runs the unit and compiler tests in a throwaway `linux/amd64` container with the
 scripts/e2e.sh
 ```
 
-builds both images, starts them with `docker compose`, checks that the toolchain container has no route out, and drives the app in a real browser (Playwright): running and stopping programs, live output, compiler errors as editor markers, and the rest of the page. The first run downloads Chromium.
+builds both images, starts them with `docker compose`, checks that the toolchain container has no route out, and drives the app in a real browser (Playwright): running and stopping programs, live output, compiler errors as editor markers, projects with several files, and Grapevine's Todo sample answering requests from the Requests tab. The first run downloads Chromium.
 
 ```bash
 docker build -f Blazemoji/Dockerfile --target test --output type=cacheonly --progress=plain .

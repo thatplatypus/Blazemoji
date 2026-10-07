@@ -25,7 +25,13 @@ namespace Blazemoji.E2E
                 if (message.Type == "error")
                     _consoleErrors.Add(message.Text);
             };
-            page.PageError += (_, error) => _consoleErrors.Add(error);
+            page.PageError += (_, error) =>
+            {
+                // When the editor is given another file to show, Monaco abandons whatever it was
+                // still working out for the previous one and reports that as a rejected promise.
+                if (!error.StartsWith("Canceled: Canceled", StringComparison.Ordinal))
+                    _consoleErrors.Add(error);
+            };
         }
 
         public IPage Page { get; }
@@ -95,11 +101,124 @@ namespace Blazemoji.E2E
             return editorPage;
         }
 
+        /// <summary>Replaces the text of the file the editor is showing.</summary>
         public Task SetCodeAsync(string code) =>
-            Page.EvaluateAsync("code => monaco.editor.getModels()[0].setValue(code)", code);
+            Page.EvaluateAsync("code => monaco.editor.getEditors()[0].getModel().setValue(code)", code);
 
         public Task<string> GetCodeAsync() =>
-            Page.EvaluateAsync<string>("() => monaco.editor.getModels()[0].getValue()");
+            Page.EvaluateAsync<string>("() => monaco.editor.getEditors()[0].getModel().getValue()");
+
+        public ILocator OpenFileCaption => Page.GetByTestId("open-file");
+
+        public ILocator Files => Page.GetByTestId("file");
+
+        public ILocator File(string path) => Page.Locator($"[data-testid=file][data-path=\"{path}\"]");
+
+        public ILocator EntryFlag => Page.GetByTestId("entry-flag");
+
+        public async Task<IReadOnlyList<string>> FilePathsAsync() =>
+            await Files.EvaluateAllAsync<string[]>("rows => rows.map(row => row.dataset.path)");
+
+        /// <summary>
+        /// The file list is drawn by its own component, a moment after the rest of the page
+        /// has caught up with a change, so the list is waited for and not read once.
+        /// </summary>
+        public Task WaitForFilesAsync(params string[] paths) =>
+            Page.WaitForFunctionAsync(
+                "wanted => JSON.stringify([...document.querySelectorAll('[data-testid=file]')].map(row => row.dataset.path)) === JSON.stringify(wanted)",
+                paths);
+
+        /// <summary>Waits for the page to say which file is open.</summary>
+        public Task WaitForOpenFileAsync(string project, string path) =>
+            Page.Locator("[data-testid=open-file]", new PageLocatorOptions { HasTextString = $"{project} / {path}" }).WaitForAsync();
+
+        /// <summary>Makes a project from a template and waits for its entry file to be showing.</summary>
+        public async Task CreateProjectAsync(string name, string templateId, string entry = "main.🍇")
+        {
+            await OpenTabAsync("Files");
+            await ShowsAnotherFileAsync(
+                async () =>
+                {
+                    await Page.GetByTestId("project-menu").GetByRole(AriaRole.Button).ClickAsync();
+                    await Page.GetByTestId("new-project").ClickAsync();
+                    await Page.GetByTestId("new-project-name").FillAsync(name);
+                    await Page.GetByTestId("template-" + templateId).ClickAsync();
+                    await Page.GetByTestId("new-project-create").ClickAsync();
+                    await Dialog.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Detached });
+                },
+                name,
+                entry);
+        }
+
+        public async Task<bool> HasTemplateAsync(string templateId)
+        {
+            await OpenTabAsync("Files");
+            await Page.GetByTestId("project-menu").GetByRole(AriaRole.Button).ClickAsync();
+            await Page.GetByTestId("new-project").ClickAsync();
+            await Page.GetByTestId("new-project-name").WaitForAsync();
+            var offered = await Page.GetByTestId("template-" + templateId).CountAsync() > 0;
+            await Dialog.GetByText("Cancel").ClickAsync();
+            await Dialog.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Detached });
+            return offered;
+        }
+
+        public async Task OpenFileAsync(string project, string path)
+        {
+            await OpenTabAsync("Files");
+            if ((await OpenFileCaption.InnerTextAsync()).Trim() == $"{project} / {path}")
+                return;
+
+            await ShowsAnotherFileAsync(() => File(path).ClickAsync(), project, path);
+        }
+
+        /// <summary>
+        /// Does something that makes the editor show a different file, and waits until it does.
+        /// The caption changes when the page knows which file is open; the editor is told one
+        /// round trip later, so its model changing is what says the file is really showing.
+        /// </summary>
+        public async Task ShowsAnotherFileAsync(Func<Task> action, string project, string path)
+        {
+            var shown = await ShownModelAsync();
+            await action();
+            await WaitForOpenFileAsync(project, path);
+            await Page.WaitForFunctionAsync("before => monaco.editor.getEditors()[0].getModel().uri.toString() !== before", shown);
+        }
+
+        private Task<string> ShownModelAsync() =>
+            Page.EvaluateAsync<string>("() => monaco.editor.getEditors()[0].getModel().uri.toString()");
+
+        public async Task ChooseFileActionAsync(string path, string action)
+        {
+            await File(path).GetByTestId("file-menu").GetByRole(AriaRole.Button).ClickAsync();
+            await Page.GetByTestId(action).ClickAsync();
+        }
+
+        public async Task AnswerPromptAsync(string text)
+        {
+            await Page.GetByTestId("prompt-input").FillAsync(text);
+            await Page.GetByTestId("prompt-confirm").ClickAsync();
+        }
+
+        /// <summary>
+        /// Sends a request from the Requests tab and waits for its answer to be shown.
+        /// </summary>
+        public async Task SendRequestAsync(string method, string path, string body = "")
+        {
+            await OpenTabAsync("Requests");
+            // The select puts its test id on a hidden input as well as on the part people click.
+            await Page.Locator("div[data-testid=request-method]").ClickAsync();
+            await Page.Locator(".mud-popover-open .mud-list-item", new PageLocatorOptions { HasTextString = method }).First.ClickAsync();
+            await Page.GetByTestId("request-path").FillAsync(path);
+            await Page.GetByTestId("request-body").FillAsync(body);
+            await Page.GetByTestId("request-send").ClickAsync();
+            await Page.Locator("[data-testid=response-request]", new PageLocatorOptions { HasTextString = $"{method} {path}" }).WaitForAsync();
+        }
+
+        public ILocator ResponseStatus => Page.GetByTestId("response-status");
+
+        public ILocator ResponseBody => Page.GetByTestId("response-body");
+
+        public ILocator ResponseProblem => Page.GetByTestId("response-problem");
 
         /// <summary>
         /// Markers reach the editor one round trip after the problems list is drawn, so they are waited for.

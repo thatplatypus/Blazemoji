@@ -124,6 +124,7 @@ namespace Blazemoji.E2E
             await using var editor = await EditorPage.OpenAsync(browser);
 
             await editor.OpenTabAsync("Toolbox");
+            await editor.Page.Locator(".emoji-box-hover").First.WaitForAsync();
 
             (await editor.Page.Locator(".emoji-box-hover").CountAsync()).ShouldBeGreaterThan(20);
         }

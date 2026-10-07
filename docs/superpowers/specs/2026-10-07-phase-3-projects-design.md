@@ -127,3 +127,15 @@ Every response on the proxy route that does **not** come from the program carrie
 5. The toolchain links programs itself.
 6. One Monaco model per file; no open-file tabs.
 7. The Library stays as it is, apart from its clear action.
+
+## Amendments during implementation
+
+1. **Two more outcomes for a request.** `InvalidRequest` (the method, path or a header cannot be sent as HTTP; `400` with `invalid-request` on the wire) and, on the client only, `Unavailable` (the toolchain service itself could not be reached).
+2. **Paths that could climb out are refused.** A request path with a `.` or `..` segment (plain or percent-encoded), a backslash or a control character is not sent. The client also checks that the address it resolved is still under the run's `/http/` route. Without this a path such as `/../../compile` typed into the request panel would have been a request to the toolchain service itself.
+3. **The file name rule moved into the contract project** (`Blazemoji.Toolchain.SourceFileNames`), because the web app now applies it to project files as well.
+4. **The page's columns are 3, 6 and 3 of twelve at every width.** The right-hand column was 2 of 12 below 1280 px, which is too narrow for a request form.
+5. **JSON bodies are laid out without being re-serialised.** Serialising again would turn every emoji into a pair of escapes, in an editor for a language written in emoji.
+6. **The Todo sample's own test file comes with the template.** Making `tests.🍇` the entry and running it runs Grapevine's in-memory tests, and a toolchain test does exactly that.
+7. **Templates are tested for real:** every committed template is compiled, and the two-file one is run, by the Docker tests.
+8. **The editor's first, empty model is left in place.** Disposing it through BlazorMonaco failed in the browser; it holds nothing and nothing refers to it.
+9. **The per-program address-space limit went from 1 GiB to 4 GiB.** Grapevine's own tests, run from the sample project, were aborted by the emulator at 1 GiB (`rosetta error: mmap_anonymous_rw mmap failed`): the limit counts reserved address space, which 64 thread stacks and the emulator's tables fill quickly. Real memory use is still capped by the container's 2 GB limit.
