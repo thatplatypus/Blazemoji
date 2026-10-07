@@ -130,3 +130,16 @@ All runs share one container and one user. A program can read other runs' files,
 4. No stdin UI in this phase.
 5. No outbound network is achieved with Docker networking, not inside the service.
 6. `GET /packages` and `GET /health` are additions to the brief's endpoint list.
+
+## Amendments during implementation
+
+1. **No separate plan document.** The spec fixes the contract and the project layout; the work was done as nine tasks recorded in the session ledger and in the commit history.
+2. **Both images are `linux/amd64`.** The web image no longer needs the compiler and could be built natively for arm64, but Docker's disk on Tom's machine was nearly full and a second base image would not fit. It is a one-line change in the Dockerfile.
+3. **A host asks "does this build exist" through `IBuildStore`,** a second small interface the local toolchain implements, so that `POST /runs` can answer 404 without starting anything.
+4. **The web app ends each program's input straight away,** by sending an empty `stdin?eof=true`, because the page has no input box yet. A program that reads input therefore sees the end of it, as it did in Phase 1.
+5. **JSON escapes.** Emoji outside the Basic Multilingual Plane are written as `\uD83D\uDE00`-style escapes in responses and events. System.Text.Json offers no way to write them raw. Any JSON parser reads them back, and the contract tests compare parsed values.
+6. **Routes are relative on the client.** The service can sit under a path (`http://gateway/toolchain/`), and the client keeps that path.
+7. **File names and positions follow the Phase 1 review fixes:** names are restricted to characters that mean nothing to a shell, and diagnostics count characters from one on every line.
+8. **Known operational risk under emulation.** On Apple Silicon the service runs under Rosetta, where a .NET process has twice been seen to freeze completely during test runs. If the toolchain container ever stops answering on a Mac, restart it. This has not been seen, and is not expected, on real x86_64.
+9. **Contract tests found nothing to fix.** All 32 passed on their first run against the service, which also means they were never watched failing against it; the in-memory service tests cover the same behaviour independently.
+
