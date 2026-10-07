@@ -9,7 +9,11 @@ namespace Blazemoji.Toolchain
     public sealed record CompileRequest(IReadOnlyDictionary<string, string> Files, string Entry, bool CheckOnly = false);
 
     /// <param name="BuildId">Set only when <paramref name="Ok"/> is true.</param>
-    public sealed record CompileResult(bool Ok, IReadOnlyList<Diagnostic> Diagnostics, string? BuildId);
+    /// <param name="ReachedCompiler">
+    /// False when the diagnostics are not the compiler's: the toolchain was busy, refused the
+    /// request, or could not be reached. Such a result says nothing about the program.
+    /// </param>
+    public sealed record CompileResult(bool Ok, IReadOnlyList<Diagnostic> Diagnostics, string? BuildId, bool ReachedCompiler = true);
 
     /// <param name="Line">1-based. 0 when the compiler gave no location.</param>
     /// <param name="Character">1-based, counted in Unicode code points. 0 when unknown.</param>

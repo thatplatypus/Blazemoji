@@ -151,12 +151,14 @@ namespace Blazemoji.Shared.State
 
         /// <summary>
         /// Compiles for the problems alone, as someone types: nothing is run and the output is
-        /// left as it is. It stands aside for a run, a later check replaces an earlier one, and
-        /// a check that never reached the compiler changes nothing.
+        /// left as it is. It stands aside while a program is being built, whose own problems
+        /// are about to arrive, and carries on while one runs: a server is edited while it is
+        /// up. A later check replaces an earlier one, and a check that never reached the
+        /// compiler changes nothing.
         /// </summary>
         public async Task CheckAsync(RunTarget target)
         {
-            if (Status != RunStatus.Idle || _disposal.IsCancellationRequested)
+            if (Status == RunStatus.Compiling || _disposal.IsCancellationRequested)
                 return;
 
             var check = ++_checks;
@@ -177,7 +179,7 @@ namespace Blazemoji.Shared.State
                 return;
             }
 
-            if (check != _checks || Status != RunStatus.Idle || NeverReachedTheCompiler(result))
+            if (check != _checks || Status == RunStatus.Compiling || !result.ReachedCompiler)
                 return;
 
             var changed = !result.Diagnostics.SequenceEqual(Diagnostics);
@@ -188,13 +190,6 @@ namespace Blazemoji.Shared.State
             if (changed)
                 DiagnosticsChanged?.Invoke();
         }
-
-        /// <summary>
-        /// The compiler gives every error a place. A failed result with no place in it came
-        /// from somewhere short of the compiler: the service was busy or could not be reached.
-        /// </summary>
-        private static bool NeverReachedTheCompiler(CompileResult result) =>
-            !result.Ok && !result.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Line > 0);
 
         /// <summary>
         /// Forgets the last build's diagnostics, for when the code they refer to is replaced.

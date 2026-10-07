@@ -21,6 +21,10 @@ namespace Blazemoji.Shared.State
         private readonly ILogger<ProjectState> _logger;
         private readonly List<ProjectSummary> _projects = [];
 
+        // Projects whose latest state could not be saved. They are only here, so this is
+        // where they are opened from for as long as the page lives.
+        private readonly Dictionary<string, Project> _onlyInMemory = [];
+
         public ProjectState(IProjectStore store, IProjectTemplates templates, ILogger<ProjectState> logger)
         {
             _store = store;
@@ -50,6 +54,7 @@ namespace Blazemoji.Shared.State
 
         /// <summary>
         /// The last attempt to save did not work, so what is on screen is only in memory.
+        /// It stays there, and can be come back to, until the page is closed.
         /// </summary>
         public bool SaveFailed { get; private set; }
 
@@ -93,6 +98,7 @@ namespace Blazemoji.Shared.State
                 SaveFailed = true;
                 _projects.Clear();
                 _projects.Add(Summary(Current));
+                _onlyInMemory[Current.Id] = Current;
             }
 
             Loaded = true;
@@ -122,7 +128,7 @@ namespace Blazemoji.Shared.State
 
             try
             {
-                if (Repair(await _store.LoadAsync(projectId)) is not { } project)
+                if (await FindAsync(projectId) is not { } project)
                     return;
 
                 Show(project);
@@ -155,31 +161,11 @@ namespace Blazemoji.Shared.State
         public async Task DeleteProjectAsync(string projectId)
         {
             _projects.RemoveAll(project => project.Id == projectId);
+            _onlyInMemory.Remove(projectId);
 
             try
             {
                 await _store.DeleteAsync(projectId);
-
-                if (projectId == Current.Id)
-                {
-                    Project? next = null;
-                    foreach (var candidate in _projects)
-                    {
-                        next = Repair(await _store.LoadAsync(candidate.Id));
-                        if (next is not null)
-                            break;
-                    }
-
-                    if (next is null)
-                    {
-                        next = FromTemplate(DefaultTemplate, DefaultTemplate.Name);
-                        _projects.Add(Summary(next));
-                        await _store.SaveAsync(next);
-                    }
-
-                    Show(next);
-                    await _store.SetLastOpenedAsync(next.Id);
-                }
             }
             catch (ProjectStoreException exception)
             {
@@ -187,7 +173,58 @@ namespace Blazemoji.Shared.State
                 SaveFailed = true;
             }
 
+            if (projectId == Current.Id)
+                await ShowAnotherAsync();
+
             NotifyStateChanged();
+        }
+
+        /// <summary>Shows the first listed project that can be opened, or a fresh one when none can.</summary>
+        private async Task ShowAnotherAsync()
+        {
+            Project? next = null;
+            try
+            {
+                foreach (var candidate in _projects)
+                {
+                    next = await FindAsync(candidate.Id);
+                    if (next is not null)
+                        break;
+                }
+            }
+            catch (ProjectStoreException exception)
+            {
+                _logger.LogWarning(exception, "The remaining projects could not be read");
+                SaveFailed = true;
+            }
+
+            if (next is not null)
+            {
+                Show(next);
+                await RememberOpenedAsync();
+                return;
+            }
+
+            Show(FromTemplate(DefaultTemplate, DefaultTemplate.Name));
+            _projects.Add(Summary(Current));
+            await SaveAsync(alsoLastOpened: true);
+        }
+
+        /// <summary>The project as it was last seen on this page if that never reached storage, otherwise as stored.</summary>
+        private async Task<Project?> FindAsync(string projectId) =>
+            _onlyInMemory.TryGetValue(projectId, out var kept) ? kept : Repair(await _store.LoadAsync(projectId));
+
+        private async Task RememberOpenedAsync()
+        {
+            try
+            {
+                await _store.SetLastOpenedAsync(Current.Id);
+            }
+            catch (ProjectStoreException exception)
+            {
+                _logger.LogWarning(exception, "The open project could not be remembered");
+                SaveFailed = true;
+            }
         }
 
         public async Task<string?> AddFileAsync(string path)
@@ -302,6 +339,15 @@ namespace Blazemoji.Shared.State
             try
             {
                 await _store.SaveAsync(Current);
+                _onlyInMemory.Remove(Current.Id);
+
+                // Storage is working: whatever else was waiting for it goes in now.
+                foreach (var waiting in _onlyInMemory.Values.ToList())
+                {
+                    await _store.SaveAsync(waiting);
+                    _onlyInMemory.Remove(waiting.Id);
+                }
+
                 if (alsoLastOpened)
                     await _store.SetLastOpenedAsync(Current.Id);
 
@@ -311,6 +357,7 @@ namespace Blazemoji.Shared.State
             {
                 _logger.LogWarning(exception, "The project could not be saved");
                 SaveFailed = true;
+                _onlyInMemory[Current.Id] = Current;
             }
         }
 

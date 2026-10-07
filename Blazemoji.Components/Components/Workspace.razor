@@ -69,6 +69,10 @@
     private string _compiledProjectId = string.Empty;
     private Diagnostic? _problemToReveal;
 
+    // Everything that drives the editor or reads from it takes a turn here. Each step is a
+    // round trip to the browser, and a second click or render can arrive between two of them.
+    private readonly SemaphoreSlim _editorTurn = new(1, 1);
+
     private bool IsIdle => _runState.Status == RunStatus.Idle;
 
     protected override void OnInitialized()
@@ -113,8 +117,23 @@
         if (!_editorReady)
             return;
 
-        // The editor is driven through JS interop, so it is brought into line with the state
-        // after a render instead of from the state's own events.
+        await _editorTurn.WaitAsync();
+        try
+        {
+            await BringEditorInLineAsync();
+        }
+        finally
+        {
+            _editorTurn.Release();
+        }
+    }
+
+    /// <summary>
+    /// The editor is driven through JS interop, so it is brought into line with the state
+    /// after a render instead of from the state's own events.
+    /// </summary>
+    private async Task BringEditorInLineAsync()
+    {
         await ShowOpenFileAsync();
 
         if (!ReferenceEquals(_markedDiagnostics, _runState.Diagnostics))
@@ -151,8 +170,8 @@
         if (_shown == open)
             return;
 
-        _shown = open;
         await _editor.OpenFileAsync(Key(project.Id, open.OpenPath), _projectState.OpenFile.Content);
+        _shown = open;
 
         // A file opened for the first time has had no markers yet.
         _markedDiagnostics = null;
@@ -165,10 +184,22 @@
     /// </summary>
     private async Task SyncOpenFileAsync()
     {
-        if (!_editorReady || _shown is not { } shown || shown.ProjectId != _projectState.Current.Id)
+        if (!_editorReady)
             return;
 
-        await _projectState.UpdateContentAsync(shown.Path, await _editor.GetCodeAsync());
+        await _editorTurn.WaitAsync();
+        try
+        {
+            if (_shown is not { } shown || shown.ProjectId != _projectState.Current.Id)
+                return;
+
+            if (await _editor.GetCodeAsync(Key(shown.ProjectId, shown.Path)) is { } text)
+                await _projectState.UpdateContentAsync(shown.Path, text);
+        }
+        finally
+        {
+            _editorTurn.Release();
+        }
     }
 
     protected async Task RunEmojiCodeClicked()

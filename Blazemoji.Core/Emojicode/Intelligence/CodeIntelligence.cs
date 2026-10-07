@@ -11,11 +11,9 @@ namespace Blazemoji.Emojicode.Intelligence
         // A word this short matches too much to be worth searching descriptions for.
         private const int ShortestDescriptionSearch = 3;
 
-        private static readonly HashSet<string> Moods = ["❗", "❓"];
-
-        // Between two operands these join them into one argument; they do not start another.
-        private static readonly HashSet<string> BinaryOperators =
-            ["➕", "➖", "✖", "➗", "🚮", "🙌", "😜", "▶", "◀", "🤝", "👐", "⭕", "💢", "❌", "👈", "👉", "🤜", "🤛"];
+        // The type the standard package uses for raw memory. An initializer that takes it
+        // is for the package's own use and is the last one to suggest.
+        private const string RawMemory = "🧠";
 
         private readonly IReadOnlyList<CatalogKeyword> _keywords = keywords.Select(CatalogKeyword.From).ToList();
 
@@ -78,11 +76,16 @@ namespace Blazemoji.Emojicode.Intelligence
             if (token.Kind != TokenKind.Symbol)
                 return null;
 
-            var markdown = DescribeCallAt(tokens, index, scope, types)
-                ?? DescribeType(tokens, index, types)
-                ?? DescribeKeyword(token.Text)
-                ?? DescribeAnyMethod(token.Text, types)
-                ?? DescribeEmoji(token.Text);
+            // What is being called here comes first. When the keyword catalog teaches the same
+            // emoji, its lesson and example follow.
+            var called = DescribeCallAt(tokens, index, scope, types) ?? DescribeOperatorAt(tokens, index, scope, types);
+            var markdown = called is not null && DescribeKeyword(token.Text) is { } lesson
+                ? $"{called}\n\n---\n\n{lesson}"
+                : called
+                    ?? DescribeType(tokens, index, types)
+                    ?? DescribeKeyword(token.Text)
+                    ?? DescribeAnyMethod(token.Text, types)
+                    ?? DescribeEmoji(token.Text);
 
             return markdown is null ? null : new HoverInfo(token.Start, token.End, markdown);
         }
@@ -98,111 +101,128 @@ namespace Blazemoji.Emojicode.Intelligence
             // lines is nearly always one with a closure for a body, and inside that body the
             // parameters of the outer call are no longer what the writer needs.
             var lineStart = offset == 0 ? 0 : text.LastIndexOf('\n', offset - 1) + 1;
-            var line = tokens.Where(token => token.Start >= lineStart && token.End <= offset).ToList();
-            var open = new Stack<OpenCall>();
-            var joined = false;
+            var first = 0;
+            while (first < tokens.Count && tokens[first].Start < lineStart)
+                first++;
 
-            for (var index = 0; index < line.Count; index++)
-            {
-                var token = line[index];
-                var bare = EmojiText.Bare(token.Text);
+            var limit = first;
+            while (limit < tokens.Count && tokens[limit].End <= offset)
+                limit++;
 
-                if (token.Kind == TokenKind.Symbol && Moods.Contains(bare))
-                {
-                    if (open.Count > 0)
-                        open.Pop();
+            // A name or number the cursor is still touching is the argument being typed, not one already given.
+            if (limit > first && tokens[limit - 1].End == offset && tokens[limit - 1].Kind is TokenKind.Word or TokenKind.Number)
+                limit--;
 
-                    CountArgument(open, ref joined);
-                    continue;
-                }
-
-                if (token.Kind == TokenKind.Symbol && BinaryOperators.Contains(bare))
-                {
-                    joined = true;
-                    continue;
-                }
-
-                if (token.Kind == TokenKind.Symbol && bare == "🍇")
-                {
-                    // A closure is one argument when it closes on this line. When it does not,
-                    // the cursor is inside it.
-                    var close = MatchingClose(line, index);
-                    if (close < 0)
-                        return null;
-
-                    index = close;
-                    CountArgument(open, ref joined);
-                    continue;
-                }
-
-                if (token.Kind == TokenKind.Symbol && StartCall(line, index, scope, types) is { } call)
-                {
-                    open.Push(call.Call);
-                    index += call.Consumed - 1;
-                    continue;
-                }
-
-                if (token.Kind != TokenKind.Symbol)
-                    CountArgument(open, ref joined);
-            }
-
-            if (open.Count == 0)
+            if (limit == first || scope.IsDeclaration(limit - 1))
                 return null;
 
-            var current = open.Peek();
-            return Describe(current.Method, current.Subject, current.Form, Math.Min(current.Arguments, current.Method.Parameters.Count));
-        }
-
-        private static void CountArgument(Stack<OpenCall> open, ref bool joined)
-        {
-            if (open.Count > 0 && !joined)
-                open.Peek().Arguments++;
-
-            joined = false;
-        }
-
-        private static int MatchingClose(List<SourceToken> line, int open)
-        {
-            var depth = 0;
-            for (var index = open; index < line.Count; index++)
-            {
-                var bare = EmojiText.Bare(line[index].Text);
-                if (line[index].Kind != TokenKind.Symbol)
-                    continue;
-
-                if (bare == "🍇")
-                    depth++;
-                else if (bare == "🍉" && --depth == 0)
-                    return index;
-            }
-
-            return -1;
+            var statement = new ExpressionReader(tokens).ReadStatement(first, limit);
+            return statement.Count > 0 && statement[^1] is { Complete: false, RanOut: true } open
+                ? SignatureWithin(open, tokens, scope, types)
+                : null;
         }
 
         /// <summary>
-        /// Recognises the start of a call at a symbol: <c>method receiver</c> where the
-        /// receiver's type has that method, <c>method🐇Type</c>, or <c>🆕Type</c>.
+        /// The call the cursor is in: the innermost one whose method is known. A call nothing
+        /// is known about is, to the call around it, an argument still being typed.
         /// </summary>
-        private static (OpenCall Call, int Consumed)? StartCall(IReadOnlyList<SourceToken> tokens, int index, Scope scope, TypeIndex types)
+        private static SignatureInfo? SignatureWithin(Expression open, IReadOnlyList<SourceToken> tokens, Scope scope, TypeIndex types)
         {
-            var token = tokens[index];
-            if (index + 1 >= tokens.Count)
+            var inner = open.Kind switch
+            {
+                ExpressionKind.Call or ExpressionKind.Initialization => open.Arguments.Count > 0 ? open.Arguments[^1] : open.Receiver,
+                ExpressionKind.Binary => open.Operands[^1],
+                ExpressionKind.Wrapped or ExpressionKind.Cast => open.Inner,
+                _ => null,
+            };
+
+            // An unfinished closure or list means the cursor is inside it, where the call around it has nothing to say.
+            if (open.Kind == ExpressionKind.Other)
                 return null;
 
-            var next = tokens[index + 1];
-            if (EmojiText.Bare(token.Text) == "🆕" && next.Kind == TokenKind.Symbol && types.Find(next.Text) is { } created)
+            if (inner is { Complete: false, RanOut: true })
             {
-                var initializer = created.Initializers.FirstOrDefault(candidate => candidate.Name.Length == 0) ?? created.Initializers.FirstOrDefault();
-                return initializer is null ? null : (new OpenCall(initializer, created.Name, CallForm.Initializer), 2);
+                if (inner.Kind == ExpressionKind.Other)
+                    return null;
+
+                if (SignatureWithin(inner, tokens, scope, types) is { } found)
+                    return found;
             }
 
-            if (next.Text == "🐇" && index + 2 < tokens.Count && types.FindTypeMethod(tokens[index + 2].Text, token.Text) is { } typeMethod)
-                return (new OpenCall(typeMethod, tokens[index + 2].Text, CallForm.TypeMethod), 3);
+            if (open.Kind is not (ExpressionKind.Call or ExpressionKind.Initialization) || Resolve(open, tokens, scope, types) is not { } call)
+                return null;
 
-            if (next.Kind == TokenKind.Word && types.FindMethod(scope.TypeOf(next.Text, next.Start), token.Text) is { } method)
-                return (new OpenCall(method, next.Text, CallForm.Method), 2);
+            var typing = open.Arguments.Count > 0 && !open.Arguments[^1].Complete ? open.Arguments.Count - 1 : open.Arguments.Count;
+            return Describe(call.Method, call.Subject, call.Form, Math.Min(typing, call.Method.Parameters.Count));
+        }
 
-            return null;
+        /// <summary>
+        /// The documented method or initializer a call is to. Where there are several by the
+        /// same name, the one that fits the arguments given so far.
+        /// </summary>
+        private static (MethodDocumentation Method, string Subject, CallForm Form)? Resolve(Expression call, IReadOnlyList<SourceToken> tokens, Scope scope, TypeIndex types)
+        {
+            if (call.Kind == ExpressionKind.Initialization)
+            {
+                if (types.Find(tokens[call.NameToken].Text) is not { } created)
+                    return null;
+
+                var forms = created.Initializers.Where(initializer => EmojiText.Same(initializer.Name, call.InitializerName)).ToList();
+                return forms.Count == 0 ? null : (BestFit(forms, call, scope), created.Name, CallForm.Initializer);
+            }
+
+            if (call.Kind != ExpressionKind.Call || call.Receiver is not { } receiver)
+                return null;
+
+            var name = tokens[call.NameToken].Text;
+            if (receiver is { Kind: ExpressionKind.TypeValue, NameToken: >= 0 })
+            {
+                var typeName = tokens[receiver.NameToken].Text;
+                var typeMethods = types.Find(typeName)?.TypeMethods.Where(method => EmojiText.Same(method.Name, name)).ToList() ?? [];
+                return typeMethods.Count == 0 ? null : (BestFit(typeMethods, call, scope), typeName, CallForm.TypeMethod);
+            }
+
+            // After ➡️ the method is one written as an assignment, when the type has such a one.
+            var assigned = call.First > 0 && EmojiText.Bare(tokens[call.First - 1].Text) == "➡";
+            var methods = types.Find(scope.TypeOf(receiver))?.Methods
+                .Where(method => EmojiText.Same(method.Name, name) && !method.IsOperator)
+                .OrderBy(method => method.IsAssignment == assigned ? 0 : 1)
+                .ToList() ?? [];
+            if (methods.Count == 0)
+                return null;
+
+            // A receiver without a name is shown as its type: 😀 🔡❗️.
+            var subject = receiver.Kind == ExpressionKind.Variable ? tokens[receiver.First].Text : scope.TypeOf(receiver) ?? "…";
+            return (BestFit(methods.Where(method => method.IsAssignment == methods[0].IsAssignment).ToList(), call, scope), subject, CallForm.Method);
+        }
+
+        /// <summary>
+        /// Of several forms with one name: one whose parameters match the types of the
+        /// arguments given, with room for the argument being typed, and not one for the
+        /// standard package's own use. Ties go to the shorter, then to the first documented.
+        /// </summary>
+        private static MethodDocumentation BestFit(IReadOnlyList<MethodDocumentation> forms, Expression call, Scope scope)
+        {
+            if (forms.Count == 1)
+                return forms[0];
+
+            var given = call.Arguments.Select(scope.TypeOf).ToList();
+            var complete = call.Arguments.Count(argument => argument.Complete);
+
+            int Mismatches(MethodDocumentation form) => given
+                .Zip(form.Parameters, (argument, parameter) => argument is not null && parameter.Type.TypeName is { } wanted && !EmojiText.Same(argument, wanted))
+                .Count(mismatch => mismatch);
+
+            int Room(MethodDocumentation form) => form.Parameters.Count > complete ? 0 : form.Parameters.Count == complete ? 1 : 2;
+
+            return forms
+                .Select((form, order) => (form, order))
+                .OrderBy(candidate => Mismatches(candidate.form))
+                .ThenBy(candidate => Room(candidate.form))
+                .ThenBy(candidate => candidate.form.Parameters.Any(parameter => parameter.Type.TypeName == RawMemory) ? 1 : 0)
+                .ThenBy(candidate => candidate.form.Parameters.Count)
+                .ThenBy(candidate => candidate.order)
+                .First().form;
         }
 
         private static (string Receiver, string Filter)? ReceiverBeforeDot(IReadOnlyList<SourceToken> before)
@@ -234,12 +254,16 @@ namespace Blazemoji.Emojicode.Intelligence
             if (types.Find(scope.TypeOf(receiver, start)) is not { } type)
                 return [];
 
+            // A method written as an assignment needs its value first, which a suggestion
+            // after the receiver cannot put there. It is found by name instead.
             var entries = new List<CompletionEntry>();
-            foreach (var method in type.Methods.Where(method => Matches(method, filter, alsoByWhatItSays: true)))
+            foreach (var method in type.Methods.Where(method => !method.IsAssignment && Matches(method, filter, alsoByWhatItSays: true)))
             {
-                var insert = method.Parameters.Count == 0
-                    ? $"{method.Name} {receiver}{method.Mood}"
-                    : $"{method.Name} {receiver} ";
+                var insert = method.IsOperator
+                    ? $"{receiver} {method.Name} "
+                    : method.Parameters.Count == 0
+                        ? $"{method.Name} {receiver}{method.Mood}"
+                        : $"{method.Name} {receiver} ";
 
                 entries.Add(new CompletionEntry(
                     Label(method),
@@ -364,13 +388,74 @@ namespace Blazemoji.Emojicode.Intelligence
 
         private string? DescribeCallAt(IReadOnlyList<SourceToken> tokens, int index, Scope scope, TypeIndex types)
         {
-            // 🆕Type: hovering either part describes the type being made.
-            if (index > 0 && EmojiText.Bare(tokens[index - 1].Text) == "🆕")
+            if (scope.IsDeclaration(index))
                 return null;
 
-            return StartCall(tokens, index, scope, types) is { } call && EmojiText.Bare(tokens[index].Text) != "🆕"
-                ? Document(call.Call.Method, call.Call.Subject, call.Call.Form)
+            return CallNamedBy(index, ExpressionsOfLine(tokens, index)) is { } call && Resolve(call, tokens, scope, types) is { } resolved
+                ? Document(resolved.Method, resolved.Subject, resolved.Form)
                 : null;
+        }
+
+        /// <summary>An operator is a method of the operand on its left.</summary>
+        private string? DescribeOperatorAt(IReadOnlyList<SourceToken> tokens, int index, Scope scope, TypeIndex types)
+        {
+            if (!ExpressionReader.IsOperator(tokens[index]) || scope.IsDeclaration(index))
+                return null;
+
+            foreach (var binary in All(ExpressionsOfLine(tokens, index)).Where(expression => expression.Kind == ExpressionKind.Binary))
+            {
+                var type = scope.TypeOf(binary.Operands[0]);
+                for (var position = 0; position < binary.Operators.Count; position++)
+                {
+                    var (token, text) = binary.Operators[position];
+                    var method = types.FindMethod(type, text);
+                    if (token == index || (token == index - 1 && text.Length > EmojiText.Bare(tokens[token].Text).Length))
+                    {
+                        var left = binary.Operands[position];
+                        var subject = position == 0 && left.Kind == ExpressionKind.Variable ? tokens[left.First].Text : type ?? "…";
+                        return method is null ? null : Document(method, subject, CallForm.Method);
+                    }
+
+                    type = method?.ReturnType?.TypeName;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>The expressions of the line a token is on. A call is never read across a line break.</summary>
+        private static IReadOnlyList<Expression> ExpressionsOfLine(IReadOnlyList<SourceToken> tokens, int index)
+        {
+            var first = index;
+            while (first > 0 && tokens[first - 1].Line == tokens[index].Line)
+                first--;
+
+            var limit = index;
+            while (limit < tokens.Count && tokens[limit].Line == tokens[index].Line)
+                limit++;
+
+            return new ExpressionReader(tokens).ReadStatement(first, limit);
+        }
+
+        private static Expression? CallNamedBy(int tokenIndex, IEnumerable<Expression> expressions) =>
+            All(expressions).FirstOrDefault(expression => expression.Kind == ExpressionKind.Call && expression.NameToken == tokenIndex);
+
+        /// <summary>Each expression and everything inside it.</summary>
+        private static IEnumerable<Expression> All(IEnumerable<Expression> expressions)
+        {
+            foreach (var expression in expressions)
+            {
+                yield return expression;
+
+                var parts = expression.Arguments.Concat(expression.Operands);
+                if (expression.Receiver is not null)
+                    parts = parts.Append(expression.Receiver);
+                if (expression.Inner is not null)
+                    parts = parts.Append(expression.Inner);
+
+                foreach (var part in All(parts))
+                    yield return part;
+            }
         }
 
         private static string? DescribeType(IReadOnlyList<SourceToken> tokens, int index, TypeIndex types)
@@ -442,14 +527,24 @@ namespace Blazemoji.Emojicode.Intelligence
 
         private static string SignatureLabel(MethodDocumentation method, string subject, CallForm form)
         {
+            var parameters = string.Concat(method.Parameters.Select(parameter => " " + ParameterLabel(parameter)));
+            if (form == CallForm.Method && method.IsOperator)
+                return $"{subject} {method.Name}{parameters}{Returns(method)}";
+
+            // The value comes first and is the first parameter: value ➡️ 🐽 list index❗️.
+            if (form == CallForm.Method && method.IsAssignment && method.Parameters.Count > 0)
+            {
+                var rest = string.Concat(method.Parameters.Skip(1).Select(parameter => " " + ParameterLabel(parameter)));
+                return $"{ParameterLabel(method.Parameters[0])} ➡️ {method.Name} {subject}{rest}❗️";
+            }
+
             var head = form switch
             {
-                CallForm.Initializer => $"🆕{subject}{method.Name}",
+                CallForm.Initializer => method.Name.Length == 0 ? $"🆕{subject}" : $"🆕{subject}▶️{method.Name}",
                 CallForm.TypeMethod => $"{method.Name}🐇{subject}",
                 _ => $"{method.Name} {subject}",
             };
 
-            var parameters = string.Concat(method.Parameters.Select(parameter => " " + ParameterLabel(parameter)));
             return $"{head}{parameters}{method.Mood}{(form == CallForm.Initializer ? string.Empty : Returns(method))}";
         }
 
@@ -502,18 +597,6 @@ namespace Blazemoji.Emojicode.Intelligence
             Method,
             TypeMethod,
             Initializer,
-        }
-
-        /// <param name="Subject">The receiver's name for a method, the type's name otherwise.</param>
-        private sealed class OpenCall(MethodDocumentation method, string subject, CallForm form)
-        {
-            public MethodDocumentation Method => method;
-
-            public string Subject => subject;
-
-            public CallForm Form => form;
-
-            public int Arguments { get; set; }
         }
     }
 }

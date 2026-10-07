@@ -23,6 +23,9 @@ namespace Blazemoji.Toolchain.Http
 
         public static bool IsContentLength(string name) => name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>True for a header an HTTP message can carry: a token for a name, and a value without control characters.</summary>
+        public static bool CanBeSentAsHeader(string name, string value) => IsToken(name) && !value.Any(char.IsControl);
+
         /// <param name="address">
         /// Given the request's path, with a leading slash and any query string, returns where
         /// to send it, or null to refuse.
@@ -39,7 +42,7 @@ namespace Blazemoji.Toolchain.Http
             var hasContentHeader = false;
             foreach (var (name, value) in request.Headers)
             {
-                if (!IsToken(name) || value.Any(char.IsControl))
+                if (!CanBeSentAsHeader(name, value))
                 {
                     content.Dispose();
                     message.Dispose();
@@ -83,7 +86,8 @@ namespace Blazemoji.Toolchain.Http
         /// A path is refused if it has a control character, a backslash (which a URI parser
         /// reads as a slash) or a <c>.</c> or <c>..</c> segment, written plainly or
         /// percent-encoded. Such a path could otherwise be resolved to somewhere other than
-        /// under the address it is appended to.
+        /// under the address it is appended to, or be turned away by the server before it
+        /// reaches the program.
         /// </summary>
         private static string? NormalizePath(string path)
         {
@@ -97,7 +101,7 @@ namespace Blazemoji.Toolchain.Http
             foreach (var segment in pathOnly.Split('/'))
             {
                 var decoded = Uri.UnescapeDataString(segment);
-                if (decoded is "." or ".." || decoded.Contains('/') || decoded.Contains('\\'))
+                if (decoded is "." or ".." || decoded.Contains('/') || decoded.Contains('\\') || decoded.Any(char.IsControl))
                     return null;
             }
 

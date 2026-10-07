@@ -465,17 +465,42 @@ namespace Blazemoji.Test.State
         }
 
         [Fact]
-        public async Task A_check_does_not_start_while_a_program_is_running()
+        public async Task A_check_goes_ahead_while_a_program_is_running_and_shows_what_it_finds()
         {
-            CompileSucceeds();
+            var typed = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Typed while the server runs.");
+            _toolchain.CompileAsync(Arg.Is<CompileRequest>(request => !request.CheckOnly), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(true, [], "build-1"));
+            _toolchain.CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(false, [typed], null));
+            _toolchain.StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>()).Returns<IToolchainRun>(_run);
             await using var state = CreateState();
             var running = state.RunAsync(Code);
             await UntilAsync(() => state.Status == RunStatus.Running, advanceTime: false);
-            _toolchain.ClearReceivedCalls();
 
             await state.CheckAsync(Target("typed while running"));
 
-            await _toolchain.DidNotReceive().CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
+            state.Status.ShouldBe(RunStatus.Running);
+            state.Diagnostics.ShouldBe([typed]);
+            state.DiagnosticsAreFromARun.ShouldBeFalse();
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task A_check_does_not_start_while_a_program_is_being_built()
+        {
+            var building = new TaskCompletionSource<CompileResult>();
+            _toolchain.CompileAsync(Arg.Is<CompileRequest>(request => !request.CheckOnly), Arg.Any<CancellationToken>()).Returns(building.Task);
+            _toolchain.StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>()).Returns<IToolchainRun>(_run);
+            await using var state = CreateState();
+            var running = state.RunAsync(Code);
+            state.Status.ShouldBe(RunStatus.Compiling);
+
+            await state.CheckAsync(Target("typed while building"));
+
+            await _toolchain.DidNotReceive().CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly), Arg.Any<CancellationToken>());
+            building.SetResult(new CompileResult(true, [], "build-1"));
+            await UntilAsync(() => state.Status == RunStatus.Running, advanceTime: false);
             _run.Exit();
             await running;
         }
@@ -511,13 +536,42 @@ namespace Blazemoji.Test.State
             _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
                 .Returns(
                     new CompileResult(false, [real], null),
-                    new CompileResult(false, [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, message)], null));
+                    new CompileResult(false, [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, message)], null, ReachedCompiler: false));
             await using var state = CreateState();
             await state.CheckAsync(Target("broken"));
 
             await state.CheckAsync(Target("broken still"));
 
             state.Diagnostics.ShouldBe([real]);
+        }
+
+        [Theory]
+        [InlineData("No 🏁 block was found.")]
+        [InlineData("The compiler failed without reporting an error.")]
+        public async Task What_the_compiler_says_without_naming_a_line_still_replaces_the_problems_that_were_there(string message)
+        {
+            var fixedSince = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Broken.");
+            var noPlace = new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, message);
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(false, [fixedSince], null), new CompileResult(false, [noPlace], null));
+            await using var state = CreateState();
+            await state.CheckAsync(Target("broken"));
+
+            await state.CheckAsync(Target("the broken line deleted"));
+
+            state.Diagnostics.ShouldBe([noPlace]);
+        }
+
+        [Fact]
+        public async Task The_first_check_shows_what_the_compiler_said_even_without_a_line()
+        {
+            var crashed = new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, "The compiler failed without reporting an error.");
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [crashed], null));
+            await using var state = CreateState();
+
+            await state.CheckAsync(Target("something the compiler chokes on"));
+
+            state.Diagnostics.ShouldBe([crashed]);
         }
 
         [Fact]

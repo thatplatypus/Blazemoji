@@ -112,6 +112,23 @@ namespace Blazemoji.Test.Service
         }
 
         [Fact]
+        public async Task A_result_says_whether_the_compiler_ever_saw_the_program()
+        {
+            _factory.Toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(false, [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, "No 🏁 block was found.")], null));
+
+            var fromTheCompiler = await CreateClient().CompileAsync(ToolchainFixture.SingleFile("x"), Cancellation);
+            var refused = await CreateClient().CompileAsync(new CompileRequest(new Dictionary<string, string> { ["../x.🍇"] = "x" }, "../x.🍇"), Cancellation);
+            var unreachable = await ClientOver(new FailingHandler()).CompileAsync(ToolchainFixture.SingleFile("x"), Cancellation);
+            var silent = await ClientOver(new SilentHandler(), TimeSpan.FromMilliseconds(100)).CompileAsync(ToolchainFixture.SingleFile("x"), Cancellation);
+
+            fromTheCompiler.ReachedCompiler.ShouldBeTrue();
+            refused.ReachedCompiler.ShouldBeFalse();
+            unreachable.ReachedCompiler.ShouldBeFalse();
+            silent.ReachedCompiler.ShouldBeFalse();
+        }
+
+        [Fact]
         public async Task A_run_delivers_its_events_in_order_and_then_ends()
         {
             await using var run = await StartRunAsync(CreateClient());
@@ -393,6 +410,9 @@ namespace Blazemoji.Test.Service
         [InlineData("\\..\\..\\compile")]
         [InlineData("/./x")]
         [InlineData("/x/..")]
+        [InlineData("/a%00b")]
+        [InlineData("/a%0d%0ab")]
+        [InlineData("/a%7Fb")]
         public async Task A_path_that_would_climb_out_of_the_programs_address_space_is_refused_unsent(string path)
         {
             var sent = new List<string>();

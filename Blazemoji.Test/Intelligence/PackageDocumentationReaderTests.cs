@@ -133,5 +133,20 @@ namespace Blazemoji.Test.Intelligence
             method.ReturnType.ShouldBe(new TypeReference("?", null));
             method.Parameters.ShouldHaveSingleItem().Type.ShouldBe(new TypeReference("?", null));
         }
+
+        [Fact]
+        public void An_operator_keeps_the_empty_mood_that_marks_it_and_an_initializer_is_called_with_an_exclamation()
+        {
+            var number = TestPackages.Standard.Find("🔢").ShouldNotBeNull();
+            var list = TestPackages.Standard.Find("🍨").ShouldNotBeNull();
+
+            var plus = number.Methods.Single(method => method.Name == "➕");
+            plus.Mood.ShouldBe(string.Empty);
+            plus.IsOperator.ShouldBeTrue();
+            list.Methods.Count(method => method.IsAssignment).ShouldBe(1);
+            list.Methods.Single(method => method.IsAssignment).Name.ShouldBe("🐽");
+            list.Initializers.ShouldAllBe(initializer => initializer.Mood == "❗️" && !initializer.IsOperator);
+            number.Methods.Where(method => !method.IsOperator).ShouldAllBe(method => method.Mood == "❗️" || method.Mood == "❓");
+        }
     }
 }

@@ -28,14 +28,24 @@ namespace Blazemoji.Emojicode.Intelligence
         IReadOnlyList<MethodDocumentation> TypeMethods,
         IReadOnlyList<MethodDocumentation> Initializers);
 
-    /// <param name="Mood"><c>❗️</c> for a method that does something, <c>❓</c> for one that asks.</param>
+    /// <param name="Mood">
+    /// <c>❗️</c> for a method that does something, <c>❓</c> for one that asks, <c>➡️</c> for one
+    /// written as an assignment, and empty for an operator, which is written between its operands.
+    /// </param>
     /// <param name="ReturnType">Null when the method returns nothing.</param>
     public sealed record MethodDocumentation(
         string Name,
         string Mood,
         string Documentation,
         IReadOnlyList<ParameterDocumentation> Parameters,
-        TypeReference? ReturnType);
+        TypeReference? ReturnType)
+    {
+        /// <summary>Written <c>left ➕ right</c>, never <c>➕ left right❗️</c>.</summary>
+        public bool IsOperator => Mood.Length == 0;
+
+        /// <summary>Written <c>value ➡️ 🐽 list index❗️</c>.</summary>
+        public bool IsAssignment => EmojiText.Bare(Mood) == "➡";
+    }
 
     public sealed record ParameterDocumentation(string Name, TypeReference Type);
 

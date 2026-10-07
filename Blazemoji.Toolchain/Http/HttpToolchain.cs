@@ -103,8 +103,9 @@ namespace Blazemoji.Toolchain.Http
         /// </summary>
         private static string Relative(string route) => route.TrimStart('/');
 
+        /// <summary>A failure of the service or of the way to it, which is not something the compiler said.</summary>
         private static CompileResult Failed(string message) =>
-            new(false, [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, message)], null);
+            new(false, [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, message)], null, ReachedCompiler: false);
 
         private sealed class HttpRun(HttpClient http, string runId, ILogger logger) : IToolchainRun
         {
