@@ -4,7 +4,10 @@ A throwaway Hermes window around the editor, to find out what `Blazemoji.Compone
 from a desktop host. It is not for merging: it borrows source files from the web host by
 link, and `Workspace.razor` on this branch carries a workaround marked `SPIKE ONLY`.
 
-To run it (macOS, .NET 11 SDK, Docker running):
+It targets .NET 10 with Hermes.Blazor pinned at 1.2.0, the last release built for .NET 10
+(1.3.0 and later are .NET 11 only), so it builds with the repository's own SDK.
+
+To run it (macOS, Docker running):
 
 ```sh
 scripts/dev-toolchain.sh          # the compiler, in its container, on 127.0.0.1:5290

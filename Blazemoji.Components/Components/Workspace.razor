@@ -124,7 +124,7 @@
         }
         finally
         {
-            // SPIKE ONLY. Hermes 1.4.1 runs a posted continuation at once when it is already on the
+            // SPIKE ONLY. Hermes (1.2.0 and 1.4.1 alike) runs a posted continuation at once when it is already on the
             // window's thread, so the next holder would run inside this Release and its own
             // Release would then be overwritten: the lock ends up taken with nobody holding it.
             // Releasing from another thread makes Hermes queue the continuation instead.
@@ -202,7 +202,7 @@
         }
         finally
         {
-            // SPIKE ONLY. Hermes 1.4.1 runs a posted continuation at once when it is already on the
+            // SPIKE ONLY. Hermes (1.2.0 and 1.4.1 alike) runs a posted continuation at once when it is already on the
             // window's thread, so the next holder would run inside this Release and its own
             // Release would then be overwritten: the lock ends up taken with nobody holding it.
             // Releasing from another thread makes Hermes queue the continuation instead.
