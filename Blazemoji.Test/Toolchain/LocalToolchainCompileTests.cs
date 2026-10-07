@@ -166,15 +166,37 @@ namespace Blazemoji.Test.Toolchain
         }
 
         [Fact]
-        public async Task A_compiler_that_exits_cleanly_without_producing_a_program_is_a_failed_build()
+        public async Task A_compiler_that_exits_cleanly_without_producing_an_object_is_a_failed_build()
         {
             Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
-            var fakeCompiler = Path.Combine(Path.GetTempPath(), "blazemoji-tests", "fake-compiler-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(Path.GetDirectoryName(fakeCompiler)!);
-            File.WriteAllText(fakeCompiler, "#!/bin/sh\necho '[]'\necho 'ld: cannot find -lruntime' >&2\n");
-            if (!OperatingSystem.IsWindows())
-                File.SetUnixFileMode(fakeCompiler, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            await using var toolchain = ToolchainFixture.Create(options => options.CompilerPath = fakeCompiler);
+            var fakeCompiler = ToolchainFixture.Script("fake-compiler", "echo '[]'");
+            var linkerRan = Path.Combine(Path.GetTempPath(), "blazemoji-tests", "linker-ran-" + Guid.NewGuid().ToString("N"));
+            var fakeLinker = ToolchainFixture.Script("fake-linker", $": > '{linkerRan}'");
+            await using var toolchain = ToolchainFixture.Create(options =>
+            {
+                options.CompilerPath = fakeCompiler;
+                options.LinkerPath = fakeLinker;
+            });
+
+            var result = await toolchain.CompileAsync(ToolchainFixture.SingleFile(Programs.Hello), TestContext.Current.CancellationToken);
+
+            result.Ok.ShouldBeFalse();
+            result.BuildId.ShouldBeNull();
+            result.Diagnostics.ShouldHaveSingleItem().Message.ShouldBe("The compiler failed without reporting an error.");
+            File.Exists(linkerRan).ShouldBeFalse();
+            BuildDirectories(toolchain).ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_linker_that_fails_is_a_failed_build_with_a_fixed_message()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var fakeLinker = ToolchainFixture.Script("fake-linker", "echo 'undefined reference to secretSymbol' >&2\nexit 1");
+            await using var toolchain = ToolchainFixture.Create(options =>
+            {
+                options.CompilerPath = ToolchainFixture.CompilerThatSucceeds();
+                options.LinkerPath = fakeLinker;
+            });
 
             var result = await toolchain.CompileAsync(ToolchainFixture.SingleFile(Programs.Hello), TestContext.Current.CancellationToken);
 
@@ -182,6 +204,102 @@ namespace Blazemoji.Test.Toolchain
             result.BuildId.ShouldBeNull();
             result.Diagnostics.ShouldHaveSingleItem().Message.ShouldBe("The program could not be linked.");
             BuildDirectories(toolchain).ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_linker_that_exits_cleanly_without_producing_a_program_is_a_failed_build()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create(options =>
+            {
+                options.CompilerPath = ToolchainFixture.CompilerThatSucceeds();
+                options.LinkerPath = ToolchainFixture.Script("fake-linker", "exit 0");
+            });
+
+            var result = await toolchain.CompileAsync(ToolchainFixture.SingleFile(Programs.Hello), TestContext.Current.CancellationToken);
+
+            result.Ok.ShouldBeFalse();
+            result.Diagnostics.ShouldHaveSingleItem().Message.ShouldBe("The program could not be linked.");
+            BuildDirectories(toolchain).ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task The_linker_gets_the_object_then_every_package_archive_in_one_group_then_the_system_libraries()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var scratch = Path.Combine(Path.GetTempPath(), "blazemoji-tests", "link-" + Guid.NewGuid().ToString("N"));
+            var packages = Path.Combine(scratch, "packages");
+            foreach (var package in new[] { "json", "grapevine", "s" })
+            {
+                Directory.CreateDirectory(Path.Combine(packages, package));
+                File.WriteAllText(Path.Combine(packages, package, $"lib{package}.a"), string.Empty);
+                File.WriteAllText(Path.Combine(packages, package, "🏛"), string.Empty);
+            }
+
+            var recorded = Path.Combine(scratch, "arguments");
+            var fakeLinker = ToolchainFixture.Script("fake-linker", $"printf '%s\\n' \"$@\" > '{recorded}'\n: > program");
+            await using var toolchain = ToolchainFixture.Create(options =>
+            {
+                options.CompilerPath = ToolchainFixture.CompilerThatSucceeds();
+                options.LinkerPath = fakeLinker;
+                options.PackagesPath = packages;
+            });
+
+            var result = await toolchain.CompileAsync(ToolchainFixture.SingleFile(Programs.Hello), TestContext.Current.CancellationToken);
+
+            result.Ok.ShouldBeTrue(Describe(result));
+            var build = Path.Combine(toolchain.WorkRoot, "builds", result.BuildId!);
+            File.ReadAllLines(recorded).ShouldBe(
+            [
+                Path.Combine(build, "program.o"),
+                "-Wl,--start-group",
+                Path.Combine(packages, "grapevine", "libgrapevine.a"),
+                Path.Combine(packages, "json", "libjson.a"),
+                Path.Combine(packages, "s", "libs.a"),
+                "-Wl,--end-group",
+                "-lm",
+                "-lpthread",
+                "-o",
+                Path.Combine(build, "program"),
+            ]);
+        }
+
+        [Fact]
+        [Trait("Category", "Toolchain")]
+        public async Task An_error_in_an_included_file_names_that_file_by_its_path_in_the_project()
+        {
+            Assert.SkipUnless(ToolchainFixture.Available, ToolchainFixture.SkipReason);
+            await using var toolchain = ToolchainFixture.Create();
+            var files = new Dictionary<string, string>
+            {
+                ["main.🍇"] = "📜 🔤lib/greeting.🍇🔤\n\n🏁 🍇\n  😀 🔤hi🔤❗️\n🍉\n",
+                ["lib/greeting.🍇"] = "🐇 🙋 🍇\n  ❗️ 😀 🍇\n    😀 nope❗️\n  🍉\n🍉\n",
+            };
+
+            var result = await toolchain.CompileAsync(new CompileRequest(files, "main.🍇"), TestContext.Current.CancellationToken);
+
+            result.Ok.ShouldBeFalse();
+            var diagnostic = result.Diagnostics.ShouldHaveSingleItem();
+            diagnostic.File.ShouldBe("lib/greeting.🍇");
+            diagnostic.Line.ShouldBe(3);
+        }
+
+        [Fact]
+        [Trait("Category", "Toolchain")]
+        public async Task An_error_in_a_file_included_through_a_parent_folder_names_its_plain_path()
+        {
+            Assert.SkipUnless(ToolchainFixture.Available, ToolchainFixture.SkipReason);
+            await using var toolchain = ToolchainFixture.Create();
+            var files = new Dictionary<string, string>
+            {
+                ["app/main.🍇"] = "📜 🔤../shared/util.🍇🔤\n\n🏁 🍇\n  😀 🔤hi🔤❗️\n🍉\n",
+                ["shared/util.🍇"] = "🐇 🙋 🍇\n  ❗️ 😀 🍇\n    😀 nope❗️\n  🍉\n🍉\n",
+            };
+
+            var result = await toolchain.CompileAsync(new CompileRequest(files, "app/main.🍇"), TestContext.Current.CancellationToken);
+
+            result.Ok.ShouldBeFalse();
+            result.Diagnostics.ShouldHaveSingleItem().File.ShouldBe("shared/util.🍇");
         }
 
         [Fact]

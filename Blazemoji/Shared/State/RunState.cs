@@ -24,6 +24,8 @@ namespace Blazemoji.Shared.State
         private IToolchainRun? _run;
         private CancellationTokenSource? _compileCancellation;
         private bool _stopRequested;
+        private bool _server;
+        private IReadOnlyDictionary<string, string> _sources = new Dictionary<string, string>();
 
         public RunStatus Status { get; private set; } = RunStatus.Idle;
 
@@ -37,9 +39,20 @@ namespace Blazemoji.Shared.State
         public IReadOnlyList<Diagnostic> Diagnostics { get; private set; } = [];
 
         /// <summary>
-        /// The code that <see cref="Diagnostics"/> refers to.
+        /// The entry file of the build that <see cref="Diagnostics"/> came from. A problem the
+        /// compiler gave no file for belongs to it.
         /// </summary>
-        public string DiagnosticsSource { get; private set; } = string.Empty;
+        public string DiagnosticsEntry { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// The entry file's text as it was compiled.
+        /// </summary>
+        public string DiagnosticsSource => _sources.GetValueOrDefault(DiagnosticsEntry, string.Empty);
+
+        /// <summary>
+        /// A server program is running and can be sent requests.
+        /// </summary>
+        public bool ServerRunning => _server && Status == RunStatus.Running;
 
         public RunSummary? LastRun { get; private set; }
 
@@ -47,10 +60,23 @@ namespace Blazemoji.Shared.State
 
         public event Action? DiagnosticsChanged;
 
-        public async Task RunAsync(string code)
+        /// <summary>
+        /// The text of the file a problem is in, as it was compiled. Positions in a problem are
+        /// only right against that text, not against what has been typed since.
+        /// </summary>
+        public string SourceOf(Diagnostic diagnostic) =>
+            _sources.GetValueOrDefault(diagnostic.File) ?? DiagnosticsSource;
+
+        public Task RunAsync(string code) =>
+            RunAsync(new RunTarget(new Dictionary<string, string> { [EntryFile] = code }, EntryFile, Server: false));
+
+        public async Task RunAsync(RunTarget target)
         {
             if (Status != RunStatus.Idle || _disposal.IsCancellationRequested)
                 return;
+
+            // A copy: the caller goes on editing its files while this build is looked at.
+            var files = new Dictionary<string, string>(target.Files);
 
             ResetOutput();
             ClearDiagnostics();
@@ -63,21 +89,22 @@ namespace Blazemoji.Shared.State
 
             try
             {
-                var request = new CompileRequest(new Dictionary<string, string> { [EntryFile] = code }, EntryFile);
-                var build = await toolchain.CompileAsync(request, compileCancellation.Token);
+                var build = await toolchain.CompileAsync(new CompileRequest(files, target.Entry), compileCancellation.Token);
 
                 Diagnostics = build.Diagnostics;
-                DiagnosticsSource = code;
+                DiagnosticsEntry = target.Entry;
+                _sources = files;
                 DiagnosticsChanged?.Invoke();
 
                 if (!build.Ok || build.BuildId is null)
                     return;
 
                 buildId = build.BuildId;
+                _server = target.Server;
                 Status = RunStatus.Running;
                 NotifyStateChanged();
 
-                _run = await toolchain.StartRunAsync(new RunRequest(buildId), _disposal.Token);
+                _run = await toolchain.StartRunAsync(new RunRequest(buildId, Server: target.Server), _disposal.Token);
 
                 // Stop may have been pressed while the program was being started.
                 if (_stopRequested)
@@ -104,6 +131,7 @@ namespace Blazemoji.Shared.State
             {
                 _compileCancellation = null;
                 await EndRunAsync(buildId);
+                _server = false;
                 Status = RunStatus.Idle;
                 NotifyStateChanged();
             }
@@ -114,12 +142,26 @@ namespace Blazemoji.Shared.State
         /// </summary>
         public void ClearDiagnostics()
         {
-            if (Diagnostics.Count == 0 && DiagnosticsSource.Length == 0)
+            if (Diagnostics.Count == 0 && _sources.Count == 0)
                 return;
 
             Diagnostics = [];
-            DiagnosticsSource = string.Empty;
+            DiagnosticsEntry = string.Empty;
+            _sources = new Dictionary<string, string>();
             DiagnosticsChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Sends an HTTP request to the server program that is running.
+        /// </summary>
+        public async Task<ProgramResponse> SendHttpAsync(ProgramRequest request, CancellationToken cancellationToken = default)
+        {
+            if (_run is not { } run)
+                return ProgramResponse.Without(ProgramResponseOutcome.Ended);
+
+            return _server
+                ? await run.SendHttpAsync(request, cancellationToken)
+                : ProgramResponse.Without(ProgramResponseOutcome.NotAServer);
         }
 
         public async Task StopAsync()
@@ -238,6 +280,7 @@ namespace Blazemoji.Shared.State
             RunEndReason.TimedOut => "Stopped after reaching the time limit.",
             RunEndReason.OutputLimit => "Stopped after reaching the output limit.",
             RunEndReason.FailedToStart => "The run could not be started.",
+            RunEndReason.Idle => "Stopped after going too long without a request.",
             _ => null,
         };
 

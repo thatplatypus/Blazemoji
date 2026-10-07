@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
@@ -56,7 +57,7 @@ namespace Blazemoji.Toolchain.Http
 
             try
             {
-                using var response = await http.PostAsJsonAsync(Relative(ToolchainRoutes.Runs), new StartRunBody(request.BuildId, environment), ToolchainJson.Options, cancellationToken);
+                using var response = await http.PostAsJsonAsync(Relative(ToolchainRoutes.Runs), new StartRunBody(request.BuildId, environment, request.Server), ToolchainJson.Options, cancellationToken);
 
                 if (response.StatusCode == HttpStatusCode.Created
                     && await response.Content.ReadFromJsonAsync<RunStartedBody>(ToolchainJson.Options, cancellationToken) is { } started)
@@ -181,6 +182,53 @@ namespace Blazemoji.Toolchain.Http
                 response.EnsureSuccessStatusCode();
             }
 
+            public async Task<ProgramResponse> SendHttpAsync(ProgramRequest request, CancellationToken cancellationToken = default)
+            {
+                var clock = Stopwatch.StartNew();
+
+                using var message = ProgramHttp.CreateMessage(request, ProxiedAddress);
+                if (message is null)
+                    return ProgramResponse.Without(ProgramResponseOutcome.InvalidRequest);
+
+                try
+                {
+                    using var response = await http.SendAsync(message, cancellationToken);
+
+                    if (response.Headers.TryGetValues(ProxyReasons.Header, out var reasons))
+                        return ProgramResponse.Without(ProxyReasons.Parse(reasons.First()), clock.Elapsed);
+
+                    return new ProgramResponse(
+                        ProgramResponseOutcome.Answered,
+                        (int)response.StatusCode,
+                        response.ReasonPhrase,
+                        ProgramHttp.ReadHeaders(response),
+                        await response.Content.ReadAsByteArrayAsync(cancellationToken),
+                        clock.Elapsed);
+                }
+                catch (Exception exception) when (exception is HttpRequestException || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+                {
+                    logger.LogError(exception, "The toolchain service could not be reached, or did not answer in time");
+                    return ProgramResponse.Without(ProgramResponseOutcome.Unavailable, clock.Elapsed);
+                }
+            }
+
+            /// <summary>
+            /// Where the service passes requests on for this run. The address is resolved here
+            /// and checked, because a path that resolved to anywhere else would be a request to
+            /// the service itself made in the caller's name.
+            /// </summary>
+            private Uri? ProxiedAddress(string path)
+            {
+                if (http.BaseAddress is not { } baseAddress
+                    || !Uri.TryCreate(baseAddress, Relative(ToolchainRoutes.RunHttp(runId, path)), out var address)
+                    || !Uri.TryCreate(baseAddress, Relative(ToolchainRoutes.RunHttp(runId, "/")), out var root))
+                {
+                    return null;
+                }
+
+                return address.AbsolutePath.StartsWith(root.AbsolutePath, StringComparison.Ordinal) ? address : null;
+            }
+
             public async ValueTask DisposeAsync()
             {
                 if (_ended)
@@ -209,6 +257,9 @@ namespace Blazemoji.Toolchain.Http
 
             public Task WriteInputAsync(string text, bool endOfInput = false, CancellationToken cancellationToken = default) =>
                 throw new InvalidOperationException("The run is not accepting input.");
+
+            public Task<ProgramResponse> SendHttpAsync(ProgramRequest request, CancellationToken cancellationToken = default) =>
+                Task.FromResult(ProgramResponse.Without(ProgramResponseOutcome.Ended));
 
             public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         }

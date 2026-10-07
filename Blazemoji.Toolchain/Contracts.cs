@@ -18,10 +18,16 @@ namespace Blazemoji.Toolchain
     }
 
     /// <param name="Timeout">Overrides the toolchain's own time limit for this run, where the toolchain allows it.</param>
+    /// <param name="Server">
+    /// The program is a server. It is told which port to listen on through the <c>PORT</c>
+    /// environment variable, has no wall-clock limit, and is ended once it has gone the
+    /// toolchain's idle time without a request through <see cref="IToolchainRun.SendHttpAsync"/>.
+    /// </param>
     public sealed record RunRequest(
         string BuildId,
         IReadOnlyDictionary<string, string>? Environment = null,
-        TimeSpan? Timeout = null);
+        TimeSpan? Timeout = null,
+        bool Server = false);
 
     public abstract record RunEvent;
 
@@ -39,5 +45,62 @@ namespace Blazemoji.Toolchain
         TimedOut,
         OutputLimit,
         FailedToStart,
+        Idle,
+    }
+
+    /// <summary>An HTTP request for a running server program.</summary>
+    /// <param name="Path">Starts with a slash and may carry a query string.</param>
+    /// <param name="Headers">In order, and a name may repeat.</param>
+    public sealed record ProgramRequest(
+        string Method,
+        string Path,
+        IReadOnlyList<KeyValuePair<string, string>> Headers,
+        byte[] Body);
+
+    /// <summary>
+    /// What came of a <see cref="ProgramRequest"/>. The status, headers and body are the
+    /// program's own and are only meaningful when <paramref name="Outcome"/> is
+    /// <see cref="ProgramResponseOutcome.Answered"/>.
+    /// </summary>
+    public sealed record ProgramResponse(
+        ProgramResponseOutcome Outcome,
+        int StatusCode,
+        string? ReasonPhrase,
+        IReadOnlyList<KeyValuePair<string, string>> Headers,
+        byte[] Body,
+        TimeSpan Duration)
+    {
+        public static ProgramResponse Without(ProgramResponseOutcome outcome, TimeSpan duration = default) =>
+            new(outcome, 0, null, [], [], duration);
+    }
+
+    public enum ProgramResponseOutcome
+    {
+        /// <summary>The program sent a response.</summary>
+        Answered,
+
+        /// <summary>The run was not started as a server.</summary>
+        NotAServer,
+
+        /// <summary>The run has ended.</summary>
+        Ended,
+
+        /// <summary>Nothing accepted a connection on the program's port. Usual while it starts.</summary>
+        NotListening,
+
+        /// <summary>The program closed the connection, sent something that is not HTTP, or sent too much.</summary>
+        BadResponse,
+
+        /// <summary>The request body is over the limit.</summary>
+        TooLarge,
+
+        /// <summary>The program did not answer in time.</summary>
+        TimedOut,
+
+        /// <summary>The method, path or a header could not be sent as HTTP.</summary>
+        InvalidRequest,
+
+        /// <summary>The toolchain itself could not be reached.</summary>
+        Unavailable,
     }
 }

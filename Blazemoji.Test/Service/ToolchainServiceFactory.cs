@@ -27,6 +27,8 @@ namespace Blazemoji.Test.Service
 
         public int MaxConcurrentCompiles { get; set; } = 4;
 
+        public long MaxProxiedRequestBytes { get; set; } = 1024 * 1024;
+
         public ToolchainServiceFactory()
         {
             ((IBuildStore)Toolchain).HasBuild(KnownBuild).Returns(true);
@@ -53,6 +55,7 @@ namespace Blazemoji.Test.Service
                 {
                     options.MaxConcurrentRuns = MaxConcurrentRuns;
                     options.MaxConcurrentCompiles = MaxConcurrentCompiles;
+                    options.MaxProxiedRequestBytes = MaxProxiedRequestBytes;
                     options.PackageDocumentationPath = _packageDocs;
                 });
             });

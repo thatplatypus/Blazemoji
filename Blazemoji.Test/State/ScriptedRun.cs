@@ -23,6 +23,11 @@ namespace Blazemoji.Test.State
         /// <summary>Makes <see cref="StopAsync"/> fail, as it does when the toolchain cannot be reached.</summary>
         public Exception? StopFailure { get; set; }
 
+        public List<ProgramRequest> Requests { get; } = [];
+
+        /// <summary>How the "program" answers. Without it the run is not a server.</summary>
+        public Func<ProgramRequest, ProgramResponse>? Respond { get; set; }
+
         public void Emit(RunEvent runEvent) => _events.Writer.TryWrite(runEvent).ShouldBeTrue();
 
         public void Exit(int? exitCode = 0, RunEndReason reason = RunEndReason.Exited)
@@ -42,6 +47,12 @@ namespace Blazemoji.Test.State
 
             Input.Add((text, endOfInput));
             return Task.CompletedTask;
+        }
+
+        public Task<ProgramResponse> SendHttpAsync(ProgramRequest request, CancellationToken cancellationToken = default)
+        {
+            Requests.Add(request);
+            return Task.FromResult(Respond?.Invoke(request) ?? ProgramResponse.Without(ProgramResponseOutcome.NotAServer));
         }
 
         public Task StopAsync()

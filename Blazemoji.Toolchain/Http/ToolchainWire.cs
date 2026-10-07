@@ -19,6 +19,9 @@ namespace Blazemoji.Toolchain.Http
 
         public static string RunEvents(string runId) => $"{Run(runId)}/events";
 
+        /// <param name="path">Starts with a slash and may carry a query string.</param>
+        public static string RunHttp(string runId, string path) => $"{Run(runId)}/http{path}";
+
         public static string RunInput(string runId, bool endOfInput) =>
             $"{Run(runId)}/stdin{(endOfInput ? "?eof=true" : string.Empty)}";
 
@@ -80,7 +83,8 @@ namespace Blazemoji.Toolchain.Http
             Message);
     }
 
-    public sealed record StartRunBody(string? BuildId, Dictionary<string, string>? Env = null);
+    /// <param name="Http">Start the run as a server: see <see cref="RunRequest.Server"/>.</param>
+    public sealed record StartRunBody(string? BuildId, Dictionary<string, string>? Env = null, bool Http = false);
 
     public sealed record RunStartedBody(string RunId);
 
@@ -97,6 +101,7 @@ namespace Blazemoji.Toolchain.Http
             RunEndReason.Stopped => "stopped",
             RunEndReason.TimedOut => "timedOut",
             RunEndReason.OutputLimit => "outputLimit",
+            RunEndReason.Idle => "idle",
             _ => "failedToStart",
         };
 
@@ -106,7 +111,43 @@ namespace Blazemoji.Toolchain.Http
             "stopped" => RunEndReason.Stopped,
             "timedOut" => RunEndReason.TimedOut,
             "outputLimit" => RunEndReason.OutputLimit,
+            "idle" => RunEndReason.Idle,
             _ => RunEndReason.FailedToStart,
+        };
+    }
+
+    /// <summary>
+    /// On the route that passes requests on to a server program, a response that does not come
+    /// from the program carries <see cref="Header"/> with one of these reasons, so that the
+    /// program's own 404 or 502 can be told from the service's.
+    /// </summary>
+    public static class ProxyReasons
+    {
+        public const string Header = "X-Toolchain-Proxy";
+
+        public const string UnknownRun = "unknown-run";
+
+        public static string Name(ProgramResponseOutcome outcome) => outcome switch
+        {
+            ProgramResponseOutcome.NotAServer => "not-a-server",
+            ProgramResponseOutcome.Ended => "ended",
+            ProgramResponseOutcome.NotListening => "not-listening",
+            ProgramResponseOutcome.TooLarge => "too-large",
+            ProgramResponseOutcome.TimedOut => "timed-out",
+            ProgramResponseOutcome.InvalidRequest => "invalid-request",
+            _ => "bad-response",
+        };
+
+        /// <summary>A run the service no longer knows has ended, as far as a caller is concerned.</summary>
+        public static ProgramResponseOutcome Parse(string name) => name switch
+        {
+            "not-a-server" => ProgramResponseOutcome.NotAServer,
+            "ended" or UnknownRun => ProgramResponseOutcome.Ended,
+            "not-listening" => ProgramResponseOutcome.NotListening,
+            "too-large" => ProgramResponseOutcome.TooLarge,
+            "timed-out" => ProgramResponseOutcome.TimedOut,
+            "invalid-request" => ProgramResponseOutcome.InvalidRequest,
+            _ => ProgramResponseOutcome.BadResponse,
         };
     }
 }

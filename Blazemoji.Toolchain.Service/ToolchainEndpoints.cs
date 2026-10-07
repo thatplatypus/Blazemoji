@@ -1,6 +1,8 @@
 using System.Text;
 using Blazemoji.Toolchain.Http;
 using Blazemoji.Toolchain.Local;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.Options;
 
 namespace Blazemoji.Toolchain.Service
 {
@@ -16,6 +18,7 @@ namespace Blazemoji.Toolchain.Service
             app.MapGet("/runs/{runId}/events", StreamEvents);
             app.MapPost("/runs/{runId}/stdin", WriteInputAsync);
             app.MapDelete("/runs/{runId}", StopRunAsync);
+            app.Map("/runs/{runId}/http/{**path}", ProxyAsync);
             app.MapGet(ToolchainRoutes.Packages, (PackageCatalog catalog) => Results.Json(catalog.Names(), ToolchainJson.Options));
             app.MapGet("/packages/{name}/documentation.json", PackageDocumentation);
 
@@ -65,7 +68,7 @@ namespace Blazemoji.Toolchain.Service
 
             try
             {
-                var run = await toolchain.StartRunAsync(new RunRequest(body.BuildId, body.Env), cancellationToken);
+                var run = await toolchain.StartRunAsync(new RunRequest(body.BuildId, body.Env, Server: body.Http), cancellationToken);
                 registry.Add(run);
                 return Results.Json(new RunStartedBody(run.RunId), ToolchainJson.Options, statusCode: StatusCodes.Status201Created);
             }
@@ -111,6 +114,99 @@ namespace Blazemoji.Toolchain.Service
 
             await session.Run.StopAsync();
             return Results.NoContent();
+        }
+
+        /// <summary>
+        /// Passes a request on to a server program and its response back. Anything this
+        /// service says for itself on this route is marked with <see cref="ProxyReasons.Header"/>.
+        /// </summary>
+        private static async Task ProxyAsync(HttpContext context, string runId, string? path, RunRegistry registry, IOptions<ToolchainServiceOptions> options)
+        {
+            if (registry.Find(runId) is not { } session)
+            {
+                await WriteProxyProblemAsync(context, StatusCodes.Status404NotFound, ProxyReasons.UnknownRun, "No such run.");
+                return;
+            }
+
+            if (await ReadBodyAsync(context.Request, options.Value.MaxProxiedRequestBytes, context.RequestAborted) is not { } body)
+            {
+                await WriteProxyProblemAsync(context, ProgramResponseOutcome.TooLarge);
+                return;
+            }
+
+            var target = new PathString("/" + path).ToUriComponent() + context.Request.QueryString.ToUriComponent();
+            var headers = context.Request.Headers
+                .SelectMany(header => header.Value.Select(value => new KeyValuePair<string, string>(header.Key, value ?? string.Empty)))
+                .ToList();
+
+            var response = await session.Run.SendHttpAsync(new ProgramRequest(context.Request.Method, target, headers, body), context.RequestAborted);
+            if (response.Outcome != ProgramResponseOutcome.Answered)
+            {
+                await WriteProxyProblemAsync(context, response.Outcome);
+                return;
+            }
+
+            context.Response.StatusCode = response.StatusCode;
+            if (response.ReasonPhrase is { Length: > 0 } reason && context.Features.Get<IHttpResponseFeature>() is { } feature)
+                feature.ReasonPhrase = reason;
+
+            foreach (var (name, value) in response.Headers)
+            {
+                if (!ProgramHttp.IsHopByHop(name) && !ProgramHttp.IsContentLength(name) && !name.Equals(ProxyReasons.Header, StringComparison.OrdinalIgnoreCase))
+                    context.Response.Headers.Append(name, value);
+            }
+
+            if (!HttpMethods.IsHead(context.Request.Method) && StatusAllowsABody(response.StatusCode))
+            {
+                context.Response.ContentLength = response.Body.Length;
+                await context.Response.Body.WriteAsync(response.Body, context.RequestAborted);
+            }
+        }
+
+        private static bool StatusAllowsABody(int statusCode) =>
+            statusCode >= 200 && statusCode is not (StatusCodes.Status204NoContent or StatusCodes.Status205ResetContent or StatusCodes.Status304NotModified);
+
+        /// <returns>Null when the body is longer than <paramref name="limit"/>.</returns>
+        private static async Task<byte[]?> ReadBodyAsync(HttpRequest request, long limit, CancellationToken cancellationToken)
+        {
+            if (request.ContentLength > limit)
+                return null;
+
+            using var body = new MemoryStream();
+            var buffer = new byte[16 * 1024];
+
+            int read;
+            while ((read = await request.Body.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                if (body.Length + read > limit)
+                    return null;
+
+                body.Write(buffer, 0, read);
+            }
+
+            return body.ToArray();
+        }
+
+        private static Task WriteProxyProblemAsync(HttpContext context, ProgramResponseOutcome outcome)
+        {
+            var (statusCode, title) = outcome switch
+            {
+                ProgramResponseOutcome.NotAServer => (StatusCodes.Status409Conflict, "The run is not a server."),
+                ProgramResponseOutcome.Ended => (StatusCodes.Status409Conflict, "The run has ended."),
+                ProgramResponseOutcome.NotListening => (StatusCodes.Status502BadGateway, "The program is not accepting connections."),
+                ProgramResponseOutcome.TooLarge => (StatusCodes.Status413PayloadTooLarge, "The request body is too large."),
+                ProgramResponseOutcome.TimedOut => (StatusCodes.Status504GatewayTimeout, "The program did not answer in time."),
+                ProgramResponseOutcome.InvalidRequest => (StatusCodes.Status400BadRequest, "The request could not be sent to the program."),
+                _ => (StatusCodes.Status502BadGateway, "The program did not send a usable response."),
+            };
+
+            return WriteProxyProblemAsync(context, statusCode, ProxyReasons.Name(outcome), title);
+        }
+
+        private static Task WriteProxyProblemAsync(HttpContext context, int statusCode, string reason, string title)
+        {
+            context.Response.Headers[ProxyReasons.Header] = reason;
+            return Problem(title, statusCode).ExecuteAsync(context);
         }
 
         private static IResult PackageDocumentation(string name, PackageCatalog catalog) =>

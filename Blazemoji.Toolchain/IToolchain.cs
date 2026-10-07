@@ -42,6 +42,12 @@ namespace Blazemoji.Toolchain
         /// <param name="endOfInput">Closes standard input after writing, so the program sees the end of its input.</param>
         /// <exception cref="InvalidOperationException">The run has ended or its input is already closed.</exception>
         Task WriteInputAsync(string text, bool endOfInput = false, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Sends an HTTP request to a server program and returns its whole response. Every way
+        /// this can fail to produce a response is an outcome on the result, not an exception.
+        /// </summary>
+        Task<ProgramResponse> SendHttpAsync(ProgramRequest request, CancellationToken cancellationToken = default);
     }
 
     /// <summary>

@@ -119,6 +119,7 @@ namespace Blazemoji.Test.Service
         [InlineData(RunEndReason.TimedOut)]
         [InlineData(RunEndReason.OutputLimit)]
         [InlineData(RunEndReason.FailedToStart)]
+        [InlineData(RunEndReason.Idle)]
         public async Task Every_end_reason_survives_the_trip(RunEndReason reason)
         {
             await using var run = await StartRunAsync(CreateClient());
@@ -243,6 +244,178 @@ namespace Blazemoji.Test.Service
             new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
         [Fact]
+        public async Task A_server_run_is_asked_for_as_one()
+        {
+            _factory.Toolchain.StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>()).Returns<IToolchainRun>(_run);
+
+            await using var run = await CreateClient().StartRunAsync(new RunRequest(ToolchainServiceFactory.KnownBuild, Server: true), Cancellation);
+
+            await _factory.Toolchain.Received(1).StartRunAsync(Arg.Is<RunRequest>(request => request.Server), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_request_reaches_the_program_and_its_response_comes_back()
+        {
+            await using var run = await StartRunAsync(CreateClient());
+            _run.Respond = _ => new ProgramResponse(
+                ProgramResponseOutcome.Answered,
+                201,
+                null,
+                [new("Location", "/todos/1"), new("Content-Type", "application/json")],
+                Encoding.UTF8.GetBytes("{\"id\":1}"),
+                TimeSpan.Zero);
+            var request = new ProgramRequest(
+                "POST",
+                "/todos?notify=true",
+                [new("X-Api-Key", "vineyard"), new("Content-Type", "application/json")],
+                Encoding.UTF8.GetBytes("{\"title\":\"🍇\"}"));
+
+            var response = await run.SendHttpAsync(request, Cancellation);
+
+            response.Outcome.ShouldBe(ProgramResponseOutcome.Answered);
+            response.StatusCode.ShouldBe(201);
+            Encoding.UTF8.GetString(response.Body).ShouldBe("{\"id\":1}");
+            response.Headers.ShouldContain(new KeyValuePair<string, string>("Location", "/todos/1"));
+            response.Headers.ShouldContain(new KeyValuePair<string, string>("Content-Type", "application/json"));
+            response.Duration.ShouldBeGreaterThan(TimeSpan.Zero);
+
+            var seen = _run.Requests.ShouldHaveSingleItem();
+            seen.Method.ShouldBe("POST");
+            seen.Path.ShouldBe("/todos?notify=true");
+            seen.Headers.ShouldContain(new KeyValuePair<string, string>("X-Api-Key", "vineyard"));
+            Encoding.UTF8.GetString(seen.Body).ShouldBe("{\"title\":\"🍇\"}");
+        }
+
+        [Theory]
+        [InlineData(ProgramResponseOutcome.NotAServer)]
+        [InlineData(ProgramResponseOutcome.Ended)]
+        [InlineData(ProgramResponseOutcome.NotListening)]
+        [InlineData(ProgramResponseOutcome.BadResponse)]
+        [InlineData(ProgramResponseOutcome.TimedOut)]
+        [InlineData(ProgramResponseOutcome.TooLarge)]
+        [InlineData(ProgramResponseOutcome.InvalidRequest)]
+        public async Task Every_way_a_request_can_go_unanswered_survives_the_trip(ProgramResponseOutcome outcome)
+        {
+            await using var run = await StartRunAsync(CreateClient());
+            _run.Respond = _ => ProgramResponse.Without(outcome);
+
+            var response = await run.SendHttpAsync(new ProgramRequest("GET", "/", [], []), Cancellation);
+
+            response.Outcome.ShouldBe(outcome);
+            response.Body.ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_programs_own_error_status_is_an_answer()
+        {
+            await using var run = await StartRunAsync(CreateClient());
+            _run.Respond = _ => new ProgramResponse(ProgramResponseOutcome.Answered, 502, null, [], [], TimeSpan.Zero);
+
+            var response = await run.SendHttpAsync(new ProgramRequest("GET", "/", [], []), Cancellation);
+
+            response.Outcome.ShouldBe(ProgramResponseOutcome.Answered);
+            response.StatusCode.ShouldBe(502);
+        }
+
+        [Fact]
+        public async Task A_request_for_a_run_the_service_no_longer_knows_says_it_has_ended()
+        {
+            var handler = new ScriptedHandler(request =>
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.NotFound);
+                response.Headers.Add(ProxyReasons.Header, "unknown-run");
+                return response;
+            });
+            await using var run = await RunOverAsync(handler);
+
+            var response = await run.SendHttpAsync(new ProgramRequest("GET", "/", [], []), Cancellation);
+
+            response.Outcome.ShouldBe(ProgramResponseOutcome.Ended);
+        }
+
+        [Fact]
+        public async Task A_request_when_the_service_cannot_be_reached_says_so()
+        {
+            var started = false;
+            var handler = new ScriptedHandler(request =>
+            {
+                if (started)
+                    throw new HttpRequestException("Connection refused");
+
+                started = true;
+                return RunStarted();
+            });
+            await using var run = await ClientOver(handler).StartRunAsync(new RunRequest(ToolchainServiceFactory.KnownBuild, Server: true), Cancellation);
+
+            var response = await run.SendHttpAsync(new ProgramRequest("GET", "/", [], []), Cancellation);
+
+            response.Outcome.ShouldBe(ProgramResponseOutcome.Unavailable);
+        }
+
+        [Fact]
+        public async Task A_request_the_service_never_answers_says_the_service_is_unavailable_once_the_client_gives_up()
+        {
+            var started = false;
+            var handler = new RoutingHandler(_ =>
+            {
+                if (started)
+                    return new SilentHandler();
+
+                started = true;
+                return new ScriptedHandler(_ => RunStarted());
+            });
+            await using var run = await ClientOver(handler, TimeSpan.FromMilliseconds(200))
+                .StartRunAsync(new RunRequest(ToolchainServiceFactory.KnownBuild, Server: true), Cancellation);
+
+            var response = await run.SendHttpAsync(new ProgramRequest("GET", "/", [], []), Cancellation);
+
+            response.Outcome.ShouldBe(ProgramResponseOutcome.Unavailable);
+        }
+
+        [Theory]
+        [InlineData("/../../compile")]
+        [InlineData("/a/../../../compile")]
+        [InlineData("/..%2f..%2fcompile")]
+        [InlineData("/%2e%2e/%2E%2E/compile")]
+        [InlineData("\\..\\..\\compile")]
+        [InlineData("/./x")]
+        [InlineData("/x/..")]
+        public async Task A_path_that_would_climb_out_of_the_programs_address_space_is_refused_unsent(string path)
+        {
+            var sent = new List<string>();
+            var handler = new ScriptedHandler(request =>
+            {
+                sent.Add(request.RequestUri!.AbsolutePath);
+                return sent.Count == 1 ? RunStarted() : new HttpResponseMessage(HttpStatusCode.OK);
+            });
+            await using var run = await ClientOver(handler).StartRunAsync(new RunRequest(ToolchainServiceFactory.KnownBuild, Server: true), Cancellation);
+
+            var response = await run.SendHttpAsync(new ProgramRequest("DELETE", path, [], []), Cancellation);
+
+            response.Outcome.ShouldBe(ProgramResponseOutcome.InvalidRequest);
+            sent.ShouldBe(["/runs"]);
+        }
+
+        private static HttpResponseMessage RunStarted() => new(HttpStatusCode.Created)
+        {
+            Content = new StringContent("{\"runId\":\"abc\"}", Encoding.UTF8, "application/json"),
+        };
+
+        private static async Task<IToolchainRun> RunOverAsync(HttpMessageHandler afterStart)
+        {
+            var started = false;
+            var handler = new ScriptedHandler(request =>
+            {
+                if (started)
+                    return ((ScriptedHandler)afterStart).Respond(request);
+
+                started = true;
+                return RunStarted();
+            });
+            return await ClientOver(handler).StartRunAsync(new RunRequest(ToolchainServiceFactory.KnownBuild, Server: true), Cancellation);
+        }
+
+        [Fact]
         public async Task A_compile_refused_because_the_service_is_busy_carries_the_services_reason()
         {
             var handler = new ScriptedHandler(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests)
@@ -335,8 +508,19 @@ namespace Blazemoji.Test.Service
 
         private sealed class ScriptedHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
         {
-            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-                Task.FromResult(respond(request));
+            public Func<HttpRequestMessage, HttpResponseMessage> Respond => respond;
+
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                try
+                {
+                    return Task.FromResult(respond(request));
+                }
+                catch (HttpRequestException exception)
+                {
+                    return Task.FromException<HttpResponseMessage>(exception);
+                }
+            }
         }
     }
 }

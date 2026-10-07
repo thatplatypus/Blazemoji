@@ -38,6 +38,11 @@ namespace Blazemoji.Toolchain.Service
         public TimeSpan SweepInterval { get; set; } = TimeSpan.FromSeconds(15);
 
         /// <summary>
+        /// The largest request body passed on to a server program.
+        /// </summary>
+        public long MaxProxiedRequestBytes { get; set; } = 1024 * 1024;
+
+        /// <summary>
         /// One folder per package, each holding the compiler's <c>documentation.json</c>.
         /// </summary>
         public string PackageDocumentationPath { get; set; } = Path.Combine(AppContext.BaseDirectory, "package-docs");

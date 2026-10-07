@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -15,6 +18,7 @@ namespace Blazemoji.Toolchain.Local
     public sealed partial class LocalToolchain(IOptions<ToolchainOptions> options, ILogger<LocalToolchain> logger) : IToolchain, IBuildStore, IAsyncDisposable
     {
         private const string ProgramFileName = "program";
+        private const string ObjectFileName = "program.o";
         private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
 
         private static readonly Lazy<string?> LineBufferingTool = new(() => FindOnPath("stdbuf"));
@@ -60,7 +64,10 @@ namespace Blazemoji.Toolchain.Local
                 if (!TryParseDiagnostics(compiler, out var diagnostics))
                     return Failed("The compiler produced output that could not be read.");
 
-                diagnostics = diagnostics.Select(CompilerPositions.Normalize).ToList();
+                diagnostics = diagnostics
+                    .Select(CompilerPositions.Normalize)
+                    .Select(diagnostic => diagnostic with { File = ProjectPath(diagnostic.File, buildDirectory) })
+                    .ToList();
 
                 if (compiler.ExitCode != 0)
                 {
@@ -73,12 +80,14 @@ namespace Blazemoji.Toolchain.Local
                     return new CompileResult(false, diagnostics, null);
                 }
 
-                // The compiler does not check its linker's result, so a link failure still exits with 0.
-                if (!File.Exists(Path.Combine(buildDirectory, ProgramFileName)))
+                if (!File.Exists(Path.Combine(buildDirectory, ObjectFileName)))
                 {
-                    logger.LogError("The compiler exited with 0 but produced no program. stderr: {Stderr}", compiler.Stderr);
-                    return new CompileResult(false, [.. diagnostics, Error("The program could not be linked.")], null);
+                    logger.LogError("The compiler exited with 0 but produced no object file. stderr: {Stderr}", compiler.Stderr);
+                    return new CompileResult(false, [.. diagnostics, Error("The compiler failed without reporting an error.")], null);
                 }
+
+                if (!await LinkAsync(buildDirectory, cancellationToken))
+                    return new CompileResult(false, [.. diagnostics, Error("The program could not be linked.")], null);
 
                 keepBuild = true;
                 return new CompileResult(true, diagnostics, buildId);
@@ -106,7 +115,14 @@ namespace Blazemoji.Toolchain.Local
             var runDirectory = Path.Combine(RunsRoot, runId);
             Directory.CreateDirectory(runDirectory);
 
-            var process = new Process { StartInfo = CreateRunStartInfo(program, runDirectory, request.Environment) };
+            var endpoint = request.Server
+                ? new ProgramEndpoint(
+                    FreeLoopbackPort(),
+                    ProcessRunner.Usable(_options.ProgramResponseTimeout, ProcessRunner.LongestTimeout),
+                    _options.MaxProgramResponseBytes)
+                : null;
+
+            var process = new Process { StartInfo = CreateRunStartInfo(program, runDirectory, request.Environment, endpoint?.Port) };
             try
             {
                 process.Start();
@@ -115,14 +131,13 @@ namespace Blazemoji.Toolchain.Local
             {
                 logger.LogError(exception, "Could not start build {BuildId}", request.BuildId);
                 process.Dispose();
+                endpoint?.Dispose();
                 return Task.FromResult(Track(LocalRun.FailedToStart(runId, runDirectory, Forget)));
             }
 
-            var fallback = ProcessRunner.Usable(_options.RunTimeout, ProcessRunner.LongestTimeout);
-            var timeout = ProcessRunner.Usable(request.Timeout ?? fallback, fallback);
             var leadsProcessGroup = SessionTool.Value is not null;
 
-            return Task.FromResult(Track(LocalRun.Started(runId, process, runDirectory, timeout, _options.MaxOutputBytes, leadsProcessGroup, Forget)));
+            return Task.FromResult(Track(LocalRun.Started(runId, process, runDirectory, TimeLimit(request), _options.MaxOutputBytes, leadsProcessGroup, endpoint, Forget)));
         }
 
         public bool HasBuild(string buildId) =>
@@ -149,7 +164,8 @@ namespace Blazemoji.Toolchain.Local
         /// so without help nothing arrives until the program exits. <c>stdbuf</c> makes it
         /// line-buffered. Where the tool is missing the program still runs, with late output.
         /// </summary>
-        private ProcessStartInfo CreateRunStartInfo(string program, string runDirectory, IReadOnlyDictionary<string, string>? environment)
+        /// <param name="serverPort">Set for a server run: the port the program is told to listen on.</param>
+        private ProcessStartInfo CreateRunStartInfo(string program, string runDirectory, IReadOnlyDictionary<string, string>? environment, int? serverPort)
         {
             List<string> command = LineBufferingTool.Value is { } stdbuf ? [stdbuf, "-oL", "-eL", program] : [program];
 
@@ -163,7 +179,7 @@ namespace Blazemoji.Toolchain.Local
                     // Soft limit, then a hard one a second later. At the soft limit the program is
                     // sent a signal that says why it is being ended, which is how a run comes to be
                     // reported as out of time; the hard limit is for a program that ignores it.
-                    $"--cpu={_options.CpuSeconds}:{_options.CpuSeconds + 1}",
+                    $"--cpu={CpuSeconds(serverPort)}:{CpuSeconds(serverPort) + 1}",
                     $"--as={_options.MemoryBytes}",
                     $"--fsize={_options.MaxFileBytes}",
                     $"--nofile={_options.MaxOpenFiles}",
@@ -181,7 +197,36 @@ namespace Blazemoji.Toolchain.Local
             foreach (var (name, value) in environment ?? new Dictionary<string, string>())
                 startInfo.Environment[name] = value;
 
+            if (serverPort is { } port)
+                startInfo.Environment["PORT"] = port.ToString(CultureInfo.InvariantCulture);
+
             return startInfo;
+        }
+
+        private int CpuSeconds(int? serverPort) => serverPort is null ? _options.CpuSeconds : _options.ServerCpuSeconds;
+
+        /// <summary>
+        /// A script is ended when it has run for too long. A server is meant to keep running,
+        /// so its limit is on how long it may go without being asked anything.
+        /// </summary>
+        private TimeSpan TimeLimit(RunRequest request)
+        {
+            if (request.Server)
+                return ProcessRunner.Usable(_options.ServerIdleTimeout, ProcessRunner.LongestTimeout);
+
+            var fallback = ProcessRunner.Usable(_options.RunTimeout, ProcessRunner.LongestTimeout);
+            return ProcessRunner.Usable(request.Timeout ?? fallback, fallback);
+        }
+
+        /// <summary>
+        /// Asks the system for a port nobody is using. Another process could take it before the
+        /// program binds it; then the program fails to listen and requests say so.
+        /// </summary>
+        private static int FreeLoopbackPort()
+        {
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            return ((IPEndPoint)listener.LocalEndpoint).Port;
         }
 
         private IToolchainRun Track(LocalRun run)
@@ -232,7 +277,7 @@ namespace Blazemoji.Toolchain.Local
 
         private async Task<ProcessResult?> RunCompilerAsync(string entry, string buildDirectory, CancellationToken cancellationToken)
         {
-            string[] arguments = [entry, "--json", "-o", Path.Combine(buildDirectory, ProgramFileName), "-S", _options.PackagesPath];
+            string[] arguments = [entry, "--json", "-c", "-o", Path.Combine(buildDirectory, ObjectFileName), "-S", _options.PackagesPath];
 
             try
             {
@@ -243,6 +288,71 @@ namespace Blazemoji.Toolchain.Local
                 logger.LogError(exception, "Could not start the compiler at {CompilerPath}", _options.CompilerPath);
                 return null;
             }
+        }
+
+        /// <summary>
+        /// The compiler can link, but it lists package archives in import order, which fails as
+        /// soon as one package uses another (Grapevine uses json). It also builds that command
+        /// as a string for a shell and ignores the result. So the compiler only produces the
+        /// object, and the link happens here: every package archive in one group, where the
+        /// order does not matter and the linker takes only what the program refers to. The two
+        /// system libraries are the link hints of the standard package.
+        /// </summary>
+        private async Task<bool> LinkAsync(string buildDirectory, CancellationToken cancellationToken)
+        {
+            var program = Path.Combine(buildDirectory, ProgramFileName);
+            string[] arguments =
+            [
+                Path.Combine(buildDirectory, ObjectFileName),
+                "-Wl,--start-group",
+                .. PackageArchives(),
+                "-Wl,--end-group",
+                "-lm",
+                "-lpthread",
+                "-o",
+                program,
+            ];
+
+            try
+            {
+                var linker = await ProcessRunner.RunAsync(_options.LinkerPath, arguments, buildDirectory, _options.CompileTimeout, cancellationToken);
+                if (!linker.TimedOut && linker.ExitCode == 0 && File.Exists(program))
+                    return true;
+
+                logger.LogError("Linking failed. Exit code {ExitCode}, timed out {TimedOut}. stderr: {Stderr}", linker.ExitCode, linker.TimedOut, linker.Stderr);
+                return false;
+            }
+            catch (Win32Exception exception)
+            {
+                logger.LogError(exception, "Could not start the linker at {LinkerPath}", _options.LinkerPath);
+                return false;
+            }
+        }
+
+        private IEnumerable<string> PackageArchives()
+        {
+            if (!Directory.Exists(_options.PackagesPath))
+                return [];
+
+            return Directory.GetDirectories(_options.PackagesPath)
+                .SelectMany(package => Directory.GetFiles(package, "lib*.a"))
+                .Order(StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// The compiler names a file as it resolved it, which for an include can be
+        /// <c>app/../shared/util.🍇</c> or an absolute path. Callers know files by the names
+        /// they sent, so the path is made relative to the build directory.
+        /// </summary>
+        private static string ProjectPath(string file, string buildDirectory)
+        {
+            if (file.Length == 0)
+                return file;
+
+            var relative = Path.GetRelativePath(buildDirectory, Path.GetFullPath(file, buildDirectory));
+            return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative)
+                ? file
+                : relative.Replace(Path.DirectorySeparatorChar, '/');
         }
 
         private bool TryParseDiagnostics(ProcessResult compiler, out IReadOnlyList<Diagnostic> diagnostics)

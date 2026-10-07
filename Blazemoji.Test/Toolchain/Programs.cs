@@ -42,6 +42,33 @@ namespace Blazemoji.Test.Toolchain
         public const string PrintsEnvironment =
             "🏁 🍇\n  ↪️ 🌳🐇💻 🔤BLAZEMOJI_TEST🔤❗️ ➡️ value 🍇\n    😀 value❗️\n  🍉\n🍉\n";
 
+        /// <summary>
+        /// Listens on the port named by <c>PORT</c>, prints each request it receives, and
+        /// answers every one with <c>200 hello</c>. Written with the stock sockets package.
+        /// </summary>
+        public const string TinyHttpServer =
+            "📦 sockets 🏠\n\n" +
+            "🏁 🍇\n" +
+            "  8080 ➡️ 🖍🆕port\n" +
+            "  ↪️ 🌳🐇💻 🔤PORT🔤❗️ ➡️ text 🍇\n" +
+            "    ↪️ 🔢 text 10❗️ ➡️ parsed 🍇\n" +
+            "      parsed ➡️ 🖍port\n" +
+            "    🍉\n" +
+            "  🍉\n" +
+            "  🍺 🆕🏄 port❗️ ➡️ server\n" +
+            "  😀 🔤listening🔤❗️\n" +
+            "  🔁 👍 🍇\n" +
+            "    🍺 🙋 server❗️ ➡️ client\n" +
+            "    🆗 data 👂 client 4096❗️ 🍇\n" +
+            "      😀 🍺 🔡 data❗️❗️\n" +
+            "      🆗 💬 client 📇 🔤HTTP/1.1 200 OK❌r❌nContent-Type: text/plain❌r❌nContent-Length: 5❌r❌nConnection: close❌r❌n❌r❌nhello🔤❗️❗️ 🍇🍉\n" +
+            "      🙅 sendError 🍇🍉\n" +
+            "    🍉\n" +
+            "    🙅 readError 🍇🍉\n" +
+            "    🚪 client❗️\n" +
+            "  🍉\n" +
+            "🍉\n";
+
         public static string PrintsMarker(string marker) => $"🏁 🍇\n  😀 🔤marker-{marker}🔤❗️\n🍉\n";
 
         public static string ExitsWith(int code) => $"🏁 🍇\n  😀 🔤before exit🔤❗️\n  🚪🐇💻 {code}❗️\n🍉\n";

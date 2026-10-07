@@ -45,6 +45,26 @@ namespace Blazemoji.Test.Toolchain
             return buildId;
         }
 
+        /// <summary>
+        /// Writes an executable shell script to stand in for the compiler or the linker.
+        /// </summary>
+        public static string Script(string name, string body)
+        {
+            var path = Path.Combine(Path.GetTempPath(), "blazemoji-tests", $"{name}-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, "#!/bin/sh\n" + body + "\n");
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+            return path;
+        }
+
+        /// <summary>
+        /// A compiler that reports no diagnostics and leaves an empty object file, as the real
+        /// one does when asked to compile without linking.
+        /// </summary>
+        public static string CompilerThatSucceeds() => Script("fake-compiler", "echo '[]'\n: > program.o");
+
         public const string UnixOnly = "Run mechanics are tested with shell scripts, which need a Unix system.";
 
         public static bool IsUnix => !OperatingSystem.IsWindows();

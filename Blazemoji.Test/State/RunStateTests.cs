@@ -228,6 +228,130 @@ namespace Blazemoji.Test.State
         }
 
         [Fact]
+        public async Task A_project_is_compiled_from_all_its_files_starting_at_its_entry()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+            var files = new Dictionary<string, string> { ["app/main.🍇"] = "main", ["shared/util.🍇"] = "util" };
+
+            var running = state.RunAsync(new RunTarget(files, "app/main.🍇", Server: false));
+            _run.Exit();
+            await running;
+
+            await _toolchain.Received(1).CompileAsync(
+                Arg.Is<CompileRequest>(request => request.Entry == "app/main.🍇" && request.Files.Count == 2 && request.Files["shared/util.🍇"] == "util"),
+                Arg.Any<CancellationToken>());
+            await _toolchain.Received(1).StartRunAsync(Arg.Is<RunRequest>(request => !request.Server), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_server_project_is_started_as_a_server_and_says_so_while_it_runs()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+            state.ServerRunning.ShouldBeFalse();
+
+            var running = state.RunAsync(new RunTarget(new Dictionary<string, string> { ["main.🍇"] = Code }, "main.🍇", Server: true));
+            await UntilAsync(() => state.Status == RunStatus.Running, advanceTime: false);
+
+            state.ServerRunning.ShouldBeTrue();
+            await _toolchain.Received(1).StartRunAsync(Arg.Is<RunRequest>(request => request.Server), Arg.Any<CancellationToken>());
+
+            _run.Exit();
+            await running;
+            state.ServerRunning.ShouldBeFalse();
+        }
+
+        [Fact]
+        public async Task A_plain_program_is_not_a_server_while_it_runs()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.Status == RunStatus.Running, advanceTime: false);
+
+            state.ServerRunning.ShouldBeFalse();
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task A_request_is_passed_to_the_running_server_and_its_answer_returned()
+        {
+            CompileSucceeds();
+            _run.Respond = _ => new ProgramResponse(ProgramResponseOutcome.Answered, 200, "OK", [], "[]"u8.ToArray(), TimeSpan.FromMilliseconds(3));
+            await using var state = CreateState();
+            var running = state.RunAsync(new RunTarget(new Dictionary<string, string> { ["main.🍇"] = Code }, "main.🍇", Server: true));
+            await UntilAsync(() => state.ServerRunning, advanceTime: false);
+            var request = new ProgramRequest("GET", "/todos", [], []);
+
+            var response = await state.SendHttpAsync(request, Cancellation);
+
+            response.Outcome.ShouldBe(ProgramResponseOutcome.Answered);
+            response.StatusCode.ShouldBe(200);
+            _run.Requests.ShouldHaveSingleItem().ShouldBe(request);
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task A_request_with_nothing_running_says_the_run_has_ended()
+        {
+            await using var state = CreateState();
+
+            var response = await state.SendHttpAsync(new ProgramRequest("GET", "/", [], []), Cancellation);
+
+            response.Outcome.ShouldBe(ProgramResponseOutcome.Ended);
+        }
+
+        [Fact]
+        public async Task A_server_that_went_idle_says_so()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+            var running = state.RunAsync(new RunTarget(new Dictionary<string, string> { ["main.🍇"] = Code }, "main.🍇", Server: true));
+
+            _run.Exit(null, RunEndReason.Idle);
+            await running;
+
+            state.LastRun!.Reason.ShouldBe(RunEndReason.Idle);
+            state.Lines.ShouldHaveSingleItem().Text.ShouldBe("Stopped after going too long without a request.");
+        }
+
+        [Fact]
+        public async Task A_problem_knows_the_text_of_the_file_it_is_in()
+        {
+            var inUtil = new Diagnostic(DiagnosticSeverity.Error, "shared/util.🍇", 1, 1, "Broken.");
+            var nowhere = new Diagnostic(DiagnosticSeverity.Warning, string.Empty, 0, 0, "A warning.");
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(false, [inUtil, nowhere], null));
+            await using var state = CreateState();
+            var files = new Dictionary<string, string> { ["app/main.🍇"] = "main text", ["shared/util.🍇"] = "util text" };
+
+            await state.RunAsync(new RunTarget(files, "app/main.🍇", Server: false));
+
+            state.SourceOf(inUtil).ShouldBe("util text");
+            state.SourceOf(nowhere).ShouldBe("main text");
+            state.DiagnosticsEntry.ShouldBe("app/main.🍇");
+        }
+
+        [Fact]
+        public async Task The_files_that_were_compiled_are_remembered_even_if_the_caller_changes_its_own_copy()
+        {
+            var error = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 1, 1, "Broken.");
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(false, [error], null));
+            await using var state = CreateState();
+            var files = new Dictionary<string, string> { ["main.🍇"] = "as compiled" };
+
+            await state.RunAsync(new RunTarget(files, "main.🍇", Server: false));
+            files["main.🍇"] = "edited since";
+
+            state.SourceOf(error).ShouldBe("as compiled");
+        }
+
+        [Fact]
         public async Task A_run_that_fails_to_stop_does_not_throw_into_the_page()
         {
             CompileSucceeds();
@@ -464,6 +588,9 @@ namespace Blazemoji.Test.State
             public Task StopAsync() => Task.CompletedTask;
 
             public Task WriteInputAsync(string text, bool endOfInput = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+            public Task<ProgramResponse> SendHttpAsync(ProgramRequest request, CancellationToken cancellationToken = default) =>
+                Task.FromResult(ProgramResponse.Without(ProgramResponseOutcome.NotAServer));
 
             public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         }

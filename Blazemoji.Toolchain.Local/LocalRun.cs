@@ -23,6 +23,8 @@ namespace Blazemoji.Toolchain.Local
         private readonly string? _runDirectory;
         private readonly long _maxOutputBytes;
         private readonly bool _leadsProcessGroup;
+        private readonly TimeSpan _timeLimit;
+        private readonly ProgramEndpoint? _endpoint;
         private readonly Action<LocalRun> _disposed;
         private readonly Stopwatch _clock = Stopwatch.StartNew();
         private readonly CancellationTokenSource _timeout = new();
@@ -40,13 +42,19 @@ namespace Blazemoji.Toolchain.Local
         private int _inputClosed;
         private volatile bool _processDisposed;
 
-        private LocalRun(string runId, Process? process, string? runDirectory, TimeSpan timeout, long maxOutputBytes, bool leadsProcessGroup, Action<LocalRun> disposed)
+        /// <param name="endpoint">
+        /// Set for a server run. Its time limit is then an idle limit: every request sent to
+        /// the program starts it again, and reaching it ends the run as idle, not timed out.
+        /// </param>
+        private LocalRun(string runId, Process? process, string? runDirectory, TimeSpan timeLimit, long maxOutputBytes, bool leadsProcessGroup, ProgramEndpoint? endpoint, Action<LocalRun> disposed)
         {
             RunId = runId;
             _process = process;
             _runDirectory = runDirectory;
+            _timeLimit = timeLimit;
             _maxOutputBytes = maxOutputBytes;
             _leadsProcessGroup = leadsProcessGroup;
+            _endpoint = endpoint;
             _disposed = disposed;
 
             if (process is null)
@@ -55,17 +63,18 @@ namespace Blazemoji.Toolchain.Local
             _stdout = new SurrogateSafeReader(process.StandardOutput);
             _stderr = new SurrogateSafeReader(process.StandardError);
             _exited = process.WaitForExitAsync(CancellationToken.None);
-            _timeoutRegistration = _timeout.Token.Register(() => End(RunEndReason.TimedOut));
-            _timeout.CancelAfter(timeout);
+            var reasonAtTheLimit = endpoint is null ? RunEndReason.TimedOut : RunEndReason.Idle;
+            _timeoutRegistration = _timeout.Token.Register(() => End(reasonAtTheLimit));
+            _timeout.CancelAfter(timeLimit);
         }
 
         public string RunId { get; }
 
-        public static LocalRun Started(string runId, Process process, string runDirectory, TimeSpan timeout, long maxOutputBytes, bool leadsProcessGroup, Action<LocalRun> disposed) =>
-            new(runId, process, runDirectory, timeout, maxOutputBytes, leadsProcessGroup, disposed);
+        public static LocalRun Started(string runId, Process process, string runDirectory, TimeSpan timeLimit, long maxOutputBytes, bool leadsProcessGroup, ProgramEndpoint? endpoint, Action<LocalRun> disposed) =>
+            new(runId, process, runDirectory, timeLimit, maxOutputBytes, leadsProcessGroup, endpoint, disposed);
 
         public static LocalRun FailedToStart(string runId, string? runDirectory, Action<LocalRun> disposed) =>
-            new(runId, null, runDirectory, Timeout.InfiniteTimeSpan, 0, false, disposed);
+            new(runId, null, runDirectory, Timeout.InfiniteTimeSpan, 0, false, null, disposed);
 
         public async IAsyncEnumerable<RunEvent> ReadEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
@@ -166,6 +175,33 @@ namespace Blazemoji.Toolchain.Local
             }
         }
 
+        public async Task<ProgramResponse> SendHttpAsync(ProgramRequest request, CancellationToken cancellationToken = default)
+        {
+            if (_process is null)
+                return ProgramResponse.Without(ProgramResponseOutcome.Ended);
+
+            if (_endpoint is null)
+                return ProgramResponse.Without(ProgramResponseOutcome.NotAServer);
+
+            if (_processDisposed || _exited.IsCompleted || EndRequested || Volatile.Read(ref _disposeStarted) == 1)
+                return ProgramResponse.Without(ProgramResponseOutcome.Ended);
+
+            // Before and after: a request that takes a while is not idleness either.
+            PostponeIdleEnd();
+            try
+            {
+                return await _endpoint.SendAsync(request, cancellationToken);
+            }
+            catch (ObjectDisposedException)
+            {
+                return ProgramResponse.Without(ProgramResponseOutcome.Ended);
+            }
+            finally
+            {
+                PostponeIdleEnd();
+            }
+        }
+
         public async ValueTask DisposeAsync()
         {
             if (Interlocked.Exchange(ref _disposeStarted, 1) == 1)
@@ -187,6 +223,7 @@ namespace Blazemoji.Toolchain.Local
                 _process.Dispose();
             }
 
+            _endpoint?.Dispose();
             _disposed(this);
         }
 
@@ -205,6 +242,18 @@ namespace Blazemoji.Toolchain.Local
                 return (RunEndReason)_requestedEnd;
 
             return exitCode == KilledByCpuLimit ? RunEndReason.TimedOut : RunEndReason.Exited;
+        }
+
+        private void PostponeIdleEnd()
+        {
+            try
+            {
+                _timeout.CancelAfter(_timeLimit);
+            }
+            catch (ObjectDisposedException)
+            {
+                // The run was disposed while a request was on its way.
+            }
         }
 
         private void End(RunEndReason reason)

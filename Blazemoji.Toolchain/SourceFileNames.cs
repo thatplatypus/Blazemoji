@@ -1,11 +1,11 @@
 using System.Text;
 
-namespace Blazemoji.Toolchain.Local
+namespace Blazemoji.Toolchain
 {
     /// <summary>
-    /// Source file names come from the caller, are written to disk, and reach the compiler's
-    /// command line. The compiler in turn builds its link command from the entry file's name
-    /// and hands it to a shell. So a name is restricted to forward-slash relative paths that
+    /// Part of the contract: the file names a compile request may use. Names come from the
+    /// caller, are written to disk, and reach the compiler's command line, and the compiler
+    /// has been known to pass them on to a shell. So a name is restricted to forward-slash relative paths that
     /// stay inside the build directory and whose characters mean nothing to a shell: ASCII
     /// letters, digits, dot, underscore and hyphen, plus any non-ASCII character that is not
     /// whitespace or a control (emoji names such as <c>🏛</c> are normal in Emojicode).
