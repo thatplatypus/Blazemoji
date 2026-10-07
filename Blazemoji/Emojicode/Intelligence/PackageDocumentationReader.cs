@@ -58,7 +58,9 @@ namespace Blazemoji.Emojicode.Intelligence
                 .Where(method => method.ValueKind == JsonValueKind.Object)
                 .Select(method => new MethodDocumentation(
                     Text(method, "name"),
-                    Text(method, "mood") is { Length: > 0 } mood ? mood : "❗️",
+                    // The report leaves the mood out for an initializer, which is called with ❗️,
+                    // and writes it empty for an operator.
+                    method.TryGetProperty("mood", out _) ? Text(method, "mood") : "❗️",
                     Tidy(Text(method, "documentation")),
                     ReadParameters(method),
                     method.TryGetProperty("returnType", out var returnType) ? ReadTypeReference(returnType) : null))

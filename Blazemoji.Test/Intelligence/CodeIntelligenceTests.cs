@@ -382,5 +382,161 @@ namespace Blazemoji.Test.Intelligence
             Intelligence.Imports("🏁 🍇 🍉").ShouldBe(["s"]);
             Intelligence.Imports("💭 📦 files 🏠").ShouldBe(["s"]);
         }
+
+        // ---- found by the independent review -------------------------------------------
+
+        [Fact]
+        public void A_dot_on_the_first_line_of_a_block_still_offers_the_receivers_methods()
+        {
+            var entries = Complete("❗️ 👀 r 📨 ➡️ 📬 🍇\n  ↪️ 🏷 r 🔤id🔤❗️ ➡️ id 🍇\n    r.‸\n  🍉\n🍉");
+
+            entries.Select(entry => entry.Label).ShouldBe(["🏷 name", "📄"]);
+        }
+
+        [Fact]
+        public void An_operator_is_written_between_its_operands_and_never_as_a_call()
+        {
+            const string marked = "8080 ➡️ port\nport.‸";
+            var entries = Complete(marked);
+            var plus = entries.Single(entry => entry.Label.StartsWith("➕"));
+
+            Apply(marked, plus).ShouldBe("8080 ➡️ port\nport ➕ ");
+            plus.Documentation.ShouldContain("port ➕ other 🔢 ➡️ 🔢");
+            entries.ShouldNotContain(entry => entry.Insert.StartsWith("➕ port") || entry.Insert.StartsWith("🙌 port"));
+        }
+
+        [Fact]
+        public void A_method_that_is_written_as_an_assignment_is_not_offered_as_a_call()
+        {
+            var entries = Complete("🆕🍨🐚🔡🍆❗️ ➡️ items\nitems.‸");
+
+            entries.Count(entry => entry.Label.StartsWith("🐽")).ShouldBe(1);
+            entries.Single(entry => entry.Label.StartsWith("🐽")).Label.ShouldBe("🐽 index");
+        }
+
+        [Fact]
+        public void Hovering_an_operator_describes_it_with_the_operand_on_its_left()
+        {
+            var hover = Hover("8 ➡️ a\n9 ➡️ b\na ‸➕ b").ShouldNotBeNull();
+
+            hover.Markdown.ShouldContain("a ➕ other 🔢 ➡️ 🔢");
+            hover.Markdown.ShouldNotContain("➕ b");
+        }
+
+        [Theory]
+        [InlineData("🐇 📒 🍇\n  🆕 anId ‸🔢 aTitle 🔡 isDone 👌 🍇🍉\n🍉", "aTitle")]
+        [InlineData("🐇 📒 🍇\n  ❗️ ‸📄 r 📨 ➡️ 📬 🍇🍉\n🍉", "📄 r")]
+        [InlineData("🔤x🔤 ➡️ name\n🖍🆕 count ‸🔢\nname ➡️ other", "name")]
+        public void A_declaration_is_not_described_as_a_call(string marked, string whatACallWouldName)
+        {
+            var hover = Hover(marked);
+
+            (hover?.Markdown ?? string.Empty).ShouldNotContain("```emojiscript\n" + whatACallWouldName.Split(' ')[0] + " " + whatACallWouldName.Split(' ').Last());
+            (hover?.Markdown ?? string.Empty).ShouldNotContain("❗️");
+        }
+
+        [Theory]
+        [InlineData("🐇 📒 🍇\n  🆕 anId 🔢 aTitle 🔡 ‸")]
+        [InlineData("🐇 📒 🍇\n  ❗️ 📄 r 📨 ‸")]
+        [InlineData("🖍🆕 count 🔢 ‸")]
+        public void Nothing_is_shown_as_being_called_while_a_declaration_is_typed(string marked)
+        {
+            Signature(marked).ShouldBeNull();
+        }
+
+        [Fact]
+        public void An_initializer_with_several_forms_shows_one_an_application_would_call()
+        {
+            Signature("🆕🔡 ‸")!.Label.ShouldStartWith("🆕🔡 list ");
+        }
+
+        [Fact]
+        public void The_form_of_an_initializer_follows_the_arguments_given()
+        {
+            Signature("🆕⏩ ‸")!.Label.ShouldBe("🆕⏩ start 🔢 stop 🔢❗️");
+            var withRoomForAStep = Signature("🆕⏩ 0 10 ‸").ShouldNotBeNull();
+            withRoomForAStep.Label.ShouldBe("🆕⏩ start 🔢 stop 🔢 step 🔢❗️");
+            withRoomForAStep.ActiveParameter.ShouldBe(2);
+        }
+
+        [Fact]
+        public void A_named_initializer_is_shown_by_its_name()
+        {
+            Signature("🆕🍨🐚🔢🍆▶️🐴 ‸")!.Label.ShouldBe("🆕🍨▶️🐴 capacity 🔢❗️");
+        }
+
+        [Fact]
+        public void A_list_literal_is_one_argument_however_many_things_are_in_it()
+        {
+            Signature("🆕🔡 🍿 🔤a🔤 🔤b🔤 🔤c🔤 🍆 ‸")!.ActiveParameter.ShouldBe(1);
+        }
+
+        [Theory]
+        [InlineData("📥 app 👍 ‸", 1)]
+        [InlineData("📥 app 👇 ‸", 1)]
+        [InlineData("🚀 app 🤜8000 ➕ 80🤛 ‸", 1)]
+        [InlineData("📥 app 🤜🔤/a🔤🤛 handler ‸", 2)]
+        public void An_argument_counts_whatever_it_is_written_with(string call, int active)
+        {
+            Signature(App + call)!.ActiveParameter.ShouldBe(active);
+        }
+
+        [Fact]
+        public void A_call_on_something_unknown_is_one_argument_of_the_call_around_it()
+        {
+            var after = Signature(App + "📥 app 🛣 config❗️ ‸").ShouldNotBeNull();
+            after.Label.ShouldStartWith("📥 app ");
+            after.ActiveParameter.ShouldBe(1);
+
+            var inside = Signature(App + "📥 app 🛣 config ‸").ShouldNotBeNull();
+            inside.Label.ShouldStartWith("📥 app ");
+            inside.ActiveParameter.ShouldBe(0);
+        }
+
+        [Fact]
+        public void An_argument_still_being_typed_is_the_one_marked()
+        {
+            Signature(App + "📥 app 🔤/todos🔤 hand‸")!.ActiveParameter.ShouldBe(1);
+        }
+
+        [Fact]
+        public void A_call_inside_a_block_written_on_one_line_shows_its_parameters()
+        {
+            Signature(App + "↪️ 👍 🍇 📥 app ‸")!.Label.ShouldStartWith("📥 app ");
+        }
+
+        [Theory]
+        [InlineData("😀")]
+        [InlineData("🍺")]
+        [InlineData("🤜")]
+        [InlineData("🍿")]
+        [InlineData("🆕🍷 ")]
+        [InlineData("a ➕ ")]
+        public void Text_nested_far_deeper_than_anyone_writes_is_answered_and_not_followed_all_the_way_down(string repeated)
+        {
+            var text = App + string.Concat(Enumerable.Repeat(repeated, 60_000));
+
+            Should.NotThrow(() => Intelligence.Signature(text, text.Length, TestPackages.All));
+            Should.NotThrow(() => Intelligence.Hover(text, App.Length + 2, TestPackages.All));
+            Should.NotThrow(() => Intelligence.Complete(text + " app.", text.Length + 5, TestPackages.All));
+        }
+
+        [Fact]
+        public void Every_position_in_the_shipped_templates_gets_an_answer_without_a_failure()
+        {
+            var templates = Path.Combine(AppContext.BaseDirectory, "Emojicode", "Templates");
+            var files = Directory.EnumerateFiles(templates, "*.🍇", SearchOption.AllDirectories).ToList();
+            files.ShouldNotBeEmpty();
+
+            foreach (var file in files)
+            {
+                var text = File.ReadAllText(file);
+                foreach (var token in SourceReader.Read(text))
+                {
+                    Should.NotThrow(() => Intelligence.Signature(text, token.End, TestPackages.All), file);
+                    Should.NotThrow(() => Intelligence.Hover(text, token.Start, TestPackages.All), file);
+                }
+            }
+        }
     }
 }

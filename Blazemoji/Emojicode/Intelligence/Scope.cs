@@ -7,21 +7,27 @@ namespace Blazemoji.Emojicode.Intelligence
     /// The variables of a source file and the types they can be seen to have. This is not type
     /// checking. It reads the handful of shapes that say what a variable is outright: an
     /// assignment from an initializer, a literal or a documented call, and a declaration with
-    /// its type written out. Anything else stays unknown.
+    /// its type written out. Anything else stays unknown: a wrong type would be stated as
+    /// fact in a hover and would write wrong code from a suggestion, so nothing is guessed.
     /// </summary>
     public sealed class Scope
     {
         private static readonly HashSet<string> Modifiers = ["🔓", "🔒", "🔐", "🐇", "✒", "🖍", "🎍", "🥡", "🔏", "📻", "🌍", "⚠"];
         private static readonly HashSet<string> Moods = ["❗", "❓"];
+        private static readonly HashSet<string> TypeDeclarations = ["🐇", "🕊", "🔘", "🦃", "🐊"];
 
         private readonly List<ScopeVariable> _variables = [];
+        private readonly HashSet<string> _typesOfThisFile = [];
+        private readonly List<(int First, int Next)> _declarations = [];
         private readonly IReadOnlyList<SourceToken> _tokens;
         private readonly TypeIndex _types;
+        private readonly ExpressionReader _expressions;
 
         private Scope(IReadOnlyList<SourceToken> tokens, TypeIndex types)
         {
             _tokens = tokens;
             _types = types;
+            _expressions = new ExpressionReader(tokens);
         }
 
         public IReadOnlyList<ScopeVariable> Variables => _variables;
@@ -30,10 +36,20 @@ namespace Blazemoji.Emojicode.Intelligence
         {
             var scope = new Scope(tokens, types);
             for (var index = 0; index < tokens.Count; index++)
+                scope.ReadTypeDeclarationAt(index);
+
+            for (var index = 0; index < tokens.Count; index++)
                 scope.ReadAt(index);
 
             return scope;
         }
+
+        /// <summary>
+        /// True for a token that is part of a declaration: a method's or initializer's
+        /// header, a variable declared with its type, a closure's parameters. Nothing there
+        /// is a call, however much <c>🔢 aTitle</c> looks like one.
+        /// </summary>
+        public bool IsDeclaration(int tokenIndex) => _declarations.Any(range => range.First <= tokenIndex && tokenIndex < range.Next);
 
         /// <summary>
         /// The type of the nearest declaration of <paramref name="name"/> above
@@ -54,46 +70,64 @@ namespace Blazemoji.Emojicode.Intelligence
                 .ToList();
 
         /// <summary>
-        /// The type an expression can be seen to have, from its first tokens. Null when it cannot.
+        /// The type of the expression that is exactly the tokens from <paramref name="start"/>
+        /// up to <paramref name="end"/>. Null when they are not one whole expression, or its
+        /// type cannot be seen.
         /// </summary>
-        public string? TypeOfExpression(int start, int end)
+        public string? TypeOfExpression(int start, int end) =>
+            _expressions.ReadExpression(start, end) is { Complete: true } expression && expression.Next == end ? TypeOf(expression) : null;
+
+        /// <summary>The type a value of this expression has, when the documentation and the declarations above say.</summary>
+        public string? TypeOf(Expression? expression)
         {
-            while (start < end && Is(start, "🍺"))
-                start++;
-
-            if (start >= end)
-                return null;
-
-            var first = _tokens[start];
-            switch (first.Kind)
+            switch (expression?.Kind)
             {
-                case TokenKind.Text:
+                case ExpressionKind.Text:
                     return "🔡";
 
-                case TokenKind.Number:
-                    return first.Text.Contains('.') ? "💯" : "🔢";
+                case ExpressionKind.Number:
+                    return _tokens[expression.First].Text.Contains('.') ? "💯" : "🔢";
 
-                case TokenKind.Word:
-                    return TypeOf(first.Text, first.Start);
+                case ExpressionKind.Boolean:
+                    return "👌";
+
+                case ExpressionKind.Variable:
+                    return TypeOf(_tokens[expression.First].Text, _tokens[expression.First].Start);
+
+                case ExpressionKind.Initialization:
+                case ExpressionKind.Cast when expression.NameToken >= 0:
+                    return _tokens[expression.NameToken].Text;
+
+                case ExpressionKind.Wrapped:
+                    return TypeOf(expression.Inner);
+
+                case ExpressionKind.Call:
+                    return MethodOf(expression)?.ReturnType?.TypeName;
+
+                case ExpressionKind.Binary:
+                    // Read left to right. Where that is not how the operators group, the
+                    // left side has no such operator and the type stays unknown.
+                    var type = TypeOf(expression.Operands[0]);
+                    foreach (var (_, text) in expression.Operators)
+                        type = _types.FindMethod(type, text)?.ReturnType?.TypeName;
+
+                    return type;
+
+                default:
+                    return null;
             }
+        }
 
-            if (Is(start, "👍") || Is(start, "👎"))
-                return "👌";
-
-            if (start + 1 >= end)
+        /// <summary>The documented method a call is to, going by its receiver. Null for a call on the object itself.</summary>
+        public MethodDocumentation? MethodOf(Expression call)
+        {
+            if (call.Kind != ExpressionKind.Call || call.Receiver is not { } receiver)
                 return null;
 
-            var second = _tokens[start + 1];
-            if (Is(start, "🆕"))
-                return second.Kind == TokenKind.Symbol ? second.Text : null;
-
-            if (Is(start + 1, "🐇") && start + 2 < end)
-                return _types.FindTypeMethod(_tokens[start + 2].Text, first.Text)?.ReturnType?.TypeName;
-
-            if (second.Kind == TokenKind.Word)
-                return _types.FindMethod(TypeOf(second.Text, second.Start), first.Text)?.ReturnType?.TypeName;
-
-            return null;
+            var name = _tokens[call.NameToken].Text;
+            return receiver is { Kind: ExpressionKind.TypeValue, NameToken: >= 0 }
+                ? _types.FindTypeMethod(_tokens[receiver.NameToken].Text, name)
+                : _types.FindMethod(TypeOf(receiver), name);
         }
 
         private void ReadAt(int index)
@@ -103,11 +137,34 @@ namespace Blazemoji.Emojicode.Intelligence
             else if (Is(index, "🆗"))
                 ReadErrorCheck(index);
             else if (Is(index, "🍇"))
-                ReadParameters(SkipAll(index + 1, "🎍", "🥡"));
-            else if (IsFirstOnLine(index) && Moods.Contains(Bare(index)) && index + 1 < _tokens.Count)
-                ReadParameters(index + 2);
+                ReadParameters(SkipAll(index + 1, "🎍", "🥡"), onlyKnownTypes: true);
+            else if (IsFirstOnLine(index) && Moods.Contains(Bare(index)))
+                ReadMethodHeader(index);
             else if (IsFirstOnLine(index) && Is(index, "🆕"))
                 ReadInitializerOrInstanceVariable(index);
+        }
+
+        /// <summary><c>🐇 Name</c> and the like at the start of a line declare a type of this file.</summary>
+        private void ReadTypeDeclarationAt(int index)
+        {
+            if (_tokens[index].Kind == TokenKind.Symbol
+                && TypeDeclarations.Contains(Bare(index))
+                && IsFirstOnLine(index)
+                && SameLineSymbol(index, index + 1)
+                && !Moods.Contains(Bare(index + 1)))
+            {
+                _typesOfThisFile.Add(Bare(index + 1));
+            }
+        }
+
+        /// <summary><c>❗️ name parameters ➡️ Type 🍇</c>.</summary>
+        private void ReadMethodHeader(int mood)
+        {
+            if (!SameLineSymbol(mood, mood + 1) || Is(mood + 1, "➡"))
+                return;
+
+            DeclaresToEndOfLine(mood);
+            ReadParameters(mood + 2, onlyKnownTypes: false);
         }
 
         /// <summary><c>expression ➡️ name</c>, <c>expression ➡️ 🖍🆕 name</c>.</summary>
@@ -149,65 +206,77 @@ namespace Blazemoji.Emojicode.Intelligence
         /// </summary>
         private void ReadInitializerOrInstanceVariable(int index)
         {
-            var next = SkipAll(index + 1, "🍼");
-            if (next < _tokens.Count && _tokens[next].Kind == TokenKind.Word)
-                ReadParameters(index + 1);
+            // A named initializer: 🆕 ▶️🐴 capacity 🔢.
+            var next = index + 1;
+            if (Is(next, "▶") && SameLineSymbol(next, next + 1))
+                next += 2;
+
+            var name = SkipAll(next, "🍼");
+            if (name >= _tokens.Count || _tokens[name].Kind != TokenKind.Word || _tokens[name].Line != _tokens[index].Line)
+                return;
+
+            DeclaresToEndOfLine(index);
+            ReadParameters(next, onlyKnownTypes: false);
         }
 
-        /// <summary>Reads <c>name Type name Type ...</c> for as long as that is what is there.</summary>
-        private void ReadParameters(int index)
+        /// <summary>
+        /// Reads <c>name Type name Type ...</c> for as long as that is what is there on the line.
+        /// </summary>
+        /// <param name="onlyKnownTypes">
+        /// After a 🍇 the same shape is also how a statement can begin (<c>total ➕ 1</c>), so
+        /// there a name is only a parameter when what follows it is a type of an imported
+        /// package or of this file.
+        /// </param>
+        private void ReadParameters(int index, bool onlyKnownTypes)
         {
+            if (index >= _tokens.Count)
+                return;
+
+            var line = _tokens[index].Line;
+            var end = index;
+            while (end < _tokens.Count && _tokens[end].Line == line)
+                end++;
+
             while (true)
             {
                 index = SkipAll(index, "🍼");
-                if (index + 1 >= _tokens.Count || _tokens[index].Kind != TokenKind.Word || _tokens[index + 1].Kind != TokenKind.Symbol)
+                if (index + 1 >= end || _tokens[index].Kind != TokenKind.Word)
                     return;
 
-                var (type, next) = ReadType(index + 1);
+                var (typeToken, next) = _expressions.ReadType(index + 1, end);
                 if (next == index + 1)
                     return;
 
-                if (type is not null)
-                    Declare(_tokens[index], type);
+                // A closure's type has no name to give the variable, and is still a type.
+                if (typeToken >= 0)
+                {
+                    var type = _tokens[typeToken].Text;
+                    if (onlyKnownTypes && _types.Find(type) is null && !_typesOfThisFile.Contains(EmojiText.Bare(type)))
+                        return;
 
+                    Declare(_tokens[index], type);
+                }
+
+                _declarations.Add((index, next));
                 index = next;
             }
         }
 
-        /// <returns>The type's name, or null for a type without one such as a closure, and the index after it.</returns>
-        private (string? TypeName, int Next) ReadType(int index)
+        private void DeclaresToEndOfLine(int index)
         {
-            index = SkipAll(index, "🍬");
-            if (index >= _tokens.Count || _tokens[index].Kind != TokenKind.Symbol)
-                return (null, index);
+            var first = index;
+            while (first > 0 && _tokens[first - 1].Line == _tokens[index].Line)
+                first--;
 
-            if (Is(index, "🍇"))
-                return (null, SkipBalanced(index, "🍇", "🍉"));
+            var next = index;
+            while (next < _tokens.Count && _tokens[next].Line == _tokens[index].Line)
+                next++;
 
-            var name = _tokens[index].Text;
-            if (Moods.Contains(Bare(index)) || Is(index, "➡") || Is(index, "🍉"))
-                return (null, index);
-
-            var next = index + 1;
-            if (next < _tokens.Count && Is(next, "🐚"))
-                next = SkipBalanced(next, "🐚", "🍆");
-
-            return (name, next);
+            _declarations.Add((first, next));
         }
 
-        private int SkipBalanced(int index, string open, string close)
-        {
-            var depth = 0;
-            for (; index < _tokens.Count; index++)
-            {
-                if (Is(index, open))
-                    depth++;
-                else if (Is(index, close) && --depth == 0)
-                    return index + 1;
-            }
-
-            return index;
-        }
+        private bool SameLineSymbol(int index, int other) =>
+            other < _tokens.Count && _tokens[other].Kind == TokenKind.Symbol && _tokens[other].Line == _tokens[index].Line;
 
         private int SkipAll(int index, params string[] symbols)
         {

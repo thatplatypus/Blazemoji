@@ -135,6 +135,84 @@ namespace Blazemoji.Test.Intelligence
         }
 
         [Fact]
+        public void The_first_line_of_a_block_is_not_read_as_the_blocks_parameters()
+        {
+            const string source = "❗️ 👀 r 📨 ➡️ 📬 🍇\n  ↪️ 🏷 r 🔤id🔤❗️ ➡️ id 🍇\n    r.\n  🍉\n🍉";
+
+            var scope = Read(source);
+
+            scope.TypeOf("r", source.IndexOf("r.", StringComparison.Ordinal)).ShouldBe("📨");
+            scope.Variables.ShouldNotContain(variable => variable.TypeName == ".");
+        }
+
+        [Theory]
+        [InlineData("0 ➡️ 🖍🆕 passed\n↪️ 👍 🍇\n  passed ➕ 1 ➡️ 🖍passed\n🍉", "passed", "🔢")]
+        [InlineData("🖍🆕 total 🔢\ntotal ➕ 1 ➡️ 🖍total", "total", "🔢")]
+        [InlineData("0 ➡️ 🖍🆕 total\n↪️ 👍 🍇 total ➕ 1 ➡️ 🖍total 🍉", "total", "🔢")]
+        public void An_operator_after_a_name_never_becomes_the_names_type(string source, string variable, string type)
+        {
+            var scope = Read(source);
+
+            scope.TypeOf(variable, source.Length).ShouldBe(type);
+            scope.Variables.ShouldAllBe(declared => declared.TypeName == type);
+        }
+
+        [Theory]
+        [InlineData("8 ➡️ count\ncount ▶️ 0 ➡️ any", "any")]
+        [InlineData("🔤a🔤 ➡️ name\nname 🙌 🔤x🔤 ➡️ same", "same")]
+        [InlineData("🔤a🔤 ➡️ fragment\n📐 fragment❗️ 🙌 0 ➡️ 🖍🆕found", "found")]
+        [InlineData("8 ➡️ count\ncount ➕ 1 ▶️ 5 ➡️ many", "many")]
+        public void A_comparison_is_a_boolean_whatever_its_left_side_is(string source, string variable)
+        {
+            TypeAtEnd(source, variable).ShouldBe("👌");
+        }
+
+        [Fact]
+        public void Arithmetic_has_the_type_its_operator_returns()
+        {
+            TypeAtEnd("8 ➡️ count\ncount ➕ 1 ➡️ more", "more").ShouldBe("🔢");
+        }
+
+        [Fact]
+        public void A_call_that_is_only_part_of_an_expression_does_not_give_the_whole_its_type()
+        {
+            const string source = "🆕🍷❗️ ➡️ app\n🚀 app 8080❗️ 🦄 2 ➡️ odd";
+
+            TypeAtEnd(source, "odd").ShouldBeNull();
+        }
+
+        [Fact]
+        public void A_call_with_a_call_inside_it_still_has_its_own_type()
+        {
+            const string source = "🆕🍷❗️ ➡️ app\n🗂 app 🔡 🚀 app 1❗️ 10❗️❗️ ➡️ group";
+
+            TypeAtEnd(source, "group").ShouldBe("🗂");
+        }
+
+        [Fact]
+        public void A_closure_parameter_whose_type_is_declared_in_the_file_has_that_type()
+        {
+            const string source = "🐇 🏪 🍇🍉\n🐰 names 🍇 item 🏪\n  item\n🍉❗️";
+
+            TypeAtEnd(source, "item").ShouldBe("🏪");
+        }
+
+        [Fact]
+        public void Lines_that_declare_are_told_apart_from_lines_that_call()
+        {
+            const string source = "🐇 📒 🍇\n  🖍🆕 count 🔢\n  🆕 anId 🔢 aTitle 🔡 🍇🍉\n  ❗️ 📄 r 📨 ➡️ 📬 🍇\n    📄 r❗️\n  🍉\n🍉";
+            var tokens = SourceReader.Read(source);
+            var scope = Scope.Read(tokens, new TypeIndex(TestPackages.All));
+
+            bool Declares(string line) => scope.IsDeclaration(tokens.ToList().FindIndex(token => token.Start == source.IndexOf(line, StringComparison.Ordinal)));
+
+            Declares("🖍🆕 count").ShouldBeTrue();
+            Declares("🆕 anId").ShouldBeTrue();
+            Declares("❗️ 📄 r 📨").ShouldBeTrue();
+            Declares("📄 r❗️").ShouldBeFalse();
+        }
+
+        [Fact]
         public void What_cannot_be_seen_stays_unknown()
         {
             var scope = Read("🤷 something 1 2❗️ ➡️ mystery\n🔂 item 🐽 things 0❗️ 🍇🍉");
