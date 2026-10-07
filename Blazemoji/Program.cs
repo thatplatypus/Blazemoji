@@ -12,7 +12,12 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorPages();
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    // The editor hands a file's whole text to the server, and a saved file is read back
+    // from the browser in one piece. The default limit of 32 KB is smaller than one of
+    // Grapevine's source files, and a message over the limit ends the session. 4 MiB is
+    // what the toolchain service accepts for a whole project.
+    .AddHubOptions(options => options.MaximumReceiveMessageSize = 4 * 1024 * 1024);
 builder.Services.AddMudServices();
 builder.Services.AddBlazoredLocalStorage();
 builder.Services.AddTransient<ILibraryService, LibraryService>();

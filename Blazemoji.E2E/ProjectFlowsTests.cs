@@ -68,6 +68,32 @@ namespace Blazemoji.E2E
             editor.ConsoleErrors.ShouldBeEmpty();
         }
 
+        /// <summary>Comment lines that are nearly all emoji, as Emojicode is.</summary>
+        private static string EmojiText(int emoji) =>
+            string.Concat(Enumerable.Range(0, emoji / 10).Select(line => $"💭 🍇🍉😀🔤🏁📦🐇❗️ {line}\n"));
+
+        [Theory]
+        [InlineData(4_500, "a project a little larger than the Todo sample")]
+        [InlineData(15_000, "one file larger than Grapevine's largest")]
+        public async Task A_project_with_a_lot_of_emoji_in_it_still_opens_after_a_reload(int emoji, string what)
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await editor.CreateProjectAsync("Greeter", "two-files");
+            await editor.OpenFileAsync("Greeter", "greeter.🍇");
+            var text = EmojiText(emoji);
+            await editor.SetCodeAsync(text);
+            await editor.OpenFileAsync("Greeter", "main.🍇");
+
+            await editor.Page.ReloadAsync();
+            await editor.WaitForOpenFileAsync("Greeter", "main.🍇");
+            await editor.WaitForFilesAsync("greeter.🍇", "main.🍇");
+            await editor.OpenFileAsync("Greeter", "greeter.🍇");
+
+            (await editor.GetCodeAsync()).ShouldBe(text, what);
+            editor.ConsoleErrors.ShouldBeEmpty();
+        }
+
         [Fact]
         public async Task A_problem_in_another_file_names_it_and_leads_to_it()
         {
