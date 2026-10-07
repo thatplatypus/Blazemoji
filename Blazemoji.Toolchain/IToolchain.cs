@@ -35,5 +35,20 @@ namespace Blazemoji.Toolchain
         IAsyncEnumerable<RunEvent> ReadEventsAsync(CancellationToken cancellationToken = default);
 
         Task StopAsync();
+
+        /// <summary>
+        /// Appends text to the program's standard input.
+        /// </summary>
+        /// <param name="endOfInput">Closes standard input after writing, so the program sees the end of its input.</param>
+        /// <exception cref="InvalidOperationException">The run has ended or its input is already closed.</exception>
+        Task WriteInputAsync(string text, bool endOfInput = false, CancellationToken cancellationToken = default);
+    }
+
+    /// <summary>
+    /// Lets a host answer "does this build exist" without starting a run.
+    /// </summary>
+    public interface IBuildStore
+    {
+        bool HasBuild(string buildId);
     }
 }

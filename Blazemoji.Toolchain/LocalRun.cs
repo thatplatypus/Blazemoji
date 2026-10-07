@@ -34,6 +34,7 @@ namespace Blazemoji.Toolchain
         private int _readerTaken;
         private int _disposeStarted;
         private int _readsAbandoned;
+        private int _inputClosed;
         private volatile bool _processDisposed;
 
         private LocalRun(string runId, Process? process, string? runDirectory, TimeSpan timeout, long maxOutputBytes, bool leadsProcessGroup, Action<LocalRun> disposed)
@@ -141,6 +142,28 @@ namespace Blazemoji.Toolchain
             return Task.CompletedTask;
         }
 
+        public async Task WriteInputAsync(string text, bool endOfInput = false, CancellationToken cancellationToken = default)
+        {
+            if (_process is null || _processDisposed || _exited.IsCompleted || Volatile.Read(ref _inputClosed) == 1)
+                throw new InvalidOperationException("The run is not accepting input.");
+
+            try
+            {
+                if (text.Length > 0)
+                {
+                    await _process.StandardInput.WriteAsync(text.AsMemory(), cancellationToken);
+                    await _process.StandardInput.FlushAsync(cancellationToken);
+                }
+
+                if (endOfInput)
+                    CloseInput();
+            }
+            catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+            {
+                throw new InvalidOperationException("The run is not accepting input.", exception);
+            }
+        }
+
         public async ValueTask DisposeAsync()
         {
             if (Interlocked.Exchange(ref _disposeStarted, 1) == 1)
@@ -154,6 +177,7 @@ namespace Blazemoji.Toolchain
             {
                 await _exited;
                 EndStrays();
+                CloseInput();
                 AbandonReads();
                 await ObserveAsync(_pendingStdout);
                 await ObserveAsync(_pendingStderr);
@@ -197,6 +221,21 @@ namespace Blazemoji.Toolchain
 
             _process.StandardOutput.Dispose();
             _process.StandardError.Dispose();
+        }
+
+        private void CloseInput()
+        {
+            if (_process is null || Interlocked.Exchange(ref _inputClosed, 1) == 1)
+                return;
+
+            try
+            {
+                _process.StandardInput.Dispose();
+            }
+            catch (IOException)
+            {
+                // The program closed its end first.
+            }
         }
 
         private IEnumerable<Task> Pending(Task cancelled, Task exitedOrDrained)

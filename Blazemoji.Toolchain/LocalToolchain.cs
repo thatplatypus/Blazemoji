@@ -12,13 +12,14 @@ namespace Blazemoji.Toolchain
     /// Runs the Emojicode compiler and the programs it produces as local processes.
     /// Every build and every run gets its own directory under <see cref="ToolchainOptions.WorkRoot"/>.
     /// </summary>
-    public sealed partial class LocalToolchain(IOptions<ToolchainOptions> options, ILogger<LocalToolchain> logger) : IToolchain, IAsyncDisposable
+    public sealed partial class LocalToolchain(IOptions<ToolchainOptions> options, ILogger<LocalToolchain> logger) : IToolchain, IBuildStore, IAsyncDisposable
     {
         private const string ProgramFileName = "program";
         private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
 
         private static readonly Lazy<string?> LineBufferingTool = new(() => FindOnPath("stdbuf"));
         private static readonly Lazy<string?> SessionTool = new(() => FindOnPath("setsid"));
+        private static readonly Lazy<string?> LimitTool = new(() => FindOnPath("prlimit"));
 
         private readonly ToolchainOptions _options = options.Value;
         private readonly ConcurrentDictionary<string, LocalRun> _runs = new();
@@ -109,7 +110,6 @@ namespace Blazemoji.Toolchain
             try
             {
                 process.Start();
-                process.StandardInput.Close();
             }
             catch (Win32Exception exception)
             {
@@ -149,9 +149,24 @@ namespace Blazemoji.Toolchain
         /// so without help nothing arrives until the program exits. <c>stdbuf</c> makes it
         /// line-buffered. Where the tool is missing the program still runs, with late output.
         /// </summary>
-        private static ProcessStartInfo CreateRunStartInfo(string program, string runDirectory, IReadOnlyDictionary<string, string>? environment)
+        private ProcessStartInfo CreateRunStartInfo(string program, string runDirectory, IReadOnlyDictionary<string, string>? environment)
         {
             List<string> command = LineBufferingTool.Value is { } stdbuf ? [stdbuf, "-oL", "-eL", program] : [program];
+
+            // A count of processes is not limited: it is counted per user, and every run shares
+            // the service's user, so one run's threads would count against all the others.
+            if (LimitTool.Value is { } prlimit)
+            {
+                command.InsertRange(0,
+                [
+                    prlimit,
+                    $"--cpu={_options.CpuSeconds}",
+                    $"--as={_options.MemoryBytes}",
+                    $"--fsize={_options.MaxFileBytes}",
+                    $"--nofile={_options.MaxOpenFiles}",
+                    "--",
+                ]);
+            }
 
             // A session of its own makes the program a process group leader, so that ending the
             // run can end everything the program started, including what has outlived it.

@@ -83,6 +83,8 @@ namespace Blazemoji.Shared.State
                 if (_stopRequested)
                     await _run.StopAsync();
 
+                await CloseInputAsync(_run, _disposal.Token);
+
                 await ConsumeAsync(_run, _disposal.Token);
             }
             catch (OperationCanceledException) when (_disposal.IsCancellationRequested)
@@ -139,6 +141,22 @@ namespace Blazemoji.Shared.State
 
             if (_run is { } run)
                 await run.DisposeAsync();
+        }
+
+        /// <summary>
+        /// The page has no way to type input yet, so a program that reads it must see the end
+        /// of its input instead of waiting for the time limit.
+        /// </summary>
+        private static async Task CloseInputAsync(IToolchainRun run, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await run.WriteInputAsync(string.Empty, endOfInput: true, cancellationToken);
+            }
+            catch (InvalidOperationException)
+            {
+                // The program has already ended, or never started; its exit event says which.
+            }
         }
 
         private async Task ConsumeAsync(IToolchainRun run, CancellationToken cancellationToken)

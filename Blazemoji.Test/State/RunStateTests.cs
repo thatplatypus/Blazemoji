@@ -123,6 +123,19 @@ namespace Blazemoji.Test.State
         }
 
         [Fact]
+        public async Task The_programs_input_is_closed_at_once_because_the_page_cannot_supply_any()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+
+            var running = state.RunAsync(Code);
+            _run.Exit();
+            await running;
+
+            _run.Input.ShouldBe([(string.Empty, true)]);
+        }
+
+        [Fact]
         public async Task Stderr_text_becomes_stderr_lines()
         {
             CompileSucceeds();
@@ -431,6 +444,8 @@ namespace Blazemoji.Test.State
             }
 
             public Task StopAsync() => Task.CompletedTask;
+
+            public Task WriteInputAsync(string text, bool endOfInput = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
             public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         }

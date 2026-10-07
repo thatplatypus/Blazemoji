@@ -16,21 +16,37 @@ namespace Blazemoji.Test.State
 
         public bool Disposed { get; private set; }
 
+        public List<(string Text, bool EndOfInput)> Input { get; } = [];
+
+        public bool Ended { get; private set; }
+
         public void Emit(RunEvent runEvent) => _events.Writer.TryWrite(runEvent).ShouldBeTrue();
 
         public void Exit(int? exitCode = 0, RunEndReason reason = RunEndReason.Exited)
         {
             Emit(new ExitEvent(exitCode, reason, TimeSpan.FromMilliseconds(120)));
             _events.Writer.Complete();
+            Ended = true;
         }
 
         public IAsyncEnumerable<RunEvent> ReadEventsAsync(CancellationToken cancellationToken = default) =>
             _events.Reader.ReadAllAsync(cancellationToken);
 
+        public Task WriteInputAsync(string text, bool endOfInput = false, CancellationToken cancellationToken = default)
+        {
+            if (Ended)
+                throw new InvalidOperationException("The run has ended.");
+
+            Input.Add((text, endOfInput));
+            return Task.CompletedTask;
+        }
+
         public Task StopAsync()
         {
             StopCalls++;
-            Exit(137, RunEndReason.Stopped);
+            if (!Ended)
+                Exit(137, RunEndReason.Stopped);
+
             return Task.CompletedTask;
         }
 

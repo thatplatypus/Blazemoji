@@ -19,6 +19,9 @@ namespace Blazemoji.Toolchain
 
         private const int SigKill = 9;
 
+        // A byte-order mark written ahead of the first input would reach the program as data.
+        private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
+
         /// <summary>
         /// Runs a short-lived process to completion and collects its output.
         /// </summary>
@@ -64,8 +67,9 @@ namespace Blazemoji.Toolchain
                 WorkingDirectory = workingDirectory,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                // Redirected so that the child never reads the server's own stdin. Callers close it.
+                // Redirected so that the child never reads the server's own stdin.
                 RedirectStandardInput = true,
+                StandardInputEncoding = Utf8WithoutBom,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 StandardOutputEncoding = Encoding.UTF8,

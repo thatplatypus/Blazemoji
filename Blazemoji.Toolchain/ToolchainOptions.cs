@@ -26,6 +26,23 @@ namespace Blazemoji.Toolchain
         public long MaxOutputBytes { get; set; } = 4 * 1024 * 1024;
 
         /// <summary>
+        /// Processor time one run may use, in seconds. Applied with prlimit where it exists.
+        /// </summary>
+        public int CpuSeconds { get; set; } = 20;
+
+        /// <summary>
+        /// Address space one run may map.
+        /// </summary>
+        public long MemoryBytes { get; set; } = 1024L * 1024 * 1024;
+
+        /// <summary>
+        /// Largest file one run may write.
+        /// </summary>
+        public long MaxFileBytes { get; set; } = 16L * 1024 * 1024;
+
+        public int MaxOpenFiles { get; set; } = 256;
+
+        /// <summary>
         /// Builds that were never released are deleted once they are older than this.
         /// </summary>
         public TimeSpan BuildLifetime { get; set; } = TimeSpan.FromMinutes(10);

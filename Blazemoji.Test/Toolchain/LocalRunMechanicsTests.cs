@@ -339,6 +339,63 @@ namespace Blazemoji.Test.Toolchain
         }
 
         [Fact]
+        public async Task Text_written_to_standard_input_reaches_the_program()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create();
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "read line; echo \"got $line\"");
+
+            await using var run = await toolchain.StartRunAsync(new RunRequest(buildId), Cancellation);
+            await run.WriteInputAsync("hello\n", cancellationToken: Cancellation);
+            var finished = await run.RunToEndAsync(Cancellation);
+
+            finished.Stdout.ShouldBe("got hello\n");
+        }
+
+        [Fact]
+        public async Task Ending_the_input_lets_a_program_that_reads_everything_finish()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create();
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "cat");
+
+            await using var run = await toolchain.StartRunAsync(new RunRequest(buildId), Cancellation);
+            await run.WriteInputAsync("first\n", cancellationToken: Cancellation);
+            await run.WriteInputAsync("second\n", endOfInput: true, Cancellation);
+            var finished = await run.RunToEndAsync(Cancellation);
+
+            finished.Stdout.ShouldBe("first\nsecond\n");
+            finished.Exit.ExitCode.ShouldBe(0);
+        }
+
+        [Fact]
+        public async Task Writing_after_the_input_is_closed_or_the_run_has_ended_is_refused()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create();
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "cat");
+            await using var run = await toolchain.StartRunAsync(new RunRequest(buildId), Cancellation);
+            await run.WriteInputAsync(string.Empty, endOfInput: true, Cancellation);
+
+            await Should.ThrowAsync<InvalidOperationException>(() => run.WriteInputAsync("late\n", cancellationToken: Cancellation));
+
+            await run.RunToEndAsync(Cancellation);
+            await Should.ThrowAsync<InvalidOperationException>(() => run.WriteInputAsync("later\n", cancellationToken: Cancellation));
+        }
+
+        [Fact]
+        public async Task The_toolchain_knows_which_builds_exist()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            await using var toolchain = ToolchainFixture.Create();
+            var buildId = ToolchainFixture.ScriptBuild(toolchain, "true");
+
+            toolchain.HasBuild(buildId).ShouldBeTrue();
+            toolchain.HasBuild("0123456789abcdef0123456789abcdef").ShouldBeFalse();
+            toolchain.HasBuild("../../etc").ShouldBeFalse();
+        }
+
+        [Fact]
         public async Task A_second_reader_is_refused()
         {
             Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
