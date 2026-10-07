@@ -19,3 +19,19 @@ RUN dotnet build Blazemoji.sln -c $BUILD_CONFIGURATION --no-restore
 
 FROM build AS test
 RUN dotnet test --solution Blazemoji.sln -c $BUILD_CONFIGURATION --no-build
+
+FROM build AS publish
+RUN dotnet publish Blazemoji/Blazemoji.csproj -c $BUILD_CONFIGURATION --no-build -o /app/publish /p:UseAppHost=false
+# Without this file the page renders but never becomes interactive.
+RUN test -f /app/publish/wwwroot/_framework/blazor.server.js
+
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+COPY docker/install-toolchain-deps.sh /tmp/install-toolchain-deps.sh
+RUN /tmp/install-toolchain-deps.sh
+# The runner still writes its compiled binary into the working directory, so the
+# app user has to own /app. Phase 1 moves that output to a per-run temp directory.
+USER $APP_UID
+WORKDIR /app
+COPY --from=publish --chown=$APP_UID /app/publish .
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "Blazemoji.dll"]

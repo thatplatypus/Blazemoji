@@ -7,6 +7,10 @@
     <UserSecretsId>61e20a36-a065-4170-94c7-4feac9405451</UserSecretsId>
     <PublishAot>False</PublishAot>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <!-- In .NET 10 the Blazor framework scripts come from a NuGet package that the SDK only
+         references when it sees .razor files at restore time. The Dockerfile restores before it
+         copies the sources, so the requirement is stated here. -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
 
   <ItemGroup>
