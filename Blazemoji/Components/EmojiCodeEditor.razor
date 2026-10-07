@@ -202,6 +202,15 @@
         return await _editor.GetValue();
     }
 
+    /// <summary>
+    /// The text of one file, read from that file's own model. Asking the editor instead
+    /// answers with whichever file it happens to be showing, which for a moment after a
+    /// switch is the previous one.
+    /// </summary>
+    /// <returns>Null for a file the editor has no model for.</returns>
+    public async Task<string?> GetCodeAsync(string key) =>
+        _models.TryGetValue(key, out var model) ? await model.GetValue(EndOfLinePreference.TextDefined, false) : null;
+
     public async Task SetCodeAsync(string code)
     {
         await _editor.SetValue(code);
@@ -239,8 +248,12 @@
             });
         }
 
-        foreach (var (key, model) in _models)
-            await Global.SetModelMarkers(_jsRuntime, model, MarkerOwner, markersByKey.GetValueOrDefault(key) ?? []);
+        // A file can be opened or closed while these calls are on their way.
+        foreach (var (key, model) in _models.ToList())
+        {
+            if (_models.ContainsKey(key))
+                await Global.SetModelMarkers(_jsRuntime, model, MarkerOwner, markersByKey.GetValueOrDefault(key) ?? []);
+        }
     }
 
     public async Task RevealAsync(int line, int column)
