@@ -1,0 +1,24 @@
+# Builds the whole app's image inside an Azure Container Registry, and pushes it there if
+# asked. scripts/deploy-azure.sh --in-azure runs this against the source as GitHub has it,
+# so that nothing but these few lines has to be sent from the machine that asks.
+#
+# Values, given with --set: image, tag, commit, and push ("yes" to push what was built).
+version: v1.1.0
+steps:
+  # The registry's builder stops at a FROM line that names a platform ("unable to understand
+  # line FROM --platform=..."). The Dockerfile names one on each base image so that a plain
+  # build on an Apple machine still comes out as x86-64. The registry builds on x86-64 and
+  # is told the platform besides, so it builds from a copy without them. The copy's name is
+  # one that .dockerignore lets through, which "Dockerfile" is not.
+  - cmd: bash -c "sed 's|^FROM --platform=linux/amd64 |FROM |' Blazemoji/Dockerfile > registry.dockerfile"
+
+  # Left to itself the registry uses Docker's older builder, which builds every stage, the
+  # one that runs the tests included, and does not hand a build argument on to the stages
+  # after the one that declares it. BuildKit is what the Dockerfile is written for.
+  - build: --platform linux/amd64 -f registry.dockerfile -t $Registry/{{.Values.image}}:{{.Values.tag}} -t $Registry/{{.Values.image}}:{{.Values.commit}} .
+    env: ["DOCKER_BUILDKIT=1"]
+{{ if eq .Values.push "yes" }}
+  - push:
+      - $Registry/{{.Values.image}}:{{.Values.tag}}
+      - $Registry/{{.Values.image}}:{{.Values.commit}}
+{{ end }}
