@@ -40,6 +40,9 @@ COPY Blazemoji.Test/ Blazemoji.Test/
 RUN dotnet build Blazemoji.Test/Blazemoji.Test.csproj -c $BUILD_CONFIGURATION --no-restore
 
 FROM build AS test
+# The tests about hosting read the guide, and find the repository by its solution file.
+COPY Blazemoji.sln ./
+COPY docs/ docs/
 # A skipped test here means the compiler tests did not run, and a hung test must fail the
 # build instead of blocking it, so both are turned into failures. The tests that start
 # processes run apart from the rest, and each run has an outer timeout, because under amd64
