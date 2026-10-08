@@ -4,8 +4,15 @@
 # Registry that the site's App Service takes its image from.
 #
 #   scripts/deploy-azure.sh --registry <name> [--image blazemoji] [--tag latest]
+#                           [--point <web app> <resource group>]
 #                           [--restart <web app> <resource group>]
 #                           [--in-azure] [--with-grapevine] [--build-only] [--yes]
+#
+# An App Service runs the image its settings name, tag and all. One that names a tag which
+# moves, such as "latest", takes a new image when it restarts (--restart). One that names a
+# fixed tag, as a publish from Visual Studio leaves it, goes on running that image whatever
+# is pushed: --point sets it to the image this script has just pushed under its commit, and
+# says what it was running before and how to go back.
 #
 # --in-azure has the registry build the image itself (docker/registry-build.yaml), from the
 # source as GitHub has it at this commit. Nothing is uploaded from this machine but a few
@@ -30,6 +37,8 @@ image="blazemoji"
 tag="latest"
 web_app=""
 resource_group=""
+point_app=""
+point_group=""
 with_grapevine=0
 build_only=0
 in_azure=0
@@ -41,11 +50,12 @@ while [ $# -gt 0 ]; do
     --image) image="$2"; shift 2 ;;
     --tag) tag="$2"; shift 2 ;;
     --restart) web_app="$2"; resource_group="$3"; shift 3 ;;
+    --point) point_app="$2"; point_group="$3"; shift 3 ;;
     --with-grapevine) with_grapevine=1; shift ;;
     --build-only) build_only=1; shift ;;
     --in-azure) in_azure=1; shift ;;
     --yes) asked=0; shift ;;
-    *) echo "Unknown argument: $1" >&2; sed -n '6,8p' "$0" >&2; exit 2 ;;
+    *) echo "Unknown argument: $1" >&2; grep -A3 '^#   scripts/deploy-azure.sh' "$0" >&2; exit 2 ;;
   esac
 done
 
@@ -72,13 +82,25 @@ confirm() {
   echo
   echo "About to $1 $name:$tag (commit $commit) as $(az account show --query user.name -o tsv)"
   echo "in the subscription \"$(az account show --query name -o tsv)\"."
-  echo "If the App Service follows that tag, the public site changes when this is done."
+  if [ -n "$point_app" ]; then
+    echo "The App Service $point_app will then be set to run it: the public site changes."
+  else
+    echo "If the App Service follows that tag, the public site changes when this is done."
+  fi
   printf "Go ahead? [y/N] "
   read -r answer
   case "$answer" in
     y | Y | yes) ;;
     *) echo "Nothing was pushed."; exit 1 ;;
   esac
+}
+
+point_if_asked() {
+  [ -n "$point_app" ] || return 0
+  was="$(az webapp config show --name "$point_app" --resource-group "$point_group" --query linuxFxVersion -o tsv)"
+  az webapp config set --name "$point_app" --resource-group "$point_group" --linux-fx-version "DOCKER|$name:$commit" --output none
+  echo "$point_app is now set to run $name:$commit. It was running ${was#DOCKER|}."
+  echo "To go back: az webapp config set --name $point_app --resource-group $point_group --linux-fx-version \"$was\""
 }
 
 restart_if_asked() {
@@ -115,6 +137,7 @@ if [ "$in_azure" -eq 1 ]; then
     exit 0
   fi
 
+  point_if_asked
   restart_if_asked
   echo "Built in the registry and pushed as $name:$tag and $name:$commit."
   exit 0
@@ -143,6 +166,7 @@ confirm "push"
 az acr login --name "$registry"
 docker push "$name:$commit"
 docker push "$name:$tag"
+point_if_asked
 restart_if_asked
 
 echo "Pushed $name:$tag and $name:$commit."
