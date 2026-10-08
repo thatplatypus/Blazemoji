@@ -1,4 +1,5 @@
 @using Blazemoji.Components.EmojiPicker
+@using Blazemoji.Shared
 @using Blazemoji.Services
 @using Blazemoji.Toolchain
 @using System.Text.Json
@@ -69,14 +70,16 @@
     private string _compiledProjectId = string.Empty;
     private Diagnostic? _problemToReveal;
 
-    // Everything that drives the editor or reads from it takes a turn here. Each step is a
-    // round trip to the browser, and a second click or render can arrive between two of them.
-    private readonly SemaphoreSlim _editorTurn = new(1, 1);
+    // Bringing the editor into line is several round trips to the browser, and another
+    // render can arrive between two of them. A second pass beside the first would act on a
+    // half-switched editor, so a render that arrives during a pass asks for one more.
+    private OnePassAtATime _editorInLine = default!;
 
     private bool IsIdle => _runState.Status == RunStatus.Idle;
 
     protected override void OnInitialized()
     {
+        _editorInLine = new OnePassAtATime(BringEditorInLineAsync);
         _runState.StateChanged += OnRunStateChanged;
         _runState.DiagnosticsChanged += OnDiagnosticsChanged;
         _projectState.StateChanged += OnProjectChanged;
@@ -117,19 +120,7 @@
         if (!_editorReady)
             return;
 
-        await _editorTurn.WaitAsync();
-        try
-        {
-            await BringEditorInLineAsync();
-        }
-        finally
-        {
-            // SPIKE ONLY. Hermes (1.2.0 and 1.4.1 alike) runs a posted continuation at once when it is already on the
-            // window's thread, so the next holder would run inside this Release and its own
-            // Release would then be overwritten: the lock ends up taken with nobody holding it.
-            // Releasing from another thread makes Hermes queue the continuation instead.
-            ThreadPool.QueueUserWorkItem(_ => _editorTurn.Release());
-        }
+        await _editorInLine.RunAsync();
     }
 
     /// <summary>
@@ -188,26 +179,18 @@
     /// </summary>
     private async Task SyncOpenFileAsync()
     {
-        if (!_editorReady)
+        if (!_editorReady || _shown is not { } shown || shown.ProjectId != _projectState.Current.Id)
             return;
 
-        await _editorTurn.WaitAsync();
-        try
-        {
-            if (_shown is not { } shown || shown.ProjectId != _projectState.Current.Id)
-                return;
+        // Read from the file's own model, which is the same whatever the editor is in the
+        // middle of showing, so this takes no turn and waits for nothing.
+        if (await _editor.GetCodeAsync(Key(shown.ProjectId, shown.Path)) is not { } text)
+            return;
 
-            if (await _editor.GetCodeAsync(Key(shown.ProjectId, shown.Path)) is { } text)
-                await _projectState.UpdateContentAsync(shown.Path, text);
-        }
-        finally
-        {
-            // SPIKE ONLY. Hermes (1.2.0 and 1.4.1 alike) runs a posted continuation at once when it is already on the
-            // window's thread, so the next holder would run inside this Release and its own
-            // Release would then be overwritten: the lock ends up taken with nobody holding it.
-            // Releasing from another thread makes Hermes queue the continuation instead.
-            ThreadPool.QueueUserWorkItem(_ => _editorTurn.Release());
-        }
+        // Another project may have been opened while the browser was answering, and it can
+        // have a file of the same name.
+        if (shown.ProjectId == _projectState.Current.Id)
+            await _projectState.UpdateContentAsync(shown.Path, text);
     }
 
     protected async Task RunEmojiCodeClicked()

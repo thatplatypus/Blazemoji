@@ -37,6 +37,22 @@ namespace Blazemoji.Emojicode.Editing
         /// <summary>True for text that <see cref="For(string, TextAroundCursor)"/> may type differently from place to place.</summary>
         public static bool DependsOnWhatIsAround(string typed) => _halves.Contains(typed);
 
+        /// <summary>
+        /// What is typed where nothing around the cursor matters: the text, with the cursor
+        /// after it. The one exception is the key that types both marks of a block comment,
+        /// which leaves the cursor after the first, where the comment is written.
+        /// </summary>
+        public static TypingEdit For(string typed)
+        {
+            var open = EmojicodePairs.BlockComment.Open;
+            var close = EmojicodePairs.BlockComment.Close;
+            var bothMarks = typed.Length > open.Length + close.Length
+                && typed.StartsWith(open, StringComparison.Ordinal)
+                && typed.EndsWith(close, StringComparison.Ordinal);
+
+            return bothMarks ? new TypingEdit(0, 0, typed, open.Length, open.Length) : TypingEdit.Plain(typed);
+        }
+
         public static TypingEdit For(string typed, TextAroundCursor around) =>
             For(typed, around, SourceReader.ContextAtEnd(around.Before));
 
@@ -47,18 +63,18 @@ namespace Blazemoji.Emojicode.Editing
 
             if (context == TextContext.String)
             {
-                var endsTheString = typed == EmojicodePairs.String.Close && !around.Before.EndsWith(EmojicodePairs.Escape, StringComparison.Ordinal);
-                return endsTheString && nothingSelected && StartsWith(around.After, typed) ? StepOver(typed) : TypingEdit.Plain(typed);
+                var endsTheString = typed == EmojicodePairs.String.Close && !EndsEscaping(around.Before);
+                return endsTheString && nothingSelected && StartsWith(around.After, typed) ? StepOver(typed) : For(typed);
             }
 
             if (context == TextContext.Comment)
-                return TypingEdit.Plain(typed);
+                return For(typed);
 
             var opened = EmojicodePairs.Completed.FirstOrDefault(pair => pair.Open == typed);
             if (!nothingSelected)
             {
                 return opened is null
-                    ? TypingEdit.Plain(typed)
+                    ? For(typed)
                     : new TypingEdit(0, 0, opened.Open + around.Selected + opened.Close, opened.Open.Length, opened.Open.Length + around.Selected.Length);
             }
 
@@ -70,19 +86,33 @@ namespace Blazemoji.Emojicode.Editing
             {
                 return CouldFollowACloser(around.After)
                     ? new TypingEdit(0, 0, opened.Open + opened.Close, opened.Open.Length, opened.Open.Length)
-                    : TypingEdit.Plain(typed);
+                    : For(typed);
             }
 
             if (typed == EmojicodePairs.Block.Close && LinedUpWithItsOpener(around.Before) is { } linedUp)
                 return linedUp;
 
-            return TypingEdit.Plain(typed);
+            return For(typed);
         }
 
         // Replacing the closer with itself moves the cursor past it and leaves the text as it is.
         private static TypingEdit StepOver(string closer) => new(0, closer.Length, closer, closer.Length, closer.Length);
 
         private static bool StartsWith(string text, string start) => text.StartsWith(start, StringComparison.Ordinal);
+
+        /// <summary>
+        /// True when the text ends with an odd number of ❌: the character typed next is escaped.
+        /// Two of them are one ❌ written out, and escape nothing.
+        /// </summary>
+        private static bool EndsEscaping(string text)
+        {
+            var escape = EmojicodePairs.Escape;
+            var marks = 0;
+            for (var at = text.Length - escape.Length; at >= 0 && string.CompareOrdinal(text, at, escape, 0, escape.Length) == 0; at -= escape.Length)
+                marks++;
+
+            return marks % 2 == 1;
+        }
 
         private static bool CouldFollowACloser(string after) =>
             after.Length == 0

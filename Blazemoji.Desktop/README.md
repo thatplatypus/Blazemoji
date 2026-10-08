@@ -2,7 +2,8 @@
 
 A throwaway Hermes window around the editor, to find out what `Blazemoji.Components` needs
 from a desktop host. It is not for merging: it borrows source files from the web host by
-link, and `Workspace.razor` on this branch carries a workaround marked `SPIKE ONLY`.
+link. The libraries on this branch are as they are on `workspace-editor-turns`, with no
+workaround in them.
 
 It targets .NET 10 with Hermes.Blazor pinned at 1.2.0, the last release built for .NET 10
 (1.3.0 and later are .NET 11 only), so it builds with the repository's own SDK.
@@ -25,4 +26,5 @@ when it has.
 `BLAZEMOJI_SPIKE_LOCK_REPORT=/some/file.txt` runs `LockRepro.razor` and writes its lines to
 that file: one `SemaphoreSlim` and two callers on the window's thread, with nothing of
 Blazemoji in it, and then `Task.Yield`. It shows the lock left taken with nobody holding it
-when the second caller has nothing to wait for.
+when the second caller has nothing to wait for. Blazemoji's workspace used to do exactly
+that on every render, and no longer takes a lock there.
