@@ -17,9 +17,9 @@
     public string? Icon { get; set; }
 
     /// <summary>
-    /// A number shown after the tab's name when it is above zero. A tab given a count, even a
-    /// count of zero, keeps room for it, so the tabs after it stay where they are when the
-    /// number arrives. Null for a tab that never counts anything.
+    /// A number shown after the tab's name when it is above zero. It takes room in the tab
+    /// only while it is shown. The tabs share the strip evenly, so the others stay where
+    /// they are when it arrives. Null for a tab that never counts anything.
     /// </summary>
     [Parameter]
     public int? Count { get; set; }

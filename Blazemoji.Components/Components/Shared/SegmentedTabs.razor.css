@@ -24,7 +24,8 @@
 }
 
 /* Tabs share the strip evenly. A name too long for its share is cut short, so a tab never
-   pushes its neighbours or wraps the strip taller. */
+   pushes its neighbours or wraps the strip taller. What is in a tab is centred, so the room
+   at its two ends is there to be used before the name is cut. */
 .segmented-tab {
     flex: 1 1 0;
     min-width: 0;
@@ -33,7 +34,7 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding: 4px 10px;
+    padding: 4px;
     border: 0;
     border-radius: calc(var(--mud-default-borderradius) * 0.7);
     background-color: transparent;
@@ -78,11 +79,18 @@
     display: inline-flex;
 }
 
-/* Where a tab's count is drawn: wide enough for three digits, and there whether or not there is a number. */
+/* Where a tab's count is drawn. It holds the number itself, unseen and set as the badge
+   sets it, so the place is as wide as the badge laid over it and no wider. */
 .segmented-tab-count-place {
     display: inline-block;
-    width: 28px;
+    box-sizing: border-box;
+    min-width: 20px;
     height: 20px;
+    padding: 0 6px;
+    font-size: 12px;
+    line-height: 20px;
+    letter-spacing: 0;
+    visibility: hidden;
 }
 
 .segmented-tabs-panel {

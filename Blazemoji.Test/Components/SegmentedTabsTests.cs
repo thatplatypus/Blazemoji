@@ -160,14 +160,32 @@ namespace Blazemoji.Test.Components
         }
 
         [Fact]
-        public void A_count_of_nothing_shows_no_number_but_keeps_its_place_so_that_nothing_moves_when_one_arrives()
+        public void A_count_of_nothing_shows_no_number_and_takes_no_room_from_the_name()
         {
             var none = RenderThree(problems: 0);
             var some = RenderThree(problems: 2);
 
             none.FindAll("[role=tab]")[1].QuerySelector(".mud-badge").ShouldBeNull();
-            none.FindAll("[role=tab]")[1].QuerySelector(".segmented-tab-count").ShouldNotBeNull();
+            none.FindAll("[role=tab]")[1].QuerySelector(".segmented-tab-count").ShouldBeNull();
             some.FindAll("[role=tab]")[1].QuerySelector(".segmented-tab-count").ShouldNotBeNull();
+        }
+
+        [Theory]
+        [InlineData(3, "3")]
+        [InlineData(42, "42")]
+        [InlineData(250, "99+")]
+        public void A_count_takes_the_room_its_number_needs_and_no_more(int problems, string written)
+        {
+            var count = RenderThree(problems: problems).FindAll("[role=tab]")[1].QuerySelector(".segmented-tab-count")!;
+
+            count.QuerySelector(".segmented-tab-count-place")!.TextContent.ShouldBe(written);
+            count.QuerySelector(".mud-badge")!.TextContent.Trim().ShouldBe(written);
+        }
+
+        [Fact]
+        public void A_tab_is_still_called_by_its_name_alone_when_it_has_a_count()
+        {
+            RenderThree(problems: 12).FindAll("[role=tab]")[1].QuerySelector(".segmented-tab-text")!.TextContent.ShouldBe("Problems");
         }
 
         [Fact]
