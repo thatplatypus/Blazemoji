@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blazemoji</title>
+    <base href="/" />
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    <link href="_content/Blazemoji.Components/blazemoji.css" rel="stylesheet" />
+    <link href="Blazemoji.Desktop.styles.css" rel="stylesheet" />
+</head>
+<body>
+    <div id="app"></div>
+
+    <script src="_content/BlazorMonaco/jsInterop.js"></script>
+    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
+    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <!-- Blazor asks Monaco to create the editor on its first render, and Monaco defines itself
+         a little after its scripts have run. So Blazor is started from Monaco's ready callback
+         and not by itself. If Monaco cannot be loaded at all, Blazor still starts, so that the
+         window says so instead of sitting empty. -->
+    <script src="_framework/blazor.webview.js" autostart="false"></script>
+    <script>
+        require(['vs/editor/editor.main'], function () { Blazor.start(); }, function () { Blazor.start(); });
+    </script>
+</body>
+</html>

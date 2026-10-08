@@ -56,5 +56,27 @@ namespace Blazemoji
 
             return services;
         }
+
+        /// <summary>
+        /// For a host with a disk of its own: projects as folders, and what is saved from the
+        /// editor as files beside them, under <see cref="FileProjectStoreOptions.Root"/>. One
+        /// of each for the life of the app, since each remembers what it last read and wrote.
+        /// </summary>
+        /// <param name="configuration">
+        /// Where <see cref="FileProjectStoreOptions"/> is read from, under
+        /// <see cref="FileProjectStoreOptions.SectionName"/>. Without it the defaults apply.
+        /// </param>
+        public static IServiceCollection AddBlazemojiProjectsOnDisk(this IServiceCollection services, IConfiguration? configuration = null)
+        {
+            services.AddOptions();
+            if (configuration is not null)
+                services.Configure<FileProjectStoreOptions>(configuration.GetSection(FileProjectStoreOptions.SectionName));
+
+            services.TryAddSingleton(TimeProvider.System);
+            services.AddSingleton<IProjectStore, FileProjectStore>();
+            services.AddSingleton<ILibraryService, FileLibraryService>();
+
+            return services;
+        }
     }
 }

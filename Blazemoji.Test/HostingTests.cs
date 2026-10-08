@@ -220,6 +220,26 @@ namespace Blazemoji.Test
         }
 
         [Fact]
+        public void A_host_that_keeps_projects_on_disk_gets_both_stores_from_one_call_and_their_folder_from_configuration()
+        {
+            Document().ShouldContain($"\"{FileProjectStoreOptions.SectionName}\"");
+            var services = new ServiceCollection();
+            services.AddBlazemojiProjectsOnDisk(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { [FileProjectStoreOptions.SectionName + ":Root"] = "/somewhere/else" })
+                .Build());
+            services.AddBlazemojiEditor();
+            using var provider = services.BuildServiceProvider(validateScopes: true);
+            using var one = provider.CreateScope();
+            using var two = provider.CreateScope();
+
+            provider.GetRequiredService<IOptions<FileProjectStoreOptions>>().Value.Root.ShouldBe("/somewhere/else");
+            one.ServiceProvider.GetRequiredService<IProjectStore>().ShouldBeOfType<FileProjectStore>();
+            one.ServiceProvider.GetRequiredService<ILibraryService>().ShouldBeOfType<FileLibraryService>();
+            one.ServiceProvider.GetRequiredService<IProjectStore>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<IProjectStore>());
+            one.ServiceProvider.GetRequiredService<ProjectState>().ShouldNotBeNull();
+        }
+
+        [Fact]
         public void What_a_host_registers_before_the_editors_call_is_kept()
         {
             var templates = Substitute.For<IProjectTemplates>();

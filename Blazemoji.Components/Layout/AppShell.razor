@@ -1,0 +1,74 @@
+@namespace Blazemoji.Layout
+@using Blazemoji.Services
+@using Microsoft.Extensions.DependencyInjection
+@inject IServiceProvider Services
+
+@* What every host draws around the editor: the title bar, Blazemoji's theme and MudBlazor's
+   providers. The editor inside is told when the page goes dark or light. *@
+<MudLayout>
+    <MudAppBar Elevation="0" Class="border-b border-solid mud-border-lines-default">
+        <MudText Typo="Typo.h4">🔥 Blazemoji</MudText>
+        <MudSpacer />
+        <MudTooltip Text="@(_isDarkMode ? "Light Mode" : "Dark Mode")">
+            <MudIconButton Icon="@(_isDarkMode ? BlazemojiIcons.LightMode : BlazemojiIcons.DarkMode)" Color="Color.Inherit" OnClick="ToggleDarkMode" data-testid="dark-mode-toggle" />
+        </MudTooltip>
+        <MudTooltip Text="Emojicode Documentation">
+            @if (_links is null)
+            {
+                <MudIconButton Href="@BlazemojiLinks.EmojicodeDocumentation" Target="_blank" Icon="@BlazemojiIcons.Documentation" Color="Color.Inherit" data-testid="documentation-link" />
+            }
+            else
+            {
+                <MudIconButton OnClick="@(() => _links.OpenAsync(BlazemojiLinks.EmojicodeDocumentation))" Icon="@BlazemojiIcons.Documentation" Color="Color.Inherit" data-testid="documentation-link" />
+            }
+        </MudTooltip>
+        <MudTooltip Text="GitHub">
+            @if (_links is null)
+            {
+                <MudIconButton Href="@BlazemojiLinks.Repository" Target="_blank" Icon="@BlazemojiIcons.GitHub" Color="Color.Inherit" data-testid="repository-link" />
+            }
+            else
+            {
+                <MudIconButton OnClick="@(() => _links.OpenAsync(BlazemojiLinks.Repository))" Icon="@BlazemojiIcons.GitHub" Color="Color.Inherit" data-testid="repository-link" />
+            }
+        </MudTooltip>
+    </MudAppBar>
+    <MudMainContent>
+        <CascadingValue Name="DarkMode" Value="@_isDarkMode">
+            @ChildContent
+        </CascadingValue>
+    </MudMainContent>
+</MudLayout>
+
+<MudThemeProvider @ref="_mudThemeProvider" @bind-IsDarkMode="@_isDarkMode" Theme="_theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+@code {
+    private readonly MudTheme _theme = new Theme();
+    private bool _isDarkMode;
+    private MudThemeProvider _mudThemeProvider = default!;
+    private IExternalLinks? _links;
+
+    [Parameter, EditorRequired]
+    public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // Only a host that needs one registers one, so it cannot be asked for with [Inject].
+        _links = Services.GetService<IExternalLinks>();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && await _mudThemeProvider.GetSystemDarkModeAsync())
+        {
+            _isDarkMode = true;
+            StateHasChanged();
+        }
+    }
+
+    // The editor is inside the cascading value above and takes its colours from the page.
+    private void ToggleDarkMode() => _isDarkMode = !_isDarkMode;
+}

@@ -1,0 +1,44 @@
+@using System.Diagnostics
+@using Blazemoji.Services.Projects
+@using Microsoft.Extensions.Options
+@inject SmokeSession Session
+@inject SmokeInterop Interop
+@inject IOptions<FileProjectStoreOptions> Projects
+
+@* On the page only for a smoke run. Has the page check itself once it is up, adds what only
+   this side can see, and hands the lot to the session, which reports it and closes the app. *@
+
+@code {
+    private const string PageChecks = "page-checks-ran";
+    private const string ProjectOnDisk = "project-is-a-folder-on-disk";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        var checks = new List<SmokeCheckOutcome>();
+        var timer = Stopwatch.StartNew();
+        try
+        {
+            checks.AddRange(await Interop.RunAsync(Session.AlsoCompile));
+        }
+        catch (Exception exception) when (exception is JSException or InvalidOperationException or TaskCanceledException)
+        {
+            checks.Add(new SmokeCheckOutcome(PageChecks, false, timer.ElapsedMilliseconds, exception.GetType().Name + ": " + exception.Message));
+        }
+
+        checks.Add(TheProjectIsOnDisk());
+        Session.Report(checks);
+    }
+
+    private SmokeCheckOutcome TheProjectIsOnDisk()
+    {
+        var timer = Stopwatch.StartNew();
+        var root = Projects.Value.Root;
+        var found = Directory.Exists(root)
+            && Directory.GetDirectories(root).Any(folder => File.Exists(Path.Combine(folder, FileProjectStore.DescriptionFile)));
+
+        return new SmokeCheckOutcome(ProjectOnDisk, found, timer.ElapsedMilliseconds, found ? null : "No project folder with a description was found under the projects folder.");
+    }
+}
