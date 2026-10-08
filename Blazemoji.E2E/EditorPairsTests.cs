@@ -235,7 +235,11 @@ namespace Blazemoji.E2E
             await using var editor = await EditorPage.OpenAsync(browser);
             await PutAsync(editor, "🏁 🍇\n  🍿 1 2 🍆 ➡️ numbers\n🍉", 1, 4);
 
-            await Assertions.Expect(editor.Page.Locator(".monaco-editor .bracket-match")).ToHaveCountAsync(2);
+            var shown = editor.Page.Locator(".monaco-editor .bracket-match");
+            await Assertions.Expect(shown).ToHaveCountAsync(2);
+
+            // A soft plate, not a hard box: its corners come from the theme's.
+            (await shown.First.EvaluateAsync<string>("mark => getComputedStyle(mark).borderTopLeftRadius")).ShouldNotBe("0px");
         }
 
         [Fact]

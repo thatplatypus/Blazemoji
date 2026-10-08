@@ -86,6 +86,21 @@ namespace Blazemoji.E2E
         }
 
         [Fact]
+        public async Task The_equals_key_types_the_arrow_that_assigns_and_a_plain_sign_inside_a_string()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await PutCursorAfterAsync(editor, "5 ");
+
+            await editor.Page.Keyboard.PressAsync("Equal");
+            (await LeftAfterAsync(editor, "5 ➡️")).ShouldBe("5 ➡️");
+
+            await PutCursorAfterAsync(editor, "😀 🔤a ");
+            await editor.Page.Keyboard.PressAsync("Equal");
+            (await LeftAfterAsync(editor, "😀 🔤a =")).ShouldBe("😀 🔤a =");
+        }
+
+        [Fact]
         public async Task The_exclamation_key_is_a_plain_mark_inside_a_string_and_the_emoji_outside()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);

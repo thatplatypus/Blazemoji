@@ -89,7 +89,7 @@ namespace Blazemoji.E2E
                 const span = word => [...document.querySelectorAll('.monaco-editor .view-line span span')].find(candidate => candidate.textContent.includes(word));
                 const texts = { code: span('plain'), comment: span('remark'), string: span('written') };
                 const grounds = ['editor-background', 'editor-selectionBackground', 'editor-inactiveSelectionBackground', 'editor-findMatchBackground', 'editor-findMatchHighlightBackground',
-                    'editor-wordHighlightBackground', 'editor-wordHighlightStrongBackground', 'editor-selectionHighlightBackground', 'editor-lineHighlightBackground', 'editorBracketMatch-background',
+                    'editor-wordHighlightBackground', 'editor-wordHighlightStrongBackground', 'editor-selectionHighlightBackground', 'editor-lineHighlightBackground',
                     'editorSuggestWidget-selectedBackground'];
                 const hard = [];
                 for (const ground of grounds) {

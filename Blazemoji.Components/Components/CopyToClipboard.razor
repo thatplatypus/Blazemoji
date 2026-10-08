@@ -1,24 +1,28 @@
 @using Blazemoji.Interop
 @inject ClipboardInterop _clipboard
 
-<MudIconButton title="Copy" Size="Size.Small" Icon="@BlazemojiIcons.Copy" OnClick="CopyToClipboardAsync"/>
+@* The text rides on the page, and the library's script copies it as the button is pressed:
+   see Scripts/clipboard.ts for why it cannot wait for the server. *@
+<span class="copy-to-clipboard" data-copy="@ClipboardValue">
+    <MudIconButton title="Copy" Size="Size.Small" Icon="@BlazemojiIcons.Copy" OnClick="ReportAsync" />
+</span>
 
 @code {
     [Parameter] public string ClipboardValue { get; set; } = "";
 
+    /// <summary>Raised when the browser has copied the text.</summary>
     [Parameter]
     public EventCallback CopiedToClipboard { get; set; }
 
-    protected async Task CopyToClipboardAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if(string.IsNullOrWhiteSpace(ClipboardValue))
-        {
-            await Task.CompletedTask;
-            return;
-        }
+        if (firstRender)
+            await _clipboard.ListenAsync();
+    }
 
-        await _clipboard.CopyAsync(ClipboardValue);
-
-        await CopiedToClipboard.InvokeAsync();
+    private async Task ReportAsync()
+    {
+        if (await _clipboard.LastCopySucceededAsync())
+            await CopiedToClipboard.InvokeAsync();
     }
 }

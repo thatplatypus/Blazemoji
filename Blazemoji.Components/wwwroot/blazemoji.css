@@ -45,6 +45,11 @@ button:disabled .emoji-icon {
     filter: invert(1);
 }
 
+/* The mark on the two halves of a pair is a soft plate with the theme's corners, not a box. */
+.monaco-editor .bracket-match {
+    border-radius: calc(var(--mud-default-borderradius) / 2);
+}
+
 /* The editor takes the theme's corners. Its own widgets sit outside the part that is clipped. */
 .monaco-editor,
 .monaco-editor .overflow-guard {

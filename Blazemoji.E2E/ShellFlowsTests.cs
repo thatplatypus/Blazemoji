@@ -130,6 +130,22 @@ namespace Blazemoji.E2E
         }
 
         [Fact]
+        public async Task The_panel_on_the_left_is_as_tall_as_the_one_on_the_right()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            var panels = editor.Page.Locator(".mud-grid > .mud-grid-item > .mud-paper");
+
+            var left = await panels.First.BoundingBoxAsync();
+            var right = await panels.Last.BoundingBoxAsync();
+
+            left.ShouldNotBeNull();
+            right.ShouldNotBeNull();
+            Math.Abs(left.Height - right.Height).ShouldBeLessThan(2);
+            Math.Abs(left.Y - right.Y).ShouldBeLessThan(2);
+        }
+
+        [Fact]
         public async Task Copy_in_the_toolbox_puts_the_emoji_on_the_clipboard()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
