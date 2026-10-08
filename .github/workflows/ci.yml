@@ -1,0 +1,127 @@
+# Checks every pull request, and main after a merge. Nothing here needs a secret.
+#
+# Each job runs a script that also runs on a developer's machine, so a failure here can be
+# had again at a desk: scripts/test-in-docker.sh, scripts/e2e.sh, scripts/desktop-smoke.sh.
+name: CI
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the run for the older one pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Unit, compiler and contract tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - name: Checkout
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+    # The Emojicode compiler is an x86_64 Linux program with libraries of its own to install,
+    # so the tests run in the image the Dockerfile makes for that. The script builds it, runs
+    # the unit and compiler tests in it with skipped tests counted as failures, then starts
+    # the toolchain service there and runs the contract tests against it.
+    - name: Run the tests with the real compiler
+      run: scripts/test-in-docker.sh
+
+  browser-tests:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - name: Checkout
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+    - name: Setup .NET (from global.json)
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      with:
+        global-json-file: global.json
+
+    # Builds the web and toolchain images, starts them as docker compose would, checks that
+    # the toolchain container has no route out, and drives the app in Chromium.
+    - name: Run the browser tests against the two containers
+      run: scripts/e2e.sh
+      env:
+        BLAZEMOJI_E2E_SCREENSHOTS: ${{ github.workspace }}/e2e-screenshots
+
+    - name: Keep the screenshots of a failed run
+      if: failure()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: e2e-screenshots
+        path: e2e-screenshots
+        retention-days: 7
+        if-no-files-found: ignore
+
+  desktop-smoke:
+    name: Desktop smoke (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macOS
+          - os: ubuntu-latest
+            platform: Linux
+          - os: windows-latest
+            platform: Windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+    - name: Checkout
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+    - name: Setup .NET (from global.json)
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      with:
+        global-json-file: global.json
+
+    - name: Cache NuGet packages
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json') }}
+        restore-keys: |
+          nuget-${{ runner.os }}-
+
+    # A build machine has no screen and no web view. Hermes draws with GTK and WebKitGTK on Linux.
+    - name: Install a display and a web view (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0 libwebkit2gtk-4.1-0 libnotify4
+
+    # Publishes the app as a release would be built (self-contained, one file), starts it,
+    # and has it check itself from inside its own window. There is no toolchain service on a
+    # build machine, so the check that compiles a program is left out; the tests above cover
+    # compiling.
+    - name: Publish the app and have it check itself
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" = Linux ]; then
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" scripts/desktop-smoke.sh --published
+        else
+          scripts/desktop-smoke.sh --published
+        fi
+      env:
+        SMOKE_OUTPUT: ${{ github.workspace }}/smoke-output
+
+    - name: Keep what the app said
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: smoke-output-${{ matrix.platform }}
+        path: smoke-output
+        retention-days: 7
+        if-no-files-found: ignore

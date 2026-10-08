@@ -14,7 +14,9 @@
 # what judges a Hermes app's smoke run can judge this one: the last line that starts with
 # HERMES_SMOKE_RESULT says PASSED or FAILED, and the exit code is 0 only for a pass.
 # SMOKE_TIMEOUT (seconds, 120) is how long the page has to report. An app that has not
-# closed a minute after that is stopped. Needs perl, which macOS and most Linux have.
+# closed a minute after that is stopped. SMOKE_OUTPUT names a folder to leave everything the
+# app said, and its result, in. Needs perl, which macOS, most Linux and Git for Windows have.
+# On Linux with no display, run it under xvfb-run.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -34,7 +36,7 @@ trap '[ "$keep" -eq 1 ] || rm -rf "$work"' EXIT
 limit="${SMOKE_TIMEOUT:-120}"
 
 if [ "$published" -eq 1 ]; then
-  rid="$(dotnet --info | awk '/^ *RID:/ { print $2; exit }')"
+  rid="$(dotnet --info | tr -d '\r' | awk '/^ *RID:/ { print $2; exit }')"
   echo "Publishing for $rid..."
   dotnet publish Blazemoji.Desktop/Blazemoji.Desktop.csproj -c Release -r "$rid" --self-contained \
     -p:PublishSingleFile=true -p:PublishTrimmed=false -o "$work/app" > "$work/build.log" 2>&1 \
@@ -45,6 +47,8 @@ else
     || { tail -30 "$work/build.log"; exit 1; }
   app="$(pwd)/Blazemoji.Desktop/bin/Debug/net10.0/Blazemoji.Desktop"
 fi
+
+[ -f "$app" ] || app="$app.exe"
 
 # Started from somewhere else on purpose: the app must find its own files wherever it is run from.
 # The app times itself out once it is up. The alarm is for one that hangs before that or
@@ -59,6 +63,12 @@ status=0
   BLAZEMOJI_SMOKE_PROJECTS="$work/projects" \
     perl -e 'alarm shift; exec @ARGV or die "could not start $ARGV[0]: $!\n"' "$((limit + 60))" "$app" > "$work/app.log" 2>&1
 ) || status=$?
+
+if [ -n "${SMOKE_OUTPUT:-}" ]; then
+  mkdir -p "$SMOKE_OUTPUT"
+  cp "$work/app.log" "$SMOKE_OUTPUT/" 2> /dev/null || true
+  cp "$work/result.json" "$SMOKE_OUTPUT/" 2> /dev/null || true
+fi
 
 grep '^HERMES_SMOKE_' "$work/app.log" || true
 if [ "$status" -ne 0 ] || ! grep -q '^HERMES_SMOKE_RESULT: PASSED' "$work/app.log"; then
