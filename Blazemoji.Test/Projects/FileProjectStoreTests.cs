@@ -384,6 +384,280 @@ namespace Blazemoji.Test.Projects
             }
         }
 
+        private static string[] NamesIn(string folder) =>
+            Directory.GetFileSystemEntries(folder).Select(entry => Path.GetFileName(entry)!).Where(name => name != ".blazemoji").Order(StringComparer.Ordinal).ToArray();
+
+        [Fact]
+        public async Task A_file_renamed_only_in_the_case_of_its_letters_is_still_there_under_its_new_name()
+        {
+            var store = CreateStore();
+            await store.SaveAsync(Todo);
+
+            await store.SaveAsync(Todo with { Entry = "app/Main.🍇", Files = [Todo.Files[0] with { Path = "app/Main.🍇" }, Todo.Files[1]] });
+
+            NamesIn(InRoot("Todo API", "app")).ShouldBe(["Main.🍇", "todos.🍇"]);
+            (await CreateStore().LoadAsync("abc123"))!.Find("app/Main.🍇")!.Content.ShouldBe("📦 grapevine 🏠\n🏁 🍇 🍉");
+        }
+
+        [Fact]
+        public async Task A_file_can_take_the_name_a_folder_had_and_a_folder_the_name_a_file_had()
+        {
+            var store = CreateStore();
+            await store.SaveAsync(Todo);
+
+            await store.SaveAsync(Todo with { Entry = "app", Files = [new ProjectFile("app", "now a file")] });
+            File.ReadAllText(InRoot("Todo API", "app")).ShouldBe("now a file");
+
+            await store.SaveAsync(Todo with { Entry = "app/main.🍇", Files = [new ProjectFile("app/main.🍇", "a folder again")] });
+            File.ReadAllText(InRoot("Todo API", "app", "main.🍇")).ShouldBe("a folder again");
+        }
+
+        [Fact]
+        public async Task A_file_that_is_not_text_and_is_where_a_new_file_goes_is_kept_in_the_trash()
+        {
+            var store = CreateStore();
+            await store.SaveAsync(Todo);
+            byte[] notUtf8 = [0x63, 0x61, 0x66, 0xE9];
+            File.WriteAllBytes(InRoot("Todo API", "notes.txt"), notUtf8);
+
+            await store.SaveAsync(Todo with { Files = [.. Todo.Files, new ProjectFile("notes.txt", "mine")] });
+
+            File.ReadAllText(InRoot("Todo API", "notes.txt")).ShouldBe("mine");
+            File.ReadAllBytes(InRoot(".blazemoji", "trash", "2026-10-07 213000 Todo API", "notes.txt")).ShouldBe(notUtf8);
+        }
+
+        [Fact]
+        public async Task Text_the_app_wrote_is_not_taken_for_something_elses_change_because_it_holds_an_odd_character()
+        {
+            var store = CreateStore();
+            await store.SaveAsync(Todo with { Files = [Todo.Files[0] with { Content = "a\0b" }, Todo.Files[1] with { Content = "\uFEFFstarts oddly" }] });
+
+            await store.SaveAsync(Todo with { Files = [Todo.Files[0] with { Content = "a\0c" }, Todo.Files[1] with { Content = "\uFEFFstill does" }] });
+
+            Trashed().ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task Looking_for_projects_from_two_places_at_once_finds_each_once_and_changes_nothing()
+        {
+            await CreateStore().SaveAsync(Todo);
+            await CreateStore().SaveAsync(Todo with { Id = "def456", Name = "Hello" });
+            var before = File.ReadAllText(InRoot("Hello", FileProjectStore.DescriptionFile));
+            var store = CreateStore();
+
+            var listing = store.ListAsync();
+            var again = store.ListAsync();
+            var loading = store.LoadAsync("abc123");
+            await Task.WhenAll(listing, again, loading);
+
+            (await listing).Select(project => project.Id).Order().ShouldBe(["abc123", "def456"]);
+            (await again).Select(project => project.Id).Order().ShouldBe(["abc123", "def456"]);
+            (await loading).ShouldNotBeNull();
+            File.ReadAllText(InRoot("Hello", FileProjectStore.DescriptionFile)).ShouldBe(before);
+        }
+
+        [Fact]
+        public async Task Saves_made_faster_than_the_disk_takes_them_land_in_the_order_they_were_made()
+        {
+            var store = CreateStore();
+            var large = new string('x', 400_000);
+
+            var saves = Enumerable.Range(1, 12)
+                .Select(turn => store.SaveAsync(Todo with { Files = [Todo.Files[0] with { Content = large + turn }, Todo.Files[1]] }))
+                .ToList();
+            await Task.WhenAll(saves);
+
+            File.ReadAllText(InRoot("Todo API", "app", "main.🍇")).ShouldBe(large + 12);
+            (await CreateStore().LoadAsync("abc123"))!.Find("app/main.🍇")!.Content.ShouldBe(large + 12);
+            Trashed().ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_save_still_on_its_way_when_the_project_is_deleted_does_not_bring_the_folder_back()
+        {
+            var store = CreateStore();
+            await store.SaveAsync(Todo);
+
+            var saving = store.SaveAsync(Todo with { Files = [Todo.Files[0] with { Content = new string('x', 400_000) }, Todo.Files[1]] });
+            var deleting = store.DeleteAsync("abc123");
+            await Task.WhenAll(saving, deleting);
+
+            Directory.Exists(InRoot("Todo API")).ShouldBeFalse();
+            (await CreateStore().ListAsync()).ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_project_is_never_given_the_folder_that_saved_snippets_are_kept_in()
+        {
+            var store = CreateStore();
+
+            await store.SaveAsync(Todo with { Name = "Snippets" });
+            await store.SaveAsync(Todo with { Id = "def456", Name = "snippets" });
+
+            NamesIn(_root).ShouldNotContain("Snippets");
+            NamesIn(_root).ShouldNotContain("snippets");
+            (await CreateStore().ListAsync()).Count.ShouldBe(2);
+        }
+
+        [Fact]
+        public async Task The_folder_that_saved_snippets_are_kept_in_is_never_taken_for_a_project()
+        {
+            await CreateStore().SaveAsync(Todo);
+            Directory.Move(InRoot("Todo API"), InRoot("Snippets"));
+
+            (await CreateStore().ListAsync()).ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_file_named_as_the_description_is_in_any_case_of_letters_never_takes_its_place()
+        {
+            var store = CreateStore();
+
+            await store.SaveAsync(Todo with { Files = [.. Todo.Files, new ProjectFile("Blazemoji.json", "not a description")] });
+            await store.SaveAsync(Todo with { Files = [.. Todo.Files, new ProjectFile("Blazemoji.json", "still not one")] });
+
+            (await CreateStore().LoadAsync("abc123"))!.Name.ShouldBe("Todo API");
+            File.ReadAllText(InRoot("Todo API", FileProjectStore.DescriptionFile)).ShouldContain("\"name\": \"Todo API\"");
+            Trashed().ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_file_and_a_folder_that_cannot_be_read_are_left_out_and_the_rest_of_the_project_opens()
+        {
+            await CreateStore().SaveAsync(Todo);
+            File.WriteAllText(InRoot("Todo API", "locked.🍇"), "cannot be read");
+            Directory.CreateDirectory(InRoot("Todo API", "shut"));
+            File.WriteAllText(InRoot("Todo API", "shut", "inside.🍇"), "cannot be reached");
+            File.SetUnixFileMode(InRoot("Todo API", "locked.🍇"), UnixFileMode.None);
+            File.SetUnixFileMode(InRoot("Todo API", "shut"), UnixFileMode.None);
+            try
+            {
+                var loaded = await CreateStore().LoadAsync("abc123");
+
+                loaded.ShouldNotBeNull();
+                loaded.Files.Select(file => file.Path).ShouldContain("app/main.🍇");
+                loaded.Files.Select(file => file.Path).ShouldContain("app/todos.🍇");
+                // Whoever runs the tests as root can read anything, and then these two are simply there.
+                if (!Environment.IsPrivilegedProcess)
+                    loaded.Files.Count.ShouldBe(2);
+            }
+            finally
+            {
+                File.SetUnixFileMode(InRoot("Todo API", "shut"), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+        }
+
+        [Fact]
+        public async Task A_name_the_disk_cannot_spell_is_reported_as_a_store_failure()
+        {
+            await Should.ThrowAsync<ProjectStoreException>(() => CreateStore().SaveAsync(Todo with { Name = "Half an emoji \uD83C" }));
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void A_root_that_was_set_to_nothing_is_the_usual_one(string root)
+        {
+            Should.NotThrow(() => CreateStore(root));
+        }
+
+        [Fact]
+        public async Task A_write_that_fails_leaves_nothing_of_its_own_behind()
+        {
+            var store = CreateStore();
+            await store.SaveAsync(Todo);
+            Directory.CreateDirectory(InRoot("Todo API", "taken"));
+            File.WriteAllBytes(InRoot("Todo API", "taken", "logo.png"), [0xFF, 0xFE]);
+
+            await Should.ThrowAsync<ProjectStoreException>(() => store.SaveAsync(Todo with { Files = [.. Todo.Files, new ProjectFile("taken", "a file where a folder is")] }));
+
+            Directory.GetFiles(InRoot("Todo API"), "*.tmp", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0 }).ShouldBeEmpty();
+            File.Exists(InRoot("Todo API", "taken", "logo.png")).ShouldBeTrue();
+        }
+
+        [Fact]
+        public async Task A_folder_that_is_a_link_to_somewhere_else_is_never_written_through()
+        {
+            var store = CreateStore();
+            await store.SaveAsync(Todo);
+            var elsewhere = _root + "-elsewhere";
+            Directory.CreateDirectory(elsewhere);
+            try
+            {
+                Directory.CreateSymbolicLink(InRoot("Todo API", "lib"), elsewhere);
+
+                await Should.ThrowAsync<ProjectStoreException>(() => store.SaveAsync(Todo with { Files = [.. Todo.Files, new ProjectFile("lib/x.🍇", "x")] }));
+
+                Directory.GetFileSystemEntries(elsewhere).ShouldBeEmpty();
+            }
+            finally
+            {
+                Directory.Delete(InRoot("Todo API", "lib"));
+                Directory.Delete(elsewhere, recursive: true);
+            }
+        }
+
+        [Fact]
+        public async Task A_file_that_is_a_link_to_somewhere_else_is_left_out_and_left_as_it_is()
+        {
+            await CreateStore().SaveAsync(Todo);
+            var elsewhere = _root + "-elsewhere.🍇";
+            File.WriteAllText(elsewhere, "someone else's");
+            try
+            {
+                File.CreateSymbolicLink(InRoot("Todo API", "linked.🍇"), elsewhere);
+                var store = CreateStore();
+
+                var loaded = await store.LoadAsync("abc123");
+                await Should.ThrowAsync<ProjectStoreException>(() => store.SaveAsync(Todo with { Files = [.. Todo.Files, new ProjectFile("linked.🍇", "mine")] }));
+
+                loaded!.Files.Select(file => file.Path).ShouldNotContain("linked.🍇");
+                File.ReadAllText(elsewhere).ShouldBe("someone else's");
+            }
+            finally
+            {
+                File.Delete(elsewhere);
+            }
+        }
+
+        [Fact]
+        public async Task A_project_whose_folder_was_renamed_by_hand_is_found_again_by_what_it_says_it_is()
+        {
+            var store = CreateStore();
+            await store.SaveAsync(Todo);
+            Directory.Move(InRoot("Todo API"), InRoot("Renamed by hand"));
+
+            await store.SaveAsync(Todo with { Files = [Todo.Files[0], Todo.Files[1] with { Content = "changed" }] });
+
+            NamesIn(_root).ShouldBe(["Renamed by hand"]);
+            File.ReadAllText(InRoot("Renamed by hand", "app", "todos.🍇")).ShouldBe("changed");
+        }
+
+        [Fact]
+        public async Task A_project_renamed_only_in_the_case_of_its_letters_keeps_one_folder_under_the_new_name()
+        {
+            var store = CreateStore();
+            await store.SaveAsync(Todo);
+
+            await store.SaveAsync(Todo with { Name = "todo api" });
+
+            NamesIn(_root).ShouldBe(["todo api"]);
+            (await CreateStore().LoadAsync("abc123"))!.Files.Count.ShouldBe(2);
+        }
+
+        [Fact]
+        public async Task A_project_with_a_very_long_name_can_still_be_deleted()
+        {
+            var store = CreateStore();
+            var longName = new string('界', 80);
+            await store.SaveAsync(Todo with { Name = longName });
+
+            await store.DeleteAsync("abc123");
+
+            NamesIn(_root).ShouldBeEmpty();
+            Directory.GetDirectories(InRoot(".blazemoji", "trash")).Length.ShouldBe(1);
+        }
+
         [Fact]
         public void Projects_are_kept_in_the_users_documents_unless_the_host_says_otherwise()
         {

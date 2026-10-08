@@ -32,7 +32,7 @@
                 <MudDivider />
             }
         </MudTreeViewItem>
-            <MudTreeViewItem OnClick="ClearSaved" @bind-Expanded="@_savedExpanded" title="Clear saved files" data-testid="clear-saved" Class="mt-4" Style="cursor:pointer;" Value="@("Saved 🗑️")">
+            <MudTreeViewItem OnClick="ClearSaved" @bind-Expanded="@_savedExpanded" title="Clear saved files" data-testid="clear-saved" Class="mt-4 cursor-pointer" Value="@("Saved 🗑️")">
                 @if (_userFiles != null)
                 {
                     @foreach (var file in _userFiles)

@@ -91,7 +91,7 @@ scripts/dev-toolchain.sh                    # the compiler, in its container
 dotnet run --project Blazemoji.Desktop
 ```
 
-opens the editor in a window of its own. It has been run on macOS; the window library it uses, Hermes, also supports Windows and Linux. It needs the toolchain service for running programs, as above, and edits without it. Projects are folders under `Blazemoji` in your documents: each file as it is, with a `blazemoji.json` that names the project and its entry file. `Projects__Root` puts them somewhere else. Nothing the app removes or writes over is destroyed; it goes to `.blazemoji/trash` in that folder. [docs/hosting.md](docs/hosting.md) has the details.
+opens the editor in a window of its own. It has been run on macOS; the window library it uses, Hermes, also supports Windows and Linux. It needs the toolchain service for running programs, as above, and edits without it. Projects are folders under `Blazemoji` in your documents: each file as it is, with a `blazemoji.json` that names the project and its entry file. `Projects__Root` puts them somewhere else. A file or project you delete in the app, and a file another program changed that the app is about to write over, are not destroyed: they go to `.blazemoji/trash` in that folder. [docs/hosting.md](docs/hosting.md) has the details.
 
 ## Projects
 

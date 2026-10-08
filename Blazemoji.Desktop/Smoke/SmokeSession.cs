@@ -12,7 +12,7 @@ public sealed record SmokeCheckOutcome(string Name, bool Passed, long DurationMs
 /// <summary>
 /// One smoke run, reported the way Hermes reports one: single lines on standard output that
 /// start with <c>HERMES_SMOKE_</c>, the result as JSON where asked, and exit code 0 only for
-/// a pass. Hermes does this itself from 1.3.0. This host is on 1.2.0, the last release for
+/// a pass. Hermes does this itself from 1.4.1. This host is on 1.2.0, the last release for
 /// .NET 10, so it says the same things in the same words, and the same tools can judge it.
 /// </summary>
 public sealed class SmokeSession(SmokeSettings settings) : IDisposable
@@ -20,13 +20,14 @@ public sealed class SmokeSession(SmokeSettings settings) : IDisposable
     private const string AppName = "Blazemoji";
 
     private readonly Stopwatch _running = Stopwatch.StartNew();
-    private readonly Lock _finishing = new();
     private Timer? _watchdog;
-    private bool _finished;
+    private int _finished;
 
     public bool IsEnabled => settings.IsEnabled;
 
     public bool AlsoCompile => settings.AlsoCompile;
+
+    public string ProjectsRoot => settings.ProjectsRoot;
 
     /// <summary>
     /// Says the run has begun, and from then on gives the page only so long to report. A
@@ -43,35 +44,48 @@ public sealed class SmokeSession(SmokeSettings settings) : IDisposable
 
     public void Report(IReadOnlyList<SmokeCheckOutcome> checks) => Finish(checks, timedOutWaitingFor: null);
 
+    /// <summary>
+    /// The page's report and the watchdog can both get here, from different threads. Whichever
+    /// is first reports; the other does nothing. Whatever goes wrong in between, the result
+    /// line is printed and the app is closed, since a run that says nothing is a run that hangs.
+    /// </summary>
     private void Finish(IReadOnlyList<SmokeCheckOutcome> checks, string? timedOutWaitingFor)
     {
-        lock (_finishing)
-        {
-            if (_finished)
-                return;
-
-            _finished = true;
-        }
+        if (Interlocked.Exchange(ref _finished, 1) == 1)
+            return;
 
         _watchdog?.Dispose();
-        foreach (var check in checks)
-        {
-            Say(check.Passed
-                ? $"HERMES_SMOKE_CHECK_PASS: {check.Name} {check.DurationMs}ms"
-                : $"HERMES_SMOKE_CHECK_FAIL: {check.Name} {check.DurationMs}ms - {SingleLine(check.Error ?? "Not run")}");
-        }
-
         var failed = checks.Count(check => !check.Passed);
         var passed = failed == 0 && checks.Count > 0 && timedOutWaitingFor is null;
-        if (settings.ResultPath is { } path)
-            WriteResult(path, checks, passed, timedOutWaitingFor);
+        try
+        {
+            foreach (var check in checks)
+            {
+                Say(check.Passed
+                    ? $"HERMES_SMOKE_CHECK_PASS: {check.Name} {check.DurationMs}ms"
+                    : $"HERMES_SMOKE_CHECK_FAIL: {check.Name} {check.DurationMs}ms - {SingleLine(check.Error ?? "Not run")}");
+            }
 
-        Say(passed
-            ? $"HERMES_SMOKE_RESULT: PASSED ({checks.Count} checks)"
-            : $"HERMES_SMOKE_RESULT: FAILED ({failed}/{checks.Count} checks failed, 0 errors{(timedOutWaitingFor is null ? string.Empty : $", timed out waiting for {timedOutWaitingFor}")})");
+            if (settings.ResultPath is { } path)
+                WriteResult(path, checks, passed, timedOutWaitingFor);
 
-        if (settings.ExitWhenDone)
-            Environment.Exit(passed ? 0 : 1);
+            if (settings.RemoveProjectsRoot && Directory.Exists(settings.ProjectsRoot))
+                Directory.Delete(settings.ProjectsRoot, recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            // The line below still carries the verdict.
+            Say($"HERMES_SMOKE_WARNING: {SingleLine("The run could not be written down or tidied up: " + exception.GetType().Name)}");
+        }
+        finally
+        {
+            Say(passed
+                ? $"HERMES_SMOKE_RESULT: PASSED ({checks.Count} checks)"
+                : $"HERMES_SMOKE_RESULT: FAILED ({failed}/{checks.Count} checks failed, 0 errors{(timedOutWaitingFor is null ? string.Empty : $", timed out waiting for {timedOutWaitingFor}")})");
+
+            if (settings.ExitWhenDone)
+                Environment.Exit(passed ? 0 : 1);
+        }
     }
 
     private void WriteResult(string path, IReadOnlyList<SmokeCheckOutcome> checks, bool passed, string? timedOutWaitingFor)
@@ -107,18 +121,10 @@ public sealed class SmokeSession(SmokeSettings settings) : IDisposable
             writer.WriteEndObject();
         }
 
-        try
-        {
-            if (Path.GetDirectoryName(Path.GetFullPath(path)) is { } folder)
-                Directory.CreateDirectory(folder);
+        if (Path.GetDirectoryName(Path.GetFullPath(path)) is { } folder)
+            Directory.CreateDirectory(folder);
 
-            File.WriteAllBytes(path, buffer.ToArray());
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // The lines on standard output still carry the verdict.
-            Say($"HERMES_SMOKE_WARNING: {SingleLine("The result could not be written: " + exception.GetType().Name)}");
-        }
+        File.WriteAllBytes(path, buffer.ToArray());
     }
 
     private static string Version =>

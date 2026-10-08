@@ -24,16 +24,23 @@ namespace Blazemoji.Services.Projects
     /// <para>
     /// The folder is also the user's. They may keep other things in it, put it under version
     /// control, and edit its files elsewhere. So a project's files are the text files in it
-    /// that the compiler would take by name, read afresh each time the project is opened, and
-    /// everything else is left alone and left out.
+    /// that the compiler would take by name, read afresh each time the project is opened.
+    /// Everything else is left alone and left out: what is hidden, what is a link to somewhere
+    /// else, what is not text, and what cannot be read.
     /// </para>
     /// <para>
-    /// Nothing is ever destroyed. A file that leaves a project, a file that something else
-    /// changed and that is about to be written over, and a project that is deleted all go to
+    /// Nothing is ever destroyed. A file that leaves a project, a file that something else put
+    /// or changed where the project is about to write, and a project that is deleted all go to
     /// <c>.blazemoji/trash</c> under the root, in a folder named for the moment and the project.
     /// </para>
+    /// <para>
+    /// A disk may not tell <c>Main</c> from <c>main</c>, so nothing here asks only whether a
+    /// path exists when the answer decides what is thrown away. What leaves a project is dealt
+    /// with before what arrives, so that a file renamed in the case of its letters, or to the
+    /// name a folder had, finds its place free.
+    /// </para>
     /// </remarks>
-    public sealed class FileProjectStore(IOptions<FileProjectStoreOptions> options, TimeProvider clock) : IProjectStore
+    public sealed class FileProjectStore(IOptions<FileProjectStoreOptions> options, TimeProvider clock, ILogger<FileProjectStore>? logger = null) : IProjectStore
     {
         /// <summary>The file in a project's folder that makes it a project.</summary>
         public const string DescriptionFile = "blazemoji.json";
@@ -54,13 +61,13 @@ namespace Blazemoji.Services.Projects
 
         private string Root => _disk.Root;
 
-        public Task<IReadOnlyList<ProjectSummary>> ListAsync() => ProjectsFolder.Guarded<IReadOnlyList<ProjectSummary>>(async () =>
+        public Task<IReadOnlyList<ProjectSummary>> ListAsync() => _disk.InTurn<IReadOnlyList<ProjectSummary>>(async () =>
         {
             await LookAsync();
             return _kept.Select(pair => new ProjectSummary(pair.Key, pair.Value.Name)).ToList();
         });
 
-        public Task<Project?> LoadAsync(string projectId) => ProjectsFolder.Guarded(async () =>
+        public Task<Project?> LoadAsync(string projectId) => _disk.InTurn(async () =>
         {
             if (await FindAsync(projectId) is not { } kept)
                 return null;
@@ -78,8 +85,11 @@ namespace Blazemoji.Services.Projects
             return new Project(projectId, kept.Name, KindOf(description.Kind), description.Entry ?? string.Empty, files);
         });
 
-        public Task SaveAsync(Project project) => ProjectsFolder.Guarded(async () =>
+        public Task SaveAsync(Project project) => _disk.InTurn(async () =>
         {
+            var description = Describe(project);
+            ProjectsFolder.MustBeWritable(description);
+
             var kept = await FindAsync(project.Id);
             if (kept is null)
             {
@@ -104,38 +114,48 @@ namespace Blazemoji.Services.Projects
             Directory.CreateDirectory(kept.Folder);
 
             var files = project.Files.Where(file => IsAProjectFile(file.Path)).ToList();
+            var arriving = files.Where(file => !kept.Files.ContainsKey(file.Path)).ToList();
+
+            foreach (var path in kept.Files.Keys.Except(files.Select(file => file.Path)).ToList())
+            {
+                var onDisk = ProjectsFolder.In(kept.Folder, path);
+                var renamedTo = arriving.FirstOrDefault(file => file.Content == kept.Files[path]);
+                if (renamedTo is not null && File.Exists(onDisk) && await ProjectsFolder.HoldsAsync(onDisk, renamedTo.Content))
+                {
+                    await MoveWithinAsync(kept, path, renamedTo.Path);
+                    arriving.Remove(renamedTo);
+                }
+                else if (File.Exists(onDisk))
+                {
+                    _disk.MoveToTrash(onDisk, kept.Folder, path);
+                }
+
+                RemoveFoldersLeftEmpty(Path.GetDirectoryName(onDisk)!, kept.Folder);
+                kept.Files.Remove(path);
+            }
+
             foreach (var file in files)
             {
                 if (kept.Files.TryGetValue(file.Path, out var known) && known == file.Content)
                     continue;
 
                 var onDisk = ProjectsFolder.In(kept.Folder, file.Path);
-                if (File.Exists(onDisk) && await ProjectsFolder.ReadTextAsync(onDisk) != known)
+                RefuseToFollowALink(kept.Folder, file.Path);
+                if (File.Exists(onDisk) && !await ProjectsFolder.HoldsAsync(onDisk, known))
                     _disk.MoveToTrash(onDisk, kept.Folder, file.Path);
 
                 await ProjectsFolder.WriteTextAsync(onDisk, file.Content);
                 kept.Files[file.Path] = file.Content;
             }
 
-            var description = Describe(project);
             if (description != kept.Description)
             {
                 await ProjectsFolder.WriteTextAsync(Path.Combine(kept.Folder, DescriptionFile), description);
                 kept.Description = description;
             }
-
-            foreach (var path in kept.Files.Keys.Except(files.Select(file => file.Path)).ToList())
-            {
-                var onDisk = ProjectsFolder.In(kept.Folder, path);
-                if (File.Exists(onDisk))
-                    _disk.MoveToTrash(onDisk, kept.Folder, path);
-
-                RemoveFoldersLeftEmpty(Path.GetDirectoryName(onDisk)!, kept.Folder);
-                kept.Files.Remove(path);
-            }
         });
 
-        public Task DeleteAsync(string projectId) => ProjectsFolder.Guarded(async () =>
+        public Task DeleteAsync(string projectId) => _disk.InTurn(async () =>
         {
             if (await FindAsync(projectId) is not { } kept)
                 return;
@@ -148,9 +168,9 @@ namespace Blazemoji.Services.Projects
                 File.Delete(StatePath);
         });
 
-        public Task<string?> GetLastOpenedAsync() => ProjectsFolder.Guarded(ReadLastOpenedAsync);
+        public Task<string?> GetLastOpenedAsync() => _disk.InTurn(ReadLastOpenedAsync);
 
-        public Task SetLastOpenedAsync(string projectId) => ProjectsFolder.Guarded(async () =>
+        public Task SetLastOpenedAsync(string projectId) => _disk.InTurn(async () =>
         {
             if (await ReadLastOpenedAsync() != projectId)
                 await ProjectsFolder.WriteTextAsync(StatePath, "{ \"lastOpened\": " + Quoted(projectId) + " }\n");
@@ -170,69 +190,168 @@ namespace Blazemoji.Services.Projects
             }
         }
 
+        /// <summary>
+        /// The project's folder as far as this store knows. A folder that is no longer where it
+        /// was may have been renamed by hand, and is looked for by what its description says.
+        /// </summary>
         private async Task<Kept?> FindAsync(string projectId)
         {
             await LookAsync();
-            return _kept.GetValueOrDefault(projectId);
+            if (_kept.GetValueOrDefault(projectId) is not { } kept)
+                return null;
+
+            if (!Directory.Exists(kept.Folder))
+            {
+                var claimed = _kept.Values.Select(other => other.Folder).ToHashSet(StringComparer.Ordinal);
+                foreach (var folder in ProjectFolders().Where(folder => !claimed.Contains(folder)))
+                {
+                    if (await DescriptionInAsync(folder) is { } elsewhere && elsewhere.Description.Id == projectId)
+                    {
+                        kept.Folder = folder;
+                        break;
+                    }
+                }
+            }
+
+            return kept;
         }
 
         /// <summary>
         /// Finds the project folders, once. A folder that was copied has the same description
-        /// as the one it was copied from, and is given an identity of its own.
+        /// as the one it was copied from, and is given an identity of its own. Nothing is
+        /// remembered until every folder has been looked at, so that looking again after a
+        /// failure does not find the folders it had already seen and take them for copies.
         /// </summary>
         private async Task LookAsync()
         {
             if (_looked)
                 return;
 
-            if (Directory.Exists(Root))
+            var found = new Dictionary<string, Kept>();
+            foreach (var folder in ProjectFolders())
             {
-                foreach (var folder in Directory.GetDirectories(Root).Order(StringComparer.Ordinal))
+                try
                 {
-                    if (Path.GetFileName(folder).StartsWith('.'))
+                    if (await DescriptionInAsync(folder) is not { } read)
                         continue;
 
-                    var raw = await ProjectsFolder.ReadTextAsync(Path.Combine(folder, DescriptionFile));
-                    if (Described(raw) is not { } description)
-                        continue;
-
+                    var (description, raw) = read;
                     var id = description.Id!;
-                    if (_kept.ContainsKey(id))
+                    if (found.ContainsKey(id))
                     {
                         id = Guid.NewGuid().ToString("N");
                         raw = Describe(id, description.Name!, KindOf(description.Kind), description.Entry ?? string.Empty);
                         await ProjectsFolder.WriteTextAsync(Path.Combine(folder, DescriptionFile), raw);
                     }
 
-                    _kept[id] = new Kept(folder, description.Name!) { Description = raw };
+                    found[id] = new Kept(folder, description.Name!) { Description = raw };
+                }
+                catch (Exception exception) when (ProjectsFolder.IsTheDisksDoing(exception))
+                {
+                    logger?.LogWarning(exception, "The folder {Folder} could not be read as a project, and is left out", folder);
                 }
             }
+
+            foreach (var (id, kept) in found)
+                _kept[id] = kept;
 
             _looked = true;
         }
 
+        /// <summary>The folders under the root that could be projects, in the order of their names.</summary>
+        private List<string> ProjectFolders() =>
+            Directory.Exists(Root)
+                ? Directory.GetDirectories(Root)
+                    .Where(folder => !Path.GetFileName(folder).StartsWith('.') && !IsKeptForSnippets(Path.GetFileName(folder)))
+                    .Order(StringComparer.Ordinal)
+                    .ToList()
+                : [];
+
+        private static async Task<(Description Description, string Raw)?> DescriptionInAsync(string folder)
+        {
+            var raw = await ProjectsFolder.ReadTextAsync(Path.Combine(folder, DescriptionFile));
+            return Described(raw) is { } description ? (description, raw!) : null;
+        }
+
+        private static bool IsKeptForSnippets(string folderName) => ProjectsFolder.SameName(folderName, ProjectsFolder.SnippetsFolder);
+
+        /// <summary>One entry that cannot be read is left out. It does not take the project with it.</summary>
         private async Task ReadFilesAsync(string folder, string prefix, Dictionary<string, string> into)
         {
             foreach (var path in Directory.GetFiles(folder))
             {
-                var relative = prefix + Path.GetFileName(path);
-                if (!IsAProjectFile(relative) || Path.GetFileName(path).StartsWith('.') || new FileInfo(path).Length > LargestFile)
+                var name = Path.GetFileName(path);
+                if (name.StartsWith('.') || !IsAProjectFile(prefix + name))
                     continue;
 
-                if (await ProjectsFolder.ReadTextAsync(path) is { } text)
-                    into[relative] = text;
+                try
+                {
+                    var file = new FileInfo(path);
+                    if (!ProjectsFolder.IsALink(file) && file.Length <= LargestFile && await ProjectsFolder.ReadTextAsync(path) is { } text)
+                        into[prefix + name] = text;
+                }
+                catch (Exception exception) when (ProjectsFolder.IsTheDisksDoing(exception))
+                {
+                    logger?.LogWarning(exception, "The file {Path} could not be read, and is left out of its project", path);
+                }
             }
 
             foreach (var inner in Directory.GetDirectories(folder))
             {
                 var name = Path.GetFileName(inner);
-                if (!name.StartsWith('.') && !File.GetAttributes(inner).HasFlag(FileAttributes.ReparsePoint))
-                    await ReadFilesAsync(inner, prefix + name + "/", into);
+                if (name.StartsWith('.'))
+                    continue;
+
+                try
+                {
+                    if (!ProjectsFolder.IsALink(new DirectoryInfo(inner)))
+                        await ReadFilesAsync(inner, prefix + name + "/", into);
+                }
+                catch (Exception exception) when (ProjectsFolder.IsTheDisksDoing(exception))
+                {
+                    logger?.LogWarning(exception, "The folder {Path} could not be read, and is left out of its project", inner);
+                }
             }
         }
 
         /// <summary>The project's files are those the compiler would take by name. Its description is the store's own.</summary>
-        private static bool IsAProjectFile(string path) => SourceFileNames.IsSafe(path) && path != DescriptionFile;
+        private static bool IsAProjectFile(string path) =>
+            SourceFileNames.IsSafe(path) && !ProjectsFolder.SameName(path, DescriptionFile);
+
+        /// <summary>
+        /// A file that was renamed is moved, and keeps being the same file. Something else at
+        /// the new name, spelt exactly so, is kept first. On a disk that ignores case the old
+        /// name may be all that is "there", and that is the file being moved.
+        /// </summary>
+        private async Task MoveWithinAsync(Kept kept, string from, string to)
+        {
+            var source = ProjectsFolder.In(kept.Folder, from);
+            var target = ProjectsFolder.In(kept.Folder, to);
+            RefuseToFollowALink(kept.Folder, to);
+            if (ProjectsFolder.IsListedExactly(target) && File.Exists(target) && !await ProjectsFolder.HoldsAsync(target, kept.Files[from]))
+                _disk.MoveToTrash(target, kept.Folder, to);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Move(source, target, overwrite: ProjectsFolder.IsListedExactly(target));
+            kept.Files[to] = kept.Files[from];
+        }
+
+        /// <summary>
+        /// A folder in the project that is a link leads somewhere else, and so does a file
+        /// that is one. Writing there would be writing outside the project, so it is refused.
+        /// </summary>
+        private static void RefuseToFollowALink(string projectFolder, string path)
+        {
+            var segments = path.Split('/');
+            var here = projectFolder;
+            for (var index = 0; index < segments.Length; index++)
+            {
+                here = Path.Combine(here, segments[index]);
+                FileSystemInfo entry = index == segments.Length - 1 ? new FileInfo(here) : new DirectoryInfo(here);
+                if (entry.Exists && ProjectsFolder.IsALink(entry))
+                    throw new IOException($"{path} goes through a link to somewhere outside the project.");
+            }
+        }
 
         private static void RemoveFoldersLeftEmpty(string from, string projectFolder)
         {
@@ -242,18 +361,26 @@ namespace Blazemoji.Services.Projects
 
         /// <summary>
         /// A folder for a project of this name: the name itself where that is free, or is the
-        /// project's own already, and otherwise the name with the first number that is.
+        /// project's own already, and otherwise the name with the first number that is. A name
+        /// is taken when anything under the root has it, in any case of letters, since the disk
+        /// may not tell those apart. The folder that snippets are kept in is always taken.
         /// </summary>
         private string FreeFolderFor(string projectName, string? mine)
         {
             var name = ProjectsFolder.NameOnDisk(projectName, NameWhenNothingIsLeft);
-            var taken = _kept.Values.Select(kept => kept.Folder).Where(folder => folder != mine).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var myName = mine is null ? null : Path.GetFileName(mine);
+            var taken = _kept.Values.Select(kept => Path.GetFileName(kept.Folder)).ToList();
+            if (Directory.Exists(Root))
+                taken.AddRange(Directory.EnumerateFileSystemEntries(Root).Select(entry => Path.GetFileName(entry)!));
 
             for (var attempt = 1; ; attempt++)
             {
-                var folder = Path.Combine(Root, attempt == 1 ? name : $"{name} {attempt}");
-                if (folder == mine || (!taken.Contains(folder) && !Directory.Exists(folder) && !File.Exists(folder)))
-                    return folder;
+                var candidate = attempt == 1 ? name : $"{name} {attempt}";
+                if (candidate == myName)
+                    return mine!;
+
+                if (!IsKeptForSnippets(candidate) && !taken.Any(other => other != myName && ProjectsFolder.SameName(other, candidate)))
+                    return Path.Combine(Root, candidate);
             }
         }
 

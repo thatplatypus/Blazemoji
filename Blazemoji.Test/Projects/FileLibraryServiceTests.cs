@@ -87,6 +87,21 @@ namespace Blazemoji.Test.Projects
         }
 
         [Fact]
+        public async Task Clearing_leaves_alone_what_was_never_listed_as_saved()
+        {
+            var library = Create();
+            await library.SaveAsync(new EmojicFile { Name = "One.🍇", Code = "1" });
+            File.WriteAllBytes(InRoot(FileLibraryService.Folder, "logo.png"), [0x89, 0x50, 0xFF, 0xFE, 0x00]);
+            File.WriteAllText(InRoot(FileLibraryService.Folder, ".hidden"), "not listed");
+
+            await library.ClearSavedAsync();
+
+            File.Exists(InRoot(FileLibraryService.Folder, "logo.png")).ShouldBeTrue();
+            File.Exists(InRoot(FileLibraryService.Folder, ".hidden")).ShouldBeTrue();
+            File.Exists(InRoot(FileLibraryService.Folder, "One.🍇")).ShouldBeFalse();
+        }
+
+        [Fact]
         public async Task The_folder_of_snippets_is_not_taken_for_a_project()
         {
             await Create().SaveAsync(new EmojicFile { Name = "One.🍇", Code = "1" });

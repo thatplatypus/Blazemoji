@@ -13,6 +13,8 @@
 # folder, never to your own. The app reports in the words of Hermes's smoke protocol, so
 # what judges a Hermes app's smoke run can judge this one: the last line that starts with
 # HERMES_SMOKE_RESULT says PASSED or FAILED, and the exit code is 0 only for a pass.
+# SMOKE_TIMEOUT (seconds, 120) is how long the page has to report. An app that has not
+# closed a minute after that is stopped. Needs perl, which macOS and most Linux have.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -27,7 +29,9 @@ for option in "$@"; do
 done
 
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+keep=0
+trap '[ "$keep" -eq 1 ] || rm -rf "$work"' EXIT
+limit="${SMOKE_TIMEOUT:-120}"
 
 if [ "$published" -eq 1 ]; then
   rid="$(dotnet --info | awk '/^ *RID:/ { print $2; exit }')"
@@ -43,20 +47,24 @@ else
 fi
 
 # Started from somewhere else on purpose: the app must find its own files wherever it is run from.
+# The app times itself out once it is up. The alarm is for one that hangs before that or
+# while closing, and ends it with a signal, which counts as a failure below.
 status=0
 (
   cd "$work"
   HERMES_SMOKE_TEST=1 \
-  HERMES_SMOKE_TEST_TIMEOUT="${SMOKE_TIMEOUT:-120}" \
+  HERMES_SMOKE_TEST_TIMEOUT="$limit" \
   HERMES_SMOKE_TEST_RESULT="$work/result.json" \
   BLAZEMOJI_SMOKE_COMPILE="$compile" \
-  Projects__Root="$work/projects" \
-    "$app" > "$work/app.log" 2>&1
+  BLAZEMOJI_SMOKE_PROJECTS="$work/projects" \
+    perl -e 'alarm shift; exec @ARGV or die "could not start $ARGV[0]: $!\n"' "$((limit + 60))" "$app" > "$work/app.log" 2>&1
 ) || status=$?
 
 grep '^HERMES_SMOKE_' "$work/app.log" || true
 if [ "$status" -ne 0 ] || ! grep -q '^HERMES_SMOKE_RESULT: PASSED' "$work/app.log"; then
+  keep=1
   echo "The smoke run failed (exit code $status). What the app said besides:" >&2
   grep -v '^HERMES_SMOKE_' "$work/app.log" | tail -20 >&2
+  echo "Everything it said, and its result, are kept in $work" >&2
   exit 1
 fi

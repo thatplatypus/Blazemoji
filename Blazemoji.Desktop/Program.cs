@@ -2,6 +2,7 @@ using Blazemoji.Desktop.Services;
 using Blazemoji.Desktop.Smoke;
 using Blazemoji.Services;
 using Blazemoji.Services.Projects;
+using Blazemoji.Shared.State;
 using Blazemoji.Toolchain.Http;
 using Hermes.Blazor;
 using Microsoft.Extensions.Configuration;
@@ -22,13 +23,14 @@ public static class Program
         var smoke = SmokeSettings.FromEnvironment();
 
         var builder = HermesBlazorAppBuilder.CreateDefault(args);
-        if (smoke.IsEnabled && string.IsNullOrEmpty(builder.Configuration[FileProjectStoreOptions.SectionName + ":" + nameof(FileProjectStoreOptions.Root)]))
+        if (smoke.IsEnabled)
         {
-            // A smoke run types into the editor, and what is typed is saved. Unless it was told
-            // where, it keeps that out of the user's own projects.
+            // A smoke run types into the editor, and what is typed is saved. It is added last
+            // so that it wins over wherever the app is otherwise set to keep projects: a smoke
+            // run never writes into those.
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                [FileProjectStoreOptions.SectionName + ":" + nameof(FileProjectStoreOptions.Root)] = Path.Combine(Path.GetTempPath(), "blazemoji-smoke-" + Guid.NewGuid().ToString("N")),
+                [FileProjectStoreOptions.SectionName + ":" + nameof(FileProjectStoreOptions.Root)] = smoke.ProjectsRoot,
             });
         }
 
@@ -52,6 +54,13 @@ public static class Program
         builder.Services.AddMudServices();
         builder.Services.AddToolchainClient(builder.Configuration);
         builder.Services.AddBlazemojiProjectsOnDisk(builder.Configuration);
+
+        // One user and one window, so one of each for the life of the app. Registered before
+        // the editor's own call, which would make them one per scope as a server needs.
+        builder.Services.AddSingleton<RunState>();
+        builder.Services.AddSingleton<ProjectState>();
+        builder.Services.AddSingleton<RequestState>();
+        builder.Services.AddSingleton<LocalStorageFiles>();
         builder.Services.AddBlazemojiEditor(builder.Configuration);
 
         // What this host supplies because it is a window and not a page in a browser.

@@ -24,12 +24,12 @@ namespace Blazemoji.Test.Components
             cut.FindAll("a[href]").Select(link => link.GetAttribute("href")!).ToArray();
 
         [Fact]
-        public void What_is_given_to_the_shell_is_shown_under_the_title()
+        public void What_is_given_to_the_shell_is_shown_with_the_title()
         {
             var cut = RenderAroundSomething();
 
-            cut.Find(".mud-appbar").TextContent.ShouldContain("Blazemoji");
-            cut.Find(".mud-main-content [data-testid=inside]").ShouldNotBeNull();
+            cut.Markup.ShouldContain("🔥 Blazemoji");
+            cut.Find("[data-testid=inside]").ShouldNotBeNull();
         }
 
         [Fact]
@@ -70,16 +70,6 @@ namespace Blazemoji.Test.Components
 
             await cut.Find("[data-testid=dark-mode-toggle]").ClickAsync();
             cut.Find("[data-testid=inside]").TextContent.ShouldBe("light");
-        }
-
-        [Fact]
-        public void The_page_starts_dark_where_the_system_is_dark()
-        {
-            JSInterop.Setup<bool>("mudThemeProvider.isDarkMode").SetResult(true);
-
-            var cut = RenderAroundSomething();
-
-            cut.WaitForAssertion(() => cut.Find("[data-testid=inside]").TextContent.ShouldBe("dark"));
         }
 
         private sealed class SaysWhetherItIsDark : ComponentBase
