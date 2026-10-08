@@ -271,6 +271,24 @@ namespace Blazemoji.E2E
         }
 
         [Fact]
+        public async Task The_names_of_the_tabs_on_the_right_are_whole_in_a_window_1400_wide_with_a_count_and_without()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await editor.Page.SetViewportSizeAsync(1400, 800);
+            const string cutShort = "() => [...document.querySelectorAll('[role=tab] .segmented-tab-text')].slice(-3).filter(name => name.scrollWidth > name.clientWidth).map(name => name.textContent)";
+
+            (await editor.Page.EvaluateAsync<string[]>(cutShort)).ShouldBeEmpty();
+
+            await editor.SetCodeAsync("🏁 🍇\n  😀 nope❗️\n🍉\n");
+            await editor.RunButton.ClickAsync();
+            await editor.Problems.First.WaitForAsync();
+            await editor.Page.Locator("[role=tab] .mud-badge").WaitForAsync();
+
+            (await editor.Page.EvaluateAsync<string[]>(cutShort)).ShouldBeEmpty();
+        }
+
+        [Fact]
         public async Task The_count_on_the_problems_tab_is_whole_and_moves_nothing_when_it_appears()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);

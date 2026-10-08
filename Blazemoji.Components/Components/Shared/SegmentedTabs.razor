@@ -32,11 +32,11 @@
                         <MudIcon Icon="@tab.Icon" Size="Size.Small" />
                     }
                     <span class="segmented-tab-text">@tab.Text</span>
-                    @if (tab.Count is { } count)
+                    @if (tab.Count is > 0 and var count)
                     {
                         <span class="segmented-tab-count">
-                            <MudBadge Content="@count" Color="@tab.CountColor" Visible="@(count > 0)" Origin="Origin.CenterCenter" Overlap="true">
-                                <span class="segmented-tab-count-place"></span>
+                            <MudBadge Content="@count" Max="@MostCounted" Color="@tab.CountColor" Origin="Origin.CenterCenter" Overlap="true">
+                                <span class="segmented-tab-count-place">@Written(count)</span>
                             </MudBadge>
                         </span>
                     }
@@ -62,6 +62,9 @@
 </div>
 
 @code {
+    /// <summary>The highest count written out. Anything above it is written as this and a plus.</summary>
+    private const int MostCounted = 99;
+
     private readonly ParameterState<string?> _active;
     private readonly List<SegmentedTab> _tabs = [];
     private readonly Dictionary<string, ElementReference> _buttons = [];
@@ -112,6 +115,8 @@
     private IEnumerable<SegmentedTab> ShownInTheStrip => _compact && ActiveTab is { } active ? [active] : _tabs;
 
     private string PanelId => _id + "-panel";
+
+    private static string Written(int count) => count > MostCounted ? $"{MostCounted}+" : count.ToString();
 
     private string TabId(SegmentedTab tab) => $"{_id}-tab-{tab.Id}";
 
