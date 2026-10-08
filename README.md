@@ -29,7 +29,7 @@ Features include:
 - Emojicode quick reference toolbox
 - Code editor keybindings for common emojis like `shift`+`"` turns into `🔤`
 - Pairs that close themselves: typing `🍇`, `🤜`, `🍿`, `🐚` or `🔤` brings its closer, and the editor shows which `🍉` belongs to which `🍇`
-- Library of sample scripts with support for saving scripts in local storage
+- Library of sample scripts with support for saving scripts of your own
 - More coming soon
   - Researching syntax highlighting in monaco for ☁️ and 🔤
 
@@ -44,13 +44,14 @@ The Emojicode compiler bundled in this repo is the x86_64 Linux build of 1.0 bet
 | Project | What it is |
 | --- | --- |
 | `Blazemoji` | The web host: a Blazor Server app that shows the editor and keeps projects in the browser. It holds no compiler. |
+| `Blazemoji.Desktop` | The desktop host: the same editor in a window of its own, with projects kept as folders on disk. |
 | `Blazemoji.Components` | The editor as Razor components, with the state behind them: projects, editor, toolbox, output, problems and requests. |
-| `Blazemoji.Core` | The keyword catalog, the code intelligence and the project model. No UI. |
+| `Blazemoji.Core` | The keyword catalog, the code intelligence, the project model and keeping projects on disk. No UI. |
 | `Blazemoji.Toolchain` | The toolchain contract (`IToolchain`) and `HttpToolchain`, its client. |
 | `Blazemoji.Toolchain.Local` | Compiles and runs programs as local processes. Holds the compiler and stock packages. |
 | `Blazemoji.Toolchain.Service` | A small HTTP service in front of the local toolchain. |
 
-The web app reaches the toolchain service at `ToolchainClient:BaseUrl` (default `http://localhost:5290`). Any host that can make HTTP requests can use the same service; that setting is the only thing it needs. [docs/hosting.md](docs/hosting.md) lists what a second host, such as a desktop app, has to supply to show the same editor.
+The web app reaches the toolchain service at `ToolchainClient:BaseUrl` (default `http://localhost:5290`). Any host that can make HTTP requests can use the same service; that setting is the only thing it needs. [docs/hosting.md](docs/hosting.md) lists what a host has to supply to show the editor, and what is particular to the desktop one.
 
 ## Run the app
 
@@ -83,11 +84,20 @@ scripts/dev-toolchain.sh        # start; "scripts/dev-toolchain.sh stop" stops i
 
 Either way the programs you run can reach the network, which `docker compose up` does not allow, so keep both to your own machine. For Grapevine to be there, run `scripts/build-grapevine.sh` once in this checkout first.
 
+### As a desktop app
+
+```bash
+scripts/dev-toolchain.sh                    # the compiler, in its container
+dotnet run --project Blazemoji.Desktop
+```
+
+opens the editor in a window of its own. It has been run on macOS; the window library it uses, Hermes, also supports Windows and Linux. It needs the toolchain service for running programs, as above, and edits without it. Projects are folders under `Blazemoji` in your documents: each file as it is, with a `blazemoji.json` that names the project and its entry file. `Projects__Root` puts them somewhere else. A file or project you delete in the app, and a file another program changed that the app is about to write over, are not destroyed: they go to `.blazemoji/trash` in that folder. [docs/hosting.md](docs/hosting.md) has the details.
+
 ## Projects
 
 A project is a set of files that are compiled together, a name, and one file marked as the entry: the file handed to the compiler. Other files join in when a file includes them with `📜`, by a path from the including file. The **Files** tab lists them as a tree, and each file has a menu to rename it, make it the entry, or delete it. A name with slashes puts a file in folders (`lib/greeter.🍇`).
 
-Projects are kept in the browser's local storage, so they are still there after a reload and are not shared between browsers. New projects start from a template: a folder under `Blazemoji/Emojicode/Templates` with a `template.json` and the files.
+In the web app projects are kept in the browser's local storage, so they are still there after a reload and are not shared between browsers. In the desktop app they are folders on disk. New projects start from a template: a folder under `Blazemoji.Core/Emojicode/Templates` with a `template.json` and the files.
 
 A project runs either as a **Program**, which runs to the end and stops, or as a **Web server**, which keeps running until it is stopped or has had no request for ten minutes. A web server is told which port to listen on through the `PORT` environment variable. While it runs, the **Requests** tab sends it HTTP requests (method, path, headers, body) and shows the status, headers and body that come back.
 
@@ -152,6 +162,12 @@ scripts/e2e.sh
 ```
 
 builds both images, starts them with `docker compose`, checks that the toolchain container has no route out, and drives the app in a real browser (Playwright): running and stopping programs, live output, compiler errors as editor markers, projects with several files, and Grapevine's Todo sample answering requests from the Requests tab. The first run downloads Chromium.
+
+```bash
+scripts/desktop-smoke.sh
+```
+
+starts the desktop app, has it check itself from inside its own window, and closes it. `--published` tests a self-contained publish, and `--compile` also runs a program through the toolchain service.
 
 ```bash
 docker build -f Blazemoji/Dockerfile --target test --output type=cacheonly --progress=plain .

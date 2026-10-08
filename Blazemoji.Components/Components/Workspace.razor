@@ -1,12 +1,15 @@
 @using Blazemoji.Components.EmojiPicker
 @using Blazemoji.Shared
 @using Blazemoji.Services
+@using Blazemoji.Services.Projects
 @using Blazemoji.Toolchain
 @using System.Text.Json
 @implements IDisposable
 
 @inject ILibraryService _libraryService
 @inject IDialogService _dialogService
+@inject ISnackbar _snackbar
+@inject ILogger<Workspace> _logger
 @inject LocalStorageFiles _localStorageFiles
 @inject RunState _runState
 @inject ProjectState _projectState
@@ -34,7 +37,7 @@
                     </MudTooltip>
 
                     <MudTooltip Text="Save Code">
-                        <MudIconButton Icon="@BlazemojiIcons.Save" OnClick="SaveEmojicode" />
+                        <MudIconButton Icon="@BlazemojiIcons.Save" OnClick="SaveEmojicode" data-testid="save-to-library" />
                     </MudTooltip>
 
                     <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle)" Color="Color.Success" data-testid="run-button">
@@ -261,11 +264,19 @@
                 Code = code,
             };
 
-        await _libraryService.SaveFileToLocalStorageAsync(emojicode);
+        try
+        {
+            await _libraryService.SaveAsync(emojicode);
 
-        var newFiles = await _libraryService.GetUserSavedFiles();
+            var newFiles = await _libraryService.GetSavedAsync();
 
-        _localStorageFiles.Files = newFiles.OrderBy(x => x.Name).ToList();
+            _localStorageFiles.Files = newFiles.OrderBy(x => x.Name).ToList();
+        }
+        catch (ProjectStoreException exception)
+        {
+            _logger.LogWarning(exception, "The editor's text could not be saved to the library");
+            _snackbar.Add("The file could not be saved.", Severity.Warning);
+        }
     }
 
     private async Task InsertEmojiAsync(string emoji)

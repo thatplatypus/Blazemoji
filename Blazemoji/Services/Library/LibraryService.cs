@@ -1,28 +1,27 @@
 using Blazemoji.Services.Projects;
-
+using Microsoft.JSInterop;
 
 namespace Blazemoji.Services.Library
 {
-    public class LibraryService : ILibraryService
+    /// <summary>
+    /// Keeps what was saved from the editor in the browser's local storage, each file under
+    /// the name it was saved with. As with projects there, the storage can be full, switched
+    /// off or out of reach, and every such failure is a <see cref="ProjectStoreException"/>.
+    /// </summary>
+    public class LibraryService(ILocalStorageService localStorage) : ILibraryService
     {
-        private readonly ILocalStorageService _localStorageService;
-        private ConcurrentBag<EmojicFile>? _emojicFiles;
-
-        public LibraryService(ILocalStorageService localStorageService)
-        {
-            _localStorageService = localStorageService;
-        }
-
         /// <summary>
         /// Removes the saved snippets and nothing else. Projects and settings share the same
         /// storage and are not the library's to delete.
         /// </summary>
-        public async Task ClearLocalStorageAsync()
+        public Task ClearSavedAsync() => Guarded(async () =>
         {
-            var keys = await _localStorageService.KeysAsync();
+            var keys = await localStorage.KeysAsync();
             foreach (var key in keys.Where(IsSnippetKey).ToList())
-                await _localStorageService.RemoveItemAsync(key);
-        }
+                await localStorage.RemoveItemAsync(key);
+
+            return true;
+        });
 
         /// <summary>
         /// A snippet is kept under the name it was saved with, which ends like a file's. A
@@ -33,62 +32,32 @@ namespace Blazemoji.Services.Library
             !key.StartsWith(LocalStorageProjectStore.KeyPrefix, StringComparison.Ordinal)
             && (key.Contains(".🍇") || key.Contains(".emojic"));
 
-        public async Task<List<EmojicFile>> GetAllSamplesAsync()
+        public Task<List<EmojicFile>> GetSavedAsync() => Guarded(async () =>
         {
-            string directoryPath = "Emojicode/Samples";
-            IEnumerable<string> files = Directory.EnumerateFiles(directoryPath);
+            var files = new List<EmojicFile>();
+            var keys = await localStorage.KeysAsync();
+            foreach (var key in keys.Where(IsSnippetKey).ToList())
+                files.Add(new EmojicFile { Name = key, Code = await localStorage.GetItemAsStringAsync(key) ?? string.Empty });
 
-            List<Task> tasks = files.Select(ProcessFileAsync).ToList();
+            return files;
+        });
 
-            await Task.WhenAll(tasks);
-            
-            List<EmojicFile> emojiList = _emojicFiles?.ToList() ?? new List<EmojicFile>();
-
-            return emojiList;
-        }
-
-        public async Task<List<EmojicFile>> GetUserSavedFiles()
+        public Task SaveAsync(EmojicFile file) => Guarded(async () =>
         {
-            var files = new ConcurrentBag<EmojicFile>();
-            var keys = await _localStorageService.KeysAsync();
-            var emojicodeKeys = keys.Where(IsSnippetKey);
+            await localStorage.SetItemAsStringAsync(file.Name, file.Code);
+            return true;
+        });
 
-            foreach (var key in emojicodeKeys)
+        private static async Task<T> Guarded<T>(Func<Task<T>> useStorage)
+        {
+            try
             {
-                try
-                {
-                    var code = await _localStorageService.GetItemAsStringAsync(key);
-                    files.Add(new EmojicFile
-                    {
-                        Name = key,
-                        Code = code ?? string.Empty,
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex);
-                }
+                return await useStorage();
             }
-
-            return files.ToList();
-        }
-
-        public async Task SaveFileToLocalStorageAsync(EmojicFile file)
-        {
-            await _localStorageService.SetItemAsStringAsync(file.Name, file.Code);
-        }
-
-        private async Task ProcessFileAsync(string filePath)
-        {
-            _emojicFiles ??= new();
-
-            var code = await File.ReadAllTextAsync(filePath);
-
-            _emojicFiles.Add(new EmojicFile 
+            catch (Exception exception) when (exception is JSException or JSDisconnectedException or InvalidOperationException or OperationCanceledException)
             {
-                Name = filePath[(filePath.LastIndexOf("/") + 1)..],
-                Code = code
-            });
+                throw new ProjectStoreException("The browser's storage could not be used.", exception);
+            }
         }
     }
 }

@@ -19,7 +19,7 @@ PIN="$(tr -d '[:space:]' < grapevine.pin)"
 REPO="${GRAPEVINE_REPO:-$HOME/Code/grapevine}"
 PACKAGE=Blazemoji.Toolchain.Local/packages/grapevine
 DOCS=Blazemoji.Toolchain.Service/package-docs/grapevine
-TEMPLATE=Blazemoji/Emojicode/Templates/grapevine-todo
+TEMPLATE=Blazemoji.Core/Emojicode/Templates/grapevine-todo
 IMAGE=blazemoji-sdk-toolchain
 
 if [ "${1:-}" = "--if-needed" ] && [ -f "$PACKAGE/.commit" ] && [ "$(cat "$PACKAGE/.commit")" = "$PIN" ]; then

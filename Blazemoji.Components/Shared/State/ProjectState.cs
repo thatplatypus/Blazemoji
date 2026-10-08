@@ -12,6 +12,8 @@ namespace Blazemoji.Shared.State
     public sealed class ProjectState
     {
         public const string FileNameRule = "Use letters, digits, emoji, dots, hyphens and underscores, with / between folders.";
+        public const string HiddenNameRule = "A name cannot start with a dot.";
+        public const string DescriptionNameRule = "That name is kept for the project's own description.";
 
         private const string SourceExtension = ".🍇";
         private const int LongestName = 80;
@@ -54,7 +56,7 @@ namespace Blazemoji.Shared.State
 
         /// <summary>
         /// The last attempt to save did not work, so what is on screen is only in memory.
-        /// It stays there, and can be come back to, until the page is closed.
+        /// It stays there, and can be come back to, until the app is closed.
         /// </summary>
         public bool SaveFailed { get; private set; }
 
@@ -381,21 +383,38 @@ namespace Blazemoji.Shared.State
             if (!SourceFileNames.IsSafe(clean))
                 return (null, FileNameRule);
 
+            // A host that keeps projects as folders leaves hidden files alone, and keeps one
+            // file of its own beside the project's. A file the project could not get back
+            // from there is not one to make.
+            if (clean.Split('/').Any(segment => segment.StartsWith('.')))
+                return (null, HiddenNameRule);
+
+            if (SameOnAnyDisk(clean, FileProjectStore.DescriptionFile))
+                return (null, DescriptionNameRule);
+
             if (clean == replacing)
                 return (clean, null);
 
+            // Names are compared as a disk that ignores the case of letters would compare
+            // them. Two files such a disk cannot keep apart would be one file there.
             var others = Current.Files.Select(file => file.Path).Where(other => other != replacing).ToList();
-            if (others.Contains(clean))
+            if (others.Any(other => SameOnAnyDisk(other, clean)))
                 return (null, "A file with that name already exists.");
 
-            if (others.Any(other => clean.StartsWith(other + "/", StringComparison.Ordinal)))
+            if (others.Any(other => StartsWithOnAnyDisk(clean, other + "/")))
                 return (null, "A file cannot be inside another file.");
 
-            if (others.Any(other => other.StartsWith(clean + "/", StringComparison.Ordinal)))
+            if (others.Any(other => StartsWithOnAnyDisk(other, clean + "/")))
                 return (null, "A folder with that name already exists.");
 
             return (clean, null);
         }
+
+        private static bool SameOnAnyDisk(string one, string other) =>
+            string.Equals(one.Normalize(), other.Normalize(), StringComparison.OrdinalIgnoreCase);
+
+        private static bool StartsWithOnAnyDisk(string path, string start) =>
+            path.Normalize().StartsWith(start.Normalize(), StringComparison.OrdinalIgnoreCase);
 
         private static Project FromTemplate(ProjectTemplate template, string name) =>
             new(Guid.NewGuid().ToString("N"), name, template.Kind, template.Entry, Sorted(template.Files));
@@ -434,7 +453,12 @@ namespace Blazemoji.Shared.State
             if (clean.Length == 0)
                 return null;
 
-            return clean.Length <= LongestName ? clean : clean[..LongestName];
+            if (clean.Length <= LongestName)
+                return clean;
+
+            // Never through the middle of a character that takes two places, as most emoji do.
+            var end = char.IsHighSurrogate(clean[LongestName - 1]) ? LongestName - 1 : LongestName;
+            return clean[..end].TrimEnd();
         }
 
         private static ProjectSummary Summary(Project project) => new(project.Id, project.Name);

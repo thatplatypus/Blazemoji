@@ -52,6 +52,7 @@ namespace Blazemoji.Test
             Services.GetRequiredService<ICodeIntelligence>().ShouldNotBeNull();
             Services.GetRequiredService<IPackageLibrary>().ShouldNotBeNull();
             Services.GetRequiredService<IProjectTemplates>().All.ShouldNotBeEmpty();
+            Services.GetRequiredService<ISamples>().ShouldBeOfType<FileSamples>();
             Services.GetRequiredService<IToolchain>().ShouldBeOfType<HttpToolchain>();
         }
 
@@ -159,8 +160,7 @@ namespace Blazemoji.Test
         [Fact]
         public void Every_tab_renders_with_those_registrations_alone()
         {
-            Services.GetRequiredService<ILibraryService>().GetAllSamplesAsync().Returns([]);
-            Services.GetRequiredService<ILibraryService>().GetUserSavedFiles().Returns([]);
+            Services.GetRequiredService<ILibraryService>().GetSavedAsync().Returns([]);
 
             Should.NotThrow(() => Render<Library>());
             Should.NotThrow(() => Render<EmojiToolbox>());
@@ -217,6 +217,26 @@ namespace Blazemoji.Test
             provider.GetRequiredService<IProjectTemplates>().ShouldBeOfType<FileProjectTemplates>();
             provider.GetRequiredService<ICodeIntelligence>().ShouldNotBeNull();
             scope.ServiceProvider.GetRequiredService<ProjectState>().ShouldNotBeNull();
+        }
+
+        [Fact]
+        public void A_host_that_keeps_projects_on_disk_gets_both_stores_from_one_call_and_their_folder_from_configuration()
+        {
+            Document().ShouldContain($"\"{FileProjectStoreOptions.SectionName}\"");
+            var services = new ServiceCollection();
+            services.AddBlazemojiProjectsOnDisk(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { [FileProjectStoreOptions.SectionName + ":Root"] = "/somewhere/else" })
+                .Build());
+            services.AddBlazemojiEditor();
+            using var provider = services.BuildServiceProvider(validateScopes: true);
+            using var one = provider.CreateScope();
+            using var two = provider.CreateScope();
+
+            provider.GetRequiredService<IOptions<FileProjectStoreOptions>>().Value.Root.ShouldBe("/somewhere/else");
+            one.ServiceProvider.GetRequiredService<IProjectStore>().ShouldBeOfType<FileProjectStore>();
+            one.ServiceProvider.GetRequiredService<ILibraryService>().ShouldBeOfType<FileLibraryService>();
+            one.ServiceProvider.GetRequiredService<IProjectStore>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<IProjectStore>());
+            one.ServiceProvider.GetRequiredService<ProjectState>().ShouldNotBeNull();
         }
 
         [Fact]

@@ -1,9 +1,13 @@
 @using Blazemoji.Services.Library;
+@using Blazemoji.Services.Projects;
 @using Blazemoji.Shared.Components;
 @using Blazemoji.Shared.State;
 @using Blazemoji.Shared.Models.Library;
 @inject ILibraryService _libraryService
+@inject ISamples _samples
 @inject IDialogService _dialogService
+@inject ISnackbar _snackbar
+@inject ILogger<Library> _logger
 @inject LocalStorageFiles _localStorageFiles
 
 <h3>📚 Library</h3>
@@ -28,7 +32,7 @@
                 <MudDivider />
             }
         </MudTreeViewItem>
-            <MudTreeViewItem OnClick="ClearLocalStorage" @bind-Expanded="@_localStorageExpanded" title="Clear local storage" Class="mt-4" Style="cursor:pointer;" Value="@("Local Storage 🗑️")">
+            <MudTreeViewItem OnClick="ClearSaved" @bind-Expanded="@_savedExpanded" title="Clear saved files" data-testid="clear-saved" Class="mt-4 cursor-pointer" Value="@("Saved 🗑️")">
                 @if (_userFiles != null)
                 {
                     @foreach (var file in _userFiles)
@@ -51,11 +55,11 @@
 }
 
 @code {
-    private List<EmojicFile> _sampleFiles;
+    private IReadOnlyList<EmojicFile> _sampleFiles;
     private List<EmojicFile> _userFiles;
 
     private bool _expanded = true;
-    private bool _localStorageExpanded = true;
+    private bool _savedExpanded = true;
 
     [Parameter]
     public EventCallback<EmojicFile> OnEmojicFileSelected { get; set; }
@@ -64,8 +68,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _sampleFiles = await _libraryService.GetAllSamplesAsync();
-        _sampleFiles = _sampleFiles.OrderBy(x => x.Name).ToList();
+        _sampleFiles = await _samples.AllAsync();
 
         _localStorageFiles.LocalStorageStateChanged += LocalFileStateChanged;
 
@@ -84,12 +87,12 @@
         {
             try
             {
-                _userFiles = (await _libraryService.GetUserSavedFiles()).OrderBy(x => x.Name).ToList();
+                _userFiles = (await _libraryService.GetSavedAsync()).OrderBy(x => x.Name).ToList();
                 _localStorageFiles.Files = _userFiles;
             }
-            catch (Exception ex)
+            catch (ProjectStoreException exception)
             {
-                Console.WriteLine(ex.Message);
+                _logger.LogWarning(exception, "Saved files could not be read");
             }
         }
 
@@ -101,14 +104,14 @@
         await OnEmojicFileSelected.InvokeAsync(emojicFile);
     }
 
-    private async Task ClearLocalStorage()
+    private async Task ClearSaved()
     {
         var parameters = new DialogParameters<DestructiveDialog>();
-        parameters.Add(x => x.Text, "Do you really want to clear local emojicode .🍇 files?");
+        parameters.Add(x => x.Text, "Do you really want to clear your saved emojicode .🍇 files?");
 
         var options = new DialogOptions() { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall };
 
-        var dialogResult = await _dialogService.ShowAsync<DestructiveDialog>("🗑️ Clear Local Storage", parameters, options);
+        var dialogResult = await _dialogService.ShowAsync<DestructiveDialog>("🗑️ Clear Saved Files", parameters, options);
         var dialog = await dialogResult.Result;
 
         if (dialog is null || dialog.Canceled)
@@ -116,8 +119,16 @@
             return;
         }
 
-        await _libraryService.ClearLocalStorageAsync();
-        _localStorageFiles.Files = await _libraryService.GetUserSavedFiles();
+        try
+        {
+            await _libraryService.ClearSavedAsync();
+            _localStorageFiles.Files = await _libraryService.GetSavedAsync();
+        }
+        catch (ProjectStoreException exception)
+        {
+            _logger.LogWarning(exception, "Saved files could not be cleared");
+            _snackbar.Add("The saved files could not be cleared.", Severity.Warning);
+        }
     }
 
     public void Dispose()

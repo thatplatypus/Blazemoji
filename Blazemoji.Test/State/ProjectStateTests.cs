@@ -226,6 +226,12 @@ namespace Blazemoji.Test.State
         [InlineData("semi;colon.🍇", ProjectState.FileNameRule)]
         [InlineData("-option.🍇", ProjectState.FileNameRule)]
         [InlineData("main.🍇/inside-a-file.🍇", "A file cannot be inside another file.")]
+        [InlineData("Main.🍇", "A file with that name already exists.")]
+        [InlineData("MAIN.🍇/inside-a-file.🍇", "A file cannot be inside another file.")]
+        [InlineData(".hidden.🍇", ProjectState.HiddenNameRule)]
+        [InlineData("lib/.hidden/greeter.🍇", ProjectState.HiddenNameRule)]
+        [InlineData("blazemoji.json", ProjectState.DescriptionNameRule)]
+        [InlineData("Blazemoji.JSON", ProjectState.DescriptionNameRule)]
         public async Task A_file_name_that_cannot_be_used_is_refused_with_a_reason(string path, string reason)
         {
             var state = await LoadedAsync();
@@ -257,6 +263,45 @@ namespace Blazemoji.Test.State
             state.Current.Find("app/start.🍇")!.Content.ShouldBe("main");
             state.Current.Entry.ShouldBe("app/start.🍇");
             state.OpenPath.ShouldBe("app/start.🍇");
+        }
+
+        [Fact]
+        public async Task A_file_can_be_renamed_to_its_own_name_in_another_case_of_letters()
+        {
+            var state = await WithApiProjectAsync();
+
+            (await state.RenameFileAsync("app/main.🍇", "app/Main.🍇")).ShouldBeNull();
+
+            state.Current.Files.Select(f => f.Path).ShouldBe(["app/Main.🍇", "app/routes.🍇", "shared/util.🍇"]);
+            state.Current.Entry.ShouldBe("app/Main.🍇");
+        }
+
+        [Fact]
+        public async Task A_file_cannot_take_the_name_of_another_spelt_with_the_same_letters_put_together_differently()
+        {
+            var state = await LoadedAsync();
+            (await state.AddFileAsync("caf\u00E9.🍇")).ShouldBeNull();
+
+            (await state.AddFileAsync("cafe\u0301.🍇")).ShouldBe("A file with that name already exists.");
+        }
+
+        [Fact]
+        public async Task A_file_called_as_the_description_is_but_inside_a_folder_is_an_ordinary_file()
+        {
+            var state = await LoadedAsync();
+
+            (await state.AddFileAsync("data/blazemoji.json")).ShouldBeNull();
+        }
+
+        [Fact]
+        public async Task A_project_name_too_long_is_cut_between_characters_and_never_through_one()
+        {
+            var state = await LoadedAsync();
+            var long81 = "A" + string.Concat(Enumerable.Repeat("🍇", 40));
+
+            (await state.CreateAsync(long81, "api")).ShouldBeNull();
+
+            state.Current.Name.ShouldBe("A" + string.Concat(Enumerable.Repeat("🍇", 39)));
         }
 
         [Fact]

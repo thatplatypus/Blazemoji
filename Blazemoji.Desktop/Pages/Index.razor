@@ -1,0 +1,9 @@
+@page "/"
+@inject SmokeSession Smoke
+
+<Workspace />
+
+@if (Smoke.IsEnabled)
+{
+    <SmokeRun />
+}

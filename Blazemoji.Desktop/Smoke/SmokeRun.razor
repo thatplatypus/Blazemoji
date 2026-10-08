@@ -1,0 +1,68 @@
+@using System.Diagnostics
+@using Blazemoji.Services.Library
+@using Blazemoji.Services.Projects
+@inject SmokeSession Session
+@inject SmokeInterop Interop
+@inject ISamples Samples
+@inject IProjectTemplates Templates
+
+@* On the page only for a smoke run. Has the page check itself once it is up, adds what only
+   this side can see, and hands the lot to the session, which reports it and closes the app. *@
+
+@code {
+    private const string PageChecks = "page-checks-ran";
+    private const string ProjectOnDisk = "project-is-a-folder-on-disk";
+    private const string SamplesShipped = "samples-came-with-the-app";
+    private const string TemplatesShipped = "templates-came-with-the-app";
+
+    // What FileProjectTemplates offers when it finds no templates beside the app.
+    private const string TemplateWhenNoneAreFound = "hello-world";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        var checks = new List<SmokeCheckOutcome>();
+        var timer = Stopwatch.StartNew();
+        try
+        {
+            checks.AddRange(await Interop.RunAsync(Session.AlsoCompile));
+        }
+        catch (Exception exception) when (exception is JSException or InvalidOperationException or TaskCanceledException)
+        {
+            checks.Add(new SmokeCheckOutcome(PageChecks, false, timer.ElapsedMilliseconds, exception.GetType().Name + ": " + exception.Message));
+        }
+
+        checks.Add(TheProjectIsOnDisk());
+        checks.Add(await TheSamplesCameWithTheAppAsync());
+        checks.Add(TheTemplatesCameWithTheApp());
+        Session.Report(checks);
+    }
+
+    private SmokeCheckOutcome TheProjectIsOnDisk()
+    {
+        var timer = Stopwatch.StartNew();
+        var root = Session.ProjectsRoot;
+        var found = Directory.Exists(root)
+            && Directory.GetDirectories(root).Any(folder => File.Exists(Path.Combine(folder, FileProjectStore.DescriptionFile)));
+
+        return new SmokeCheckOutcome(ProjectOnDisk, found, timer.ElapsedMilliseconds, found ? null : "No project folder with a description was found under the projects folder.");
+    }
+
+    private async Task<SmokeCheckOutcome> TheSamplesCameWithTheAppAsync()
+    {
+        var timer = Stopwatch.StartNew();
+        var found = (await Samples.AllAsync()).Count;
+
+        return new SmokeCheckOutcome(SamplesShipped, found > 0, timer.ElapsedMilliseconds, found > 0 ? null : "No sample programs were found beside the app.");
+    }
+
+    private SmokeCheckOutcome TheTemplatesCameWithTheApp()
+    {
+        var timer = Stopwatch.StartNew();
+        var found = Templates.All.Any(template => template.Id != TemplateWhenNoneAreFound);
+
+        return new SmokeCheckOutcome(TemplatesShipped, found, timer.ElapsedMilliseconds, found ? null : "Only the built-in template is offered: the templates were not found beside the app.");
+    }
+}
