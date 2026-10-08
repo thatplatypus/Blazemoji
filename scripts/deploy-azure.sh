@@ -7,10 +7,11 @@
 #                           [--restart <web app> <resource group>]
 #                           [--in-azure] [--with-grapevine] [--build-only] [--yes]
 #
-# --in-azure has the registry build the image itself, from the same clean copy. Only the
-# source is sent, a few tens of megabytes, where a push from this machine sends every layer:
-# the one that holds the C++ compiler is about 250 MB, and a connection that drops during it
-# fails the whole push with "use of closed network connection". It needs no Docker here.
+# --in-azure has the registry build the image itself, from the clean copy of what is
+# committed. Only the source is sent, a few tens of megabytes, where a push from this
+# machine sends every layer: the one that holds the C++ compiler is about 250 MB, and a
+# connection that drops during it fails the whole push with "use of closed network
+# connection". It needs no Docker here, and it cannot be combined with --with-grapevine.
 #
 # It builds what is committed at HEAD, not what is in the working folder, so the image is
 # the same whoever builds it. That also leaves Grapevine out: its package is built into
@@ -56,15 +57,24 @@ if [ "$build_only" -eq 1 ] && [ "$in_azure" -eq 1 ]; then
   exit 2
 fi
 
+if [ "$with_grapevine" -eq 1 ] && [ "$in_azure" -eq 1 ]; then
+  echo "--in-azure builds what is committed, and Grapevine is not. Leave out one of the two." >&2
+  exit 2
+fi
+
 commit="$(git rev-parse --short HEAD)"
 name="${registry:+$registry.azurecr.io/}$image"
+
+# Whatever is made along the way and is not wanted afterwards. None of the paths has a space.
+made=""
+trap 'rm -rf $made' EXIT
 
 if [ "$with_grapevine" -eq 1 ]; then
   context="."
   echo "Building from the working folder, with whatever is in it."
 else
   context="$(mktemp -d)"
-  trap 'rm -rf "$context"' EXIT
+  made="$made $context"
   git archive HEAD | tar -x -C "$context"
   changed="$(git status --porcelain | wc -l | tr -d ' ')"
   [ "$changed" -eq 0 ] || echo "Note: $changed uncommitted change(s) in the working folder are not in this image."
@@ -93,9 +103,31 @@ restart_if_asked() {
 }
 
 if [ "$in_azure" -eq 1 ]; then
+  # Two things about the registry's builder, both found by trying it.
+  #
+  # It stops at a FROM line that names a platform ("unable to understand line FROM
+  # --platform=..."). The Dockerfile names one on each base image so that a plain build on
+  # an Apple machine still comes out as x86-64. The registry builds on x86-64 and is told
+  # the platform besides, so its copy of the Dockerfile goes without them. The copy has a
+  # name that .dockerignore lets through, which "Dockerfile" is not.
+  #
+  # And left to itself it uses Docker's older builder, which builds every stage, the one
+  # that runs the tests included, and does not hand a build argument on to the stages
+  # after the one that declares it. BuildKit is what the Dockerfile is written for and
+  # what Docker Desktop uses, so the build is asked for as a task that turns it on.
+  sed 's|^FROM --platform=linux/amd64 |FROM |' "$context/Blazemoji/Dockerfile" > "$context/blazemoji.dockerfile"
+  cat > "$context/deploy-task.yaml" <<TASK
+version: v1.1.0
+steps:
+  - build: --platform linux/amd64 -f blazemoji.dockerfile -t \$Registry/$image:$tag -t \$Registry/$image:$commit .
+    env: ["DOCKER_BUILDKIT=1"]
+  - push:
+      - \$Registry/$image:$tag
+      - \$Registry/$image:$commit
+TASK
+
   confirm "have the registry build"
-  az acr build --registry "$registry" --platform linux/amd64 --file "$context/Blazemoji/Dockerfile" \
-    --image "$image:$tag" --image "$image:$commit" "$context"
+  az acr run --registry "$registry" --platform linux/amd64 --file deploy-task.yaml "$context"
   restart_if_asked
   echo "Built in the registry as $name:$tag and $name:$commit."
   exit 0
