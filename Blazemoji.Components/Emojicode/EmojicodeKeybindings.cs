@@ -14,6 +14,7 @@ namespace Blazemoji.Emojicode
         { (int)KeyMod.CtrlCmd | (int)KeyCode.KeyP, "😀" },
         { (int)KeyMod.Shift | (int)KeyCode.Digit1, "❗" },
         { (int)KeyMod.CtrlCmd | (int)KeyCode.Digit1, "!" },
+        { (int)KeyMod.Shift | (int)KeyCode.Digit2, "🧲" },
         { (int)KeyMod.Shift | (int)KeyCode.Quote, "🔤" },
         { (int)KeyMod.Shift | (int)KeyCode.Digit5, "🚮" },
         { (int)KeyMod.Shift | (int)KeyCode.Digit6, "🔺" },
@@ -40,6 +41,7 @@ namespace Blazemoji.Emojicode
             { (int)KeyMod.Shift | (int)KeyCode.BracketLeft, "{" },
             { (int)KeyMod.Shift | (int)KeyCode.BracketRight, "}" },
             { (int)KeyMod.Shift | (int)KeyCode.Digit1, "!" },
+            { (int)KeyMod.Shift | (int)KeyCode.Digit2, "@" },
             { (int)KeyMod.Shift | (int)KeyCode.Quote, "\"" },
             { (int)KeyMod.Shift | (int)KeyCode.Digit5, "%" },
             { (int)KeyMod.Shift | (int)KeyCode.Digit6, "^" },
@@ -53,19 +55,29 @@ namespace Blazemoji.Emojicode
         };
 
         private const int ClosesAString = (int)KeyMod.Shift | (int)KeyCode.Quote;
+        private const int PutsAValueInAString = (int)KeyMod.Shift | (int)KeyCode.Digit2;
 
         /// <summary>True for a key whose text depends on where the cursor is. See <see cref="TextFor"/>.</summary>
         public static bool CanDependOnContext(int keybinding) => _printedOnTheKey.ContainsKey(keybinding);
 
         /// <summary>
         /// What a key types where the cursor is: its emoji in code, and what is printed on it
-        /// inside a string or a comment. The quote key still types 🔤 inside a string, since
-        /// that is how the string is closed.
+        /// inside a string or a comment. Between two 🧲 in a string, where a value is written,
+        /// it is code again. Two keys differ. The quote key still types 🔤 inside a string,
+        /// since that is how the string is closed. And the at key is the other way about: its
+        /// 🧲 means something only inside a string, so that is the one place it types it.
         /// </summary>
         public static string TextFor(int keybinding, TextContext context)
         {
-            var inCode = context == TextContext.Code || (context == TextContext.String && keybinding == ClosesAString);
-            return !inCode && _printedOnTheKey.TryGetValue(keybinding, out var printed) ? printed : _keybindings[keybinding];
+            var isCode = context is TextContext.Code or TextContext.Interpolation;
+            var typesItsEmoji = keybinding switch
+            {
+                PutsAValueInAString => context is TextContext.String or TextContext.Interpolation,
+                ClosesAString => isCode || context == TextContext.String,
+                _ => isCode,
+            };
+
+            return !typesItsEmoji && _printedOnTheKey.TryGetValue(keybinding, out var printed) ? printed : _keybindings[keybinding];
         }
 
         public static (KeyMod[], KeyCode) GetKeybindingComponents(int key)

@@ -182,6 +182,73 @@ namespace Blazemoji.Test.Emojicode
             Type("🍉", before).ShouldBe(after, what);
         }
 
+        [Theory]
+        [InlineData("😀 🔤Hello |🔤❗️", "😀 🔤Hello 🧲|🧲🔤❗️", "in a string that is closed")]
+        [InlineData("😀 🔤Hello |", "😀 🔤Hello 🧲|🧲", "in one that is not closed yet")]
+        [InlineData("😀 🔤|world🔤", "😀 🔤🧲|🧲world🔤", "in front of text, since a magnet that is left open takes the rest of the string for code")]
+        [InlineData("😀 🔤🧲a🧲 and |🔤", "😀 🔤🧲a🧲 and 🧲|🧲🔤", "after another pair")]
+        public void A_magnet_typed_in_a_string_brings_its_twin_and_leaves_the_cursor_between_them(string before, string after, string where)
+        {
+            Type("🧲", before).ShouldBe(after, where);
+        }
+
+        [Fact]
+        public void A_magnet_typed_over_a_selection_in_a_string_wraps_it_and_keeps_it_selected()
+        {
+            Type("🧲", "😀 🔤Hello [name]🔤").ShouldBe("😀 🔤Hello 🧲[name]🧲🔤");
+        }
+
+        [Fact]
+        public void The_magnet_that_ends_the_code_in_a_string_is_stepped_over_when_it_is_already_there()
+        {
+            Type("🧲", "😀 🔤Hello 🧲name|🧲🔤").ShouldBe("😀 🔤Hello 🧲name🧲|🔤");
+        }
+
+        [Fact]
+        public void The_magnet_that_ends_the_code_in_a_string_is_typed_when_it_is_not_there()
+        {
+            Type("🧲", "😀 🔤Hello 🧲name|🔤").ShouldBe("😀 🔤Hello 🧲name🧲|🔤");
+        }
+
+        [Fact]
+        public void A_second_magnet_typed_into_a_pair_with_nothing_in_it_makes_an_at_sign_of_them()
+        {
+            // The key that types the pair is the one an at sign is printed on, and a string
+            // may well want one: an address, a handle. Pressing it twice is how to get it.
+            Type("🧲", "😀 🔤tom🧲|🧲example.com🔤").ShouldBe("😀 🔤tom@|example.com🔤");
+        }
+
+        [Fact]
+        public void An_escaped_magnet_is_one_magnet()
+        {
+            Type("🧲", "😀 🔤50 ❌|🔤").ShouldBe("😀 🔤50 ❌🧲|🔤");
+            Type("🧲", "😀 🔤50 ❌❌|🔤").ShouldBe("😀 🔤50 ❌❌🧲|🧲🔤");
+        }
+
+        [Theory]
+        [InlineData("😀 |", "😀 🧲|")]
+        [InlineData("💭 a |", "💭 a 🧲|")]
+        [InlineData("💭 🔤a |🔤", "💭 🔤a 🧲|🔤")]
+        public void A_magnet_typed_in_code_or_in_a_comment_is_one_magnet(string before, string after)
+        {
+            Type("🧲", before).ShouldBe(after);
+        }
+
+        [Theory]
+        [InlineData("🤜", "😀 🔤a 🧲|🧲🔤", "😀 🔤a 🧲🤜|🤛🧲🔤", "an opener brings its closer, and the magnet may follow it")]
+        [InlineData("🤛", "😀 🔤a 🧲🤜b|🤛🧲🔤", "😀 🔤a 🧲🤜b🤛|🧲🔤", "a closer is stepped over")]
+        [InlineData("🔤", "😀 🔤a 🧲f |🧲🔤", "😀 🔤a 🧲f 🔤|🔤🧲🔤", "a string can begin there")]
+        public void Between_two_magnets_in_a_string_typing_is_as_it_is_in_code(string typed, string before, string after, string because)
+        {
+            Type(typed, before).ShouldBe(after, because);
+        }
+
+        [Fact]
+        public void A_magnet_needs_to_know_what_is_around_the_cursor()
+        {
+            Typing.DependsOnWhatIsAround("🧲").ShouldBeTrue();
+        }
+
         [Fact]
         public void Only_the_rest_of_the_cursors_line_decides_whether_an_opener_is_closed()
         {

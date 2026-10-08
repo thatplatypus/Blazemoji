@@ -20,6 +20,15 @@ namespace Blazemoji.Emojicode.Editing
 
         public static Pair String { get; } = new("🔤", "🔤");
 
+        /// <summary>
+        /// Inside a string, the marks around a value that goes into it. They are a pair only
+        /// there: between them it is code, and outside a string a 🧲 is nothing.
+        /// </summary>
+        public static Pair Interpolation { get; } = new("🧲", "🧲");
+
+        /// <summary>What the key that types <see cref="Interpolation"/> has printed on it, for a string that wants one.</summary>
+        public const string AtSign = "@";
+
         public const string LineComment = "💭";
 
         public static Pair BlockComment { get; } = new("💭🔜", "🔚💭");
