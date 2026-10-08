@@ -101,6 +101,47 @@ namespace Blazemoji.Test.Components
         }
 
         [Fact]
+        public async Task Text_the_browser_was_still_reading_when_another_project_was_opened_is_not_kept_in_that_project()
+        {
+            // Both projects have a file of the same name.
+            var other = new Project("p2", "Other", ProjectKind.Program, "a.🍇", [new ProjectFile("a.🍇", "the other project's own text")]);
+            _store.LoadAsync(other.Id).Returns(other);
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [], null));
+            var reading = JSInterop.Setup<string>("blazorMonaco.editor.model.getValue", invocation => (string?)invocation.Arguments[0] == Uri(1));
+            ModelCreation(2).SetResult(Model(2));
+            var cut = RenderShowingTheFirstFile();
+            var running = cut.Find("[data-testid=run-button]").ClickAsync();
+            cut.WaitForAssertion(() => reading.Invocations.Count.ShouldBe(1));
+
+            await cut.InvokeAsync(() => Project.OpenAsync(other.Id));
+            reading.SetResult("typed into the first project");
+            await running;
+
+            Project.Current.Id.ShouldBe(other.Id);
+            Project.Current.Find("a.🍇")!.Content.ShouldBe("the other project's own text");
+        }
+
+        [Fact]
+        public async Task Running_does_not_wait_for_a_file_that_is_still_being_opened()
+        {
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [], null));
+            ModelCreation(2);
+            ModelHolds(1, "a, edited");
+            var cut = RenderShowingTheFirstFile();
+            await cut.Find("[data-testid=file][data-path='b.🍇']").ClickAsync();
+            cut.WaitForAssertion(() => JSInterop.Invocations[CreateModel].Count.ShouldBe(2));
+
+            // Not awaited: behind a file that never finishes opening, this click would never finish either.
+            var running = cut.Find("[data-testid=run-button]").ClickAsync();
+
+            // The second file's model never arrives in this test. The run went ahead all the
+            // same, with what had been typed into the file the editor was still showing.
+            cut.WaitForAssertion(() => _toolchain.ReceivedCalls().ShouldContain(call => call.GetMethodInfo().Name == nameof(IToolchain.CompileAsync)));
+            Project.Current.Find("a.🍇")!.Content.ShouldBe("a, edited");
+            await running;
+        }
+
+        [Fact]
         public async Task A_problem_in_a_file_not_shown_yet_is_revealed_only_once_that_file_is_in_the_editor()
         {
             var problem = new Diagnostic(DiagnosticSeverity.Error, "b.🍇", 3, 1, "Broken.");

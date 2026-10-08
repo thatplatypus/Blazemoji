@@ -191,11 +191,14 @@
     {
         foreach (var key in _models.Keys.Where(key => !keys.Contains(key)).ToList())
         {
-            if (ReferenceEquals(_shown, _models[key]))
+            // Forgotten before the browser is asked to let go of it, so that nothing asks for
+            // the text of a model that is on its way out.
+            var model = _models[key];
+            _models.Remove(key);
+            if (ReferenceEquals(_shown, model))
                 _shown = null;
 
-            await _models[key].DisposeModel();
-            _models.Remove(key);
+            await model.DisposeModel();
         }
     }
 

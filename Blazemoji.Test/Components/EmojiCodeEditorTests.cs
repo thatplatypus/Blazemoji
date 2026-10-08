@@ -87,6 +87,24 @@ namespace Blazemoji.Test.Components
             (await cut.InvokeAsync(() => cut.Instance.GetCodeAsync("never opened"))).ShouldBeNull();
         }
 
+        [Fact]
+        public async Task A_file_that_is_being_closed_is_already_gone_to_anything_that_asks_for_its_text()
+        {
+            ModelsAreMadeAtOnce();
+            // The browser has not finished getting rid of the model yet.
+            var closing = JSInterop.SetupVoid("blazorMonaco.editor.model.dispose", _ => true);
+            var reading = JSInterop.Setup<string>("blazorMonaco.editor.model.getValue", _ => true).SetResult("text of one");
+            var cut = Render<EmojiCodeEditor>();
+            await cut.InvokeAsync(() => cut.Instance.OpenFileAsync("one", "1"));
+            var closed = cut.InvokeAsync(() => cut.Instance.CloseFilesExceptAsync(new HashSet<string>()));
+
+            (await cut.InvokeAsync(() => cut.Instance.GetCodeAsync("one"))).ShouldBeNull();
+            reading.Invocations.ShouldBeEmpty();
+
+            closing.SetVoidResult();
+            await closed;
+        }
+
         /// <summary>The editor with the cursor at the end of <paramref name="before"/> and <paramref name="after"/> following it on the line.</summary>
         private IRenderedComponent<EmojiCodeEditor> RenderWithTheCursorAfter(string before, string after = "", string selected = "")
         {
