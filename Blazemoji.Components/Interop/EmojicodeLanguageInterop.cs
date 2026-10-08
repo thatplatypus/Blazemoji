@@ -13,7 +13,7 @@ namespace Blazemoji.Interop
     public sealed record SignatureAnswer(string Label, string Documentation, IReadOnlyList<string> Parameters, int ActiveParameter);
 
     /// <summary>What Monaco is told about the language's pairs, comments and escape mark. Each pair is its opener and its closer.</summary>
-    public sealed record LanguageSyntax(IReadOnlyList<string[]> Matched, IReadOnlyList<string[]> Completed, string LineComment, string[] BlockComment, string Escape);
+    public sealed record LanguageSyntax(IReadOnlyList<string[]> Matched, IReadOnlyList<string[]> Completed, string LineComment, string[] BlockComment, string Escape, string[] Interpolation);
 
     /// <param name="Stamp">Names the text and the selection as they were when this was read.</param>
     public sealed record AroundCursorAnswer(string Before, string Selected, string After, string Stamp)
@@ -52,7 +52,8 @@ namespace Blazemoji.Interop
             [.. EmojicodePairs.Completed.Select(pair => new[] { pair.Open, pair.Close })],
             EmojicodePairs.LineComment,
             [EmojicodePairs.BlockComment.Open, EmojicodePairs.BlockComment.Close],
-            EmojicodePairs.Escape);
+            EmojicodePairs.Escape,
+            [EmojicodePairs.Interpolation.Open, EmojicodePairs.Interpolation.Close]);
 
         private IJSObjectReference? _module;
         private IJSObjectReference? _registration;

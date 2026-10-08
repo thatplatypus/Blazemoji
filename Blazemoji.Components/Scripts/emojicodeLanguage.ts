@@ -49,6 +49,7 @@ interface Syntax {
     lineComment: string;
     blockComment: [string, string];
     escape: string;
+    interpolation: [string, string];
 }
 
 interface AroundCursor {
@@ -218,10 +219,43 @@ function endsEscaping(text: string, escape: string): boolean {
     return marks % 2 === 1;
 }
 
+// How many times a mark stands in the text without the escape mark in front of it.
+function unescaped(text: string, mark: string, escape: string): number {
+    let found = 0;
+    for (let at = text.indexOf(mark); at >= 0; at = text.indexOf(mark, at + mark.length)) {
+        if (!endsEscaping(text.slice(0, at), escape)) {
+            found++;
+        }
+    }
+
+    return found;
+}
+
+// True when the cursor is between the two 🧲 of a value in a string and nothing is written
+// there yet. Two 🧲 side by side can also be the end of one value and the start of the next,
+// so the ones before the cursor are counted from where the string begins on this line: the
+// one just before the cursor opens a value when their number is odd.
+function isEmptyInterpolation(before: string, after: string, inside: Inside, syntax: Syntax): boolean {
+    const [open, close] = syntax.interpolation;
+    if (inside !== "string" || !before.endsWith(open) || !after.startsWith(close)) {
+        return false;
+    }
+
+    const quote = syntax.completed.find(([opens, closes]) => opens === closes)?.[0];
+    let begins = 0;
+    for (let at = quote ? before.indexOf(quote) : -1; at >= 0; at = before.indexOf(quote!, at + quote!.length)) {
+        if (!endsEscaping(before.slice(0, at), syntax.escape)) {
+            begins = at + quote!.length;
+        }
+    }
+
+    return unescaped(before.slice(begins), open, syntax.escape) % 2 === 1;
+}
+
 // The range of an opener and its closer with the cursor between them and nothing else.
 // Two different halves (🍇🍉) count in code. Two that are the same (🔤🔤) count when the
 // first has just opened a string, and not when it ended one and the second begins another.
-// Null for anything else.
+// The two 🧲 around a value count inside a string. Null for anything else.
 function emptyPairAroundCursor(editor: any, syntax: Syntax): any | null {
     const selections = editor.getSelections();
     if (!selections || selections.length !== 1 || !selections[0].isEmpty()) {
@@ -233,13 +267,19 @@ function emptyPairAroundCursor(editor: any, syntax: Syntax): any | null {
     const line: string = model.getLineContent(position.lineNumber);
     const before = line.slice(0, position.column - 1);
     const after = line.slice(position.column - 1);
-    const pair = syntax.completed.find(([open, close]) => before.endsWith(open) && after.startsWith(close));
+    const pair = [...syntax.completed, syntax.interpolation].find(([open, close]) => before.endsWith(open) && after.startsWith(close));
     if (!pair) {
         return null;
     }
 
     const [open, close] = pair;
     const inside = insideAt(model, position);
+    if (pair === syntax.interpolation) {
+        return isEmptyInterpolation(before, after, inside, syntax)
+            ? new monaco.Range(position.lineNumber, position.column - open.length, position.lineNumber, position.column + close.length)
+            : null;
+    }
+
     const empty = open === close
         ? inside === "string" && !endsEscaping(before.slice(0, before.length - open.length), syntax.escape)
         : inside === "code";

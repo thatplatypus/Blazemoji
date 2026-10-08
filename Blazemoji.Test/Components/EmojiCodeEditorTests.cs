@@ -249,6 +249,7 @@ namespace Blazemoji.Test.Components
             syntax.LineComment.ShouldBe("💭");
             syntax.BlockComment.ShouldBe(["💭🔜", "🔚💭"]);
             syntax.Escape.ShouldBe("❌");
+            syntax.Interpolation.ShouldBe(["🧲", "🧲"]);
         }
 
         [Fact]
