@@ -7,11 +7,13 @@
 #                           [--restart <web app> <resource group>]
 #                           [--in-azure] [--with-grapevine] [--build-only] [--yes]
 #
-# --in-azure has the registry build the image itself, from the clean copy of what is
-# committed. Only the source is sent, a few tens of megabytes, where a push from this
-# machine sends every layer: the one that holds the C++ compiler is about 250 MB, and a
-# connection that drops during it fails the whole push with "use of closed network
-# connection". It needs no Docker here, and it cannot be combined with --with-grapevine.
+# --in-azure has the registry build the image itself (docker/registry-build.yaml), from the
+# source as GitHub has it at this commit. Nothing is uploaded from this machine but a few
+# lines, where a push sends every layer: the one that holds the C++ compiler is about
+# 250 MB, and a connection that drops during an upload fails the whole thing ("use of
+# closed network connection"). It needs no Docker here. The commit has to be pushed to
+# GitHub first, and it cannot be combined with --with-grapevine. With --build-only the
+# registry builds and pushes nothing.
 #
 # It builds what is committed at HEAD, not what is in the working folder, so the image is
 # the same whoever builds it. That also leaves Grapevine out: its package is built into
@@ -47,13 +49,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ "$build_only" -eq 0 ] && [ -z "$registry" ]; then
-  echo "Say which registry with --registry <name>, or build without pushing with --build-only." >&2
-  exit 2
-fi
-
-if [ "$build_only" -eq 1 ] && [ "$in_azure" -eq 1 ]; then
-  echo "--build-only builds here and pushes nothing; --in-azure builds in the registry. Choose one." >&2
+if [ -z "$registry" ] && { [ "$build_only" -eq 0 ] || [ "$in_azure" -eq 1 ]; }; then
+  echo "Say which registry with --registry <name>, or build here without pushing with --build-only." >&2
   exit 2
 fi
 
@@ -68,18 +65,6 @@ name="${registry:+$registry.azurecr.io/}$image"
 # Whatever is made along the way and is not wanted afterwards. None of the paths has a space.
 made=""
 trap 'rm -rf $made' EXIT
-
-if [ "$with_grapevine" -eq 1 ]; then
-  context="."
-  echo "Building from the working folder, with whatever is in it."
-else
-  context="$(mktemp -d)"
-  made="$made $context"
-  git archive HEAD | tar -x -C "$context"
-  changed="$(git status --porcelain | wc -l | tr -d ' ')"
-  [ "$changed" -eq 0 ] || echo "Note: $changed uncommitted change(s) in the working folder are not in this image."
-  echo "Building what is committed at $commit."
-fi
 
 # Says what is about to change and as whom, and stops unless the answer is yes.
 confirm() {
@@ -103,34 +88,48 @@ restart_if_asked() {
 }
 
 if [ "$in_azure" -eq 1 ]; then
-  # Two things about the registry's builder, both found by trying it.
-  #
-  # It stops at a FROM line that names a platform ("unable to understand line FROM
-  # --platform=..."). The Dockerfile names one on each base image so that a plain build on
-  # an Apple machine still comes out as x86-64. The registry builds on x86-64 and is told
-  # the platform besides, so its copy of the Dockerfile goes without them. The copy has a
-  # name that .dockerignore lets through, which "Dockerfile" is not.
-  #
-  # And left to itself it uses Docker's older builder, which builds every stage, the one
-  # that runs the tests included, and does not hand a build argument on to the stages
-  # after the one that declares it. BuildKit is what the Dockerfile is written for and
-  # what Docker Desktop uses, so the build is asked for as a task that turns it on.
-  sed 's|^FROM --platform=linux/amd64 |FROM |' "$context/Blazemoji/Dockerfile" > "$context/blazemoji.dockerfile"
-  cat > "$context/deploy-task.yaml" <<TASK
-version: v1.1.0
-steps:
-  - build: --platform linux/amd64 -f blazemoji.dockerfile -t \$Registry/$image:$tag -t \$Registry/$image:$commit .
-    env: ["DOCKER_BUILDKIT=1"]
-  - push:
-      - \$Registry/$image:$tag
-      - \$Registry/$image:$commit
-TASK
+  full="$(git rev-parse HEAD)"
+  source="$(git remote get-url origin | sed -E 's#^git@github.com:#https://github.com/#; s#\.git$##').git"
+  git fetch -q origin
+  if [ -z "$(git branch -r --contains "$full")" ]; then
+    echo "The registry fetches the source from GitHub, and commit $commit is not there yet. Push it first." >&2
+    exit 2
+  fi
 
-  confirm "have the registry build"
-  az acr run --registry "$registry" --platform linux/amd64 --file deploy-task.yaml "$context"
+  changed="$(git status --porcelain | wc -l | tr -d ' ')"
+  [ "$changed" -eq 0 ] || echo "Note: $changed uncommitted change(s) in the working folder are not in this image."
+
+  push="yes"
+  if [ "$build_only" -eq 1 ]; then
+    push="no"
+    echo "Having the registry build commit $commit, and push nothing."
+  else
+    confirm "have the registry build and push"
+  fi
+
+  az acr run --registry "$registry" --platform linux/amd64 --file docker/registry-build.yaml \
+    --set image="$image" --set tag="$tag" --set commit="$commit" --set push="$push" "$source#$full"
+
+  if [ "$build_only" -eq 1 ]; then
+    echo "Built in the registry. Nothing was pushed."
+    exit 0
+  fi
+
   restart_if_asked
-  echo "Built in the registry as $name:$tag and $name:$commit."
+  echo "Built in the registry and pushed as $name:$tag and $name:$commit."
   exit 0
+fi
+
+if [ "$with_grapevine" -eq 1 ]; then
+  context="."
+  echo "Building from the working folder, with whatever is in it."
+else
+  context="$(mktemp -d)"
+  made="$made $context"
+  git archive HEAD | tar -x -C "$context"
+  changed="$(git status --porcelain | wc -l | tr -d ' ')"
+  [ "$changed" -eq 0 ] || echo "Note: $changed uncommitted change(s) in the working folder are not in this image."
+  echo "Building what is committed at $commit."
 fi
 
 docker build --platform linux/amd64 -f "$context/Blazemoji/Dockerfile" -t "$name:$tag" -t "$name:$commit" "$context"
