@@ -1,7 +1,11 @@
+/* As tall as the tab it is in, so that the lines below scroll and the status stays put. */
 .output-panel {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    box-sizing: border-box;
+    height: 100%;
+    min-height: 0;
 }
 
 /* One row for the status and the dropped-lines note, so the note appearing moves nothing. */
@@ -23,7 +27,8 @@
     display: flex;
     flex-direction: column-reverse;
     overflow-y: auto;
-    max-height: 72vh;
+    flex: 1 1 0;
+    min-height: 0;
 }
 
 .output-line {

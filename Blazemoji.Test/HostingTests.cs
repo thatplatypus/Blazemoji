@@ -106,23 +106,54 @@ namespace Blazemoji.Test
             File.Exists(InTheLibrary(path)).ShouldBeTrue(path);
         }
 
-        [Fact]
-        public async Task Copying_uses_a_script_of_the_librarys_own_and_nothing_the_page_has_to_define()
+        private const string ClipboardScript = "./_content/Blazemoji.Components/js/clipboard.js";
+
+        private (IRenderedComponent<CopyToClipboard> Button, BunitJSModuleInterop Script, Func<int> Copied) RenderCopyButton(bool theBrowserCopies)
         {
-            const string path = "./_content/Blazemoji.Components/js/clipboard.js";
             JSInterop.Mode = JSRuntimeMode.Strict;
-            var module = JSInterop.SetupModule(path);
-            module.Setup<bool>("copyText", "🍇").SetResult(true);
+            var script = JSInterop.SetupModule(ClipboardScript);
+            script.Setup<bool>("lastCopySucceeded").SetResult(theBrowserCopies);
             var copied = 0;
-            var cut = Render<CopyToClipboard>(parameters => parameters
+            var button = Render<CopyToClipboard>(parameters => parameters
                 .Add(copy => copy.ClipboardValue, "🍇")
                 .Add(copy => copy.CopiedToClipboard, () => copied++));
+            return (button, script, () => copied);
+        }
 
-            await cut.Find("button").ClickAsync();
+        [Fact]
+        public void The_text_to_copy_is_on_the_page_for_a_script_of_the_librarys_own_to_copy_as_the_button_is_pressed()
+        {
+            // The browser only lets a page write to the clipboard while a press is being
+            // handled. A press that goes to the server and comes back has stopped being one by
+            // then, as far as Safari is concerned, so the copying is done in the browser.
+            var (button, script, _) = RenderCopyButton(theBrowserCopies: true);
 
-            module.Invocations["copyText"].ShouldHaveSingleItem();
-            copied.ShouldBe(1);
-            File.Exists(InTheLibrary(path)).ShouldBeTrue(path);
+            button.Find("[data-copy]").GetAttribute("data-copy").ShouldBe("🍇");
+            button.Find("[data-copy] button").ShouldNotBeNull();
+            JSInterop.Invocations["import"].ShouldHaveSingleItem().Arguments[0].ShouldBe(ClipboardScript);
+            script.Invocations.ShouldBeEmpty();
+            File.Exists(InTheLibrary(ClipboardScript)).ShouldBeTrue(ClipboardScript);
+        }
+
+        [Fact]
+        public async Task A_press_asks_the_browser_whether_it_copied_and_says_so_when_it_did()
+        {
+            var (button, script, copied) = RenderCopyButton(theBrowserCopies: true);
+
+            await button.Find("button").ClickAsync();
+
+            script.Invocations["lastCopySucceeded"].ShouldHaveSingleItem();
+            copied().ShouldBe(1);
+        }
+
+        [Fact]
+        public async Task A_press_the_browser_could_not_copy_for_is_not_reported_as_copied()
+        {
+            var (button, _, copied) = RenderCopyButton(theBrowserCopies: false);
+
+            await button.Find("button").ClickAsync();
+
+            copied().ShouldBe(0);
         }
 
         [Fact]

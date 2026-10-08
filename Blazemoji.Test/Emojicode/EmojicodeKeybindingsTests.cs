@@ -11,6 +11,17 @@ namespace Blazemoji.Test.Emojicode
         private const int Comment = (int)KeyMod.CtrlCmd | (int)KeyCode.Slash;
 
         [Fact]
+        public void The_equals_key_types_the_arrow_that_assigns_in_code_and_a_plain_sign_in_a_string_or_comment()
+        {
+            const int equals = (int)KeyCode.Equal;
+
+            EmojicodeKeybindings.TextFor(equals, TextContext.Code).ShouldBe("➡️");
+            EmojicodeKeybindings.TextFor(equals, TextContext.String).ShouldBe("=");
+            EmojicodeKeybindings.TextFor(equals, TextContext.Comment).ShouldBe("=");
+            EmojicodeKeybindings.CanDependOnContext(equals).ShouldBeTrue();
+        }
+
+        [Fact]
         public void In_code_a_key_types_its_emoji()
         {
             EmojicodeKeybindings.TextFor(Exclamation, TextContext.Code).ShouldBe("❗");

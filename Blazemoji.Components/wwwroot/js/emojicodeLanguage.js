@@ -407,10 +407,14 @@ export function applyTheme() {
     set(surface, "editor.background", "editorGutter.background", "editorWidget.background", "editorHoverWidget.background", "editorSuggestWidget.background", "minimap.background");
     set(texts[0], "editor.foreground", "editorLineNumber.activeForeground", "editorWidget.foreground", "editorSuggestWidget.foreground", "editorSuggestWidget.selectedForeground");
     set(texts[1], "editorLineNumber.foreground");
-    set(accent, "editorCursor.foreground", "editorBracketMatch.border", "editor.findMatchBorder", "editorSuggestWidget.highlightForeground", "editorSuggestWidget.focusHighlightForeground", "editorLink.activeForeground", "focusBorder");
+    set(accent, "editorCursor.foreground", "editor.findMatchBorder", "editorSuggestWidget.highlightForeground", "editorSuggestWidget.focusHighlightForeground", "editorLink.activeForeground", "focusBorder");
     set(washed(marker, 0.5), "editor.selectionBackground", "editor.findMatchBackground");
     set(washed(marker, 0.28), "editor.inactiveSelectionBackground", "editor.findMatchHighlightBackground");
-    set(washed(accent, 0.18), "editorBracketMatch.background", "editorSuggestWidget.selectedBackground");
+    set(washed(accent, 0.18), "editorSuggestWidget.selectedBackground");
+    // The mark on the two halves of a pair is only ever behind an emoji, so it is not held
+    // to what text needs. The style sheet rounds it.
+    set(faded(accent, 0.22), "editorBracketMatch.background");
+    set(faded(accent, 0.5), "editorBracketMatch.border");
     set(washed(ink, 0.14), "editor.wordHighlightStrongBackground");
     set(washed(ink, 0.1), "editor.selectionHighlightBackground", "editor.wordHighlightBackground");
     set(washed(ink, 0.05), "editor.lineHighlightBackground", "list.hoverBackground");

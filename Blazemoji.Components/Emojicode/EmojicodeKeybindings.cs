@@ -20,6 +20,7 @@ namespace Blazemoji.Emojicode
         { (int)KeyMod.Shift | (int)KeyCode.Digit8, "✖️" },
         { (int)KeyMod.Shift | (int)KeyCode.Digit9, "🤜" },
         { (int)KeyMod.Shift | (int)KeyCode.Digit0, "🤛" },
+        { (int)KeyCode.Equal, "➡️" },
         { (int)KeyMod.Shift | (int)KeyCode.Equal, "➕" },
         { (int)KeyMod.CtrlCmd | (int)KeyCode.Equal, "+" },
         { (int)KeyMod.CtrlCmd | (int)KeyCode.Minus, "➖" },
@@ -30,10 +31,10 @@ namespace Blazemoji.Emojicode
 
         public static Dictionary<int, string> Keybindings { get => _keybindings; }
 
-        // What is printed on each key that is typed with Shift alone, on a US keyboard, which is
-        // the layout the table above is written for. Inside a string or a comment that is what
-        // the key should type: "Hello World!" needs its own exclamation mark, not the ❗ that
-        // ends a call.
+        // What is printed on each key that is typed alone or with Shift alone, on a US keyboard,
+        // which is the layout the table above is written for. Inside a string or a comment that
+        // is what the key should type: "Hello World!" needs its own exclamation mark, not the ❗
+        // that ends a call.
         private static readonly Dictionary<int, string> _printedOnTheKey = new()
         {
             { (int)KeyMod.Shift | (int)KeyCode.BracketLeft, "{" },
@@ -45,6 +46,7 @@ namespace Blazemoji.Emojicode
             { (int)KeyMod.Shift | (int)KeyCode.Digit8, "*" },
             { (int)KeyMod.Shift | (int)KeyCode.Digit9, "(" },
             { (int)KeyMod.Shift | (int)KeyCode.Digit0, ")" },
+            { (int)KeyCode.Equal, "=" },
             { (int)KeyMod.Shift | (int)KeyCode.Equal, "+" },
             { (int)KeyMod.Shift | (int)KeyCode.Period, ">" },
             { (int)KeyMod.Shift | (int)KeyCode.Comma, "<" },

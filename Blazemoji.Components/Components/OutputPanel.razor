@@ -3,7 +3,7 @@
 @implements IDisposable
 @inject RunState State
 
-<SegmentedTabs @bind-Active="_activeTab" AriaLabel="Output, problems and requests" CompactBelow="240" PanelClass="pt-2">
+<SegmentedTabs @bind-Active="_activeTab" AriaLabel="Output, problems and requests" CompactBelow="240" Class="fills-height" PanelClass="pt-2 scrolls-inside">
     <SegmentedTab Id="@OutputTab" Text="Output">
         <div class="output-panel pa-2">
             <div class="output-status">
