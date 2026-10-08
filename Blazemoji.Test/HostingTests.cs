@@ -52,6 +52,7 @@ namespace Blazemoji.Test
             Services.GetRequiredService<ICodeIntelligence>().ShouldNotBeNull();
             Services.GetRequiredService<IPackageLibrary>().ShouldNotBeNull();
             Services.GetRequiredService<IProjectTemplates>().All.ShouldNotBeEmpty();
+            Services.GetRequiredService<ISamples>().ShouldBeOfType<FileSamples>();
             Services.GetRequiredService<IToolchain>().ShouldBeOfType<HttpToolchain>();
         }
 
@@ -159,7 +160,6 @@ namespace Blazemoji.Test
         [Fact]
         public void Every_tab_renders_with_those_registrations_alone()
         {
-            Services.GetRequiredService<ILibraryService>().GetAllSamplesAsync().Returns([]);
             Services.GetRequiredService<ILibraryService>().GetUserSavedFiles().Returns([]);
 
             Should.NotThrow(() => Render<Library>());

@@ -24,45 +24,6 @@
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Project templates are data read at run time: a folder each, under Emojicode/Templates. -->
-    <Content Update="Emojicode\Templates\**\*.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="Emojicode\Templates\**" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="Emojicode\Samples\InfiniteLoop.🍇">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Emojicode\Samples\DecrementingLoop.🍇">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Emojicode\Samples\Dictionary.🍇">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Emojicode\Samples\DownAndUpLoop.🍇">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Emojicode\Samples\Fizzbuzz.🍇">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Emojicode\Samples\ForInLoop.🍇">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Emojicode\Samples\HelloWorld.🍇">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Emojicode\Samples\Logic1.🍇">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Emojicode\Samples\NumberPalindrome.🍇">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Emojicode\Samples\RandomNumber.🍇">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
 <ItemGroup>
     <ProjectReference Include="..\Blazemoji.Components\Blazemoji.Components.csproj" />
   </ItemGroup>

@@ -3,6 +3,7 @@
 @using Blazemoji.Shared.State;
 @using Blazemoji.Shared.Models.Library;
 @inject ILibraryService _libraryService
+@inject ISamples _samples
 @inject IDialogService _dialogService
 @inject LocalStorageFiles _localStorageFiles
 
@@ -51,7 +52,7 @@
 }
 
 @code {
-    private List<EmojicFile> _sampleFiles;
+    private IReadOnlyList<EmojicFile> _sampleFiles;
     private List<EmojicFile> _userFiles;
 
     private bool _expanded = true;
@@ -64,8 +65,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _sampleFiles = await _libraryService.GetAllSamplesAsync();
-        _sampleFiles = _sampleFiles.OrderBy(x => x.Name).ToList();
+        _sampleFiles = await _samples.AllAsync();
 
         _localStorageFiles.LocalStorageStateChanged += LocalFileStateChanged;
 

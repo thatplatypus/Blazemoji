@@ -142,4 +142,4 @@ _NCrunch*
 # here: it has its own repository, and this one is public. Delete these three lines to commit it.
 Blazemoji.Toolchain.Local/packages/grapevine/
 Blazemoji.Toolchain.Service/package-docs/grapevine/
-Blazemoji/Emojicode/Templates/grapevine-todo/
+Blazemoji.Core/Emojicode/Templates/grapevine-todo/

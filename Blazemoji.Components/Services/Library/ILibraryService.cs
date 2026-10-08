@@ -8,11 +8,6 @@ namespace Blazemoji.Services.Library
     public interface ILibraryService
     {
         /// <summary>
-        /// Gets all sample files in the project
-        /// </summary>
-        public Task<List<EmojicFile>> GetAllSamplesAsync();
-
-        /// <summary>
         /// Gets all files the user has saved in browser local storage
         /// </summary>
         public Task<List<EmojicFile>> GetUserSavedFiles();

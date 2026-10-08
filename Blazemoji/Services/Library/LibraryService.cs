@@ -6,7 +6,6 @@ namespace Blazemoji.Services.Library
     public class LibraryService : ILibraryService
     {
         private readonly ILocalStorageService _localStorageService;
-        private ConcurrentBag<EmojicFile>? _emojicFiles;
 
         public LibraryService(ILocalStorageService localStorageService)
         {
@@ -32,20 +31,6 @@ namespace Blazemoji.Services.Library
         private static bool IsSnippetKey(string key) =>
             !key.StartsWith(LocalStorageProjectStore.KeyPrefix, StringComparison.Ordinal)
             && (key.Contains(".🍇") || key.Contains(".emojic"));
-
-        public async Task<List<EmojicFile>> GetAllSamplesAsync()
-        {
-            string directoryPath = "Emojicode/Samples";
-            IEnumerable<string> files = Directory.EnumerateFiles(directoryPath);
-
-            List<Task> tasks = files.Select(ProcessFileAsync).ToList();
-
-            await Task.WhenAll(tasks);
-            
-            List<EmojicFile> emojiList = _emojicFiles?.ToList() ?? new List<EmojicFile>();
-
-            return emojiList;
-        }
 
         public async Task<List<EmojicFile>> GetUserSavedFiles()
         {
@@ -76,19 +61,6 @@ namespace Blazemoji.Services.Library
         public async Task SaveFileToLocalStorageAsync(EmojicFile file)
         {
             await _localStorageService.SetItemAsStringAsync(file.Name, file.Code);
-        }
-
-        private async Task ProcessFileAsync(string filePath)
-        {
-            _emojicFiles ??= new();
-
-            var code = await File.ReadAllTextAsync(filePath);
-
-            _emojicFiles.Add(new EmojicFile 
-            {
-                Name = filePath[(filePath.LastIndexOf("/") + 1)..],
-                Code = code
-            });
         }
     }
 }

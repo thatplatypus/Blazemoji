@@ -21,6 +21,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The sample programs and the project templates are data read at run time. They are
+         copied beside whatever app references this library, so every host has the same ones. -->
+    <None Update="Emojicode\Samples\**" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Emojicode\Templates\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Blazemoji.Test" />
   </ItemGroup>
 

@@ -4,7 +4,7 @@ The editor is two libraries and a host.
 
 | Project | What it is |
 | --- | --- |
-| `Blazemoji.Core` | What Blazemoji knows about Emojicode and about projects, with no UI: the keyword catalog, the code intelligence, the project model and templates. |
+| `Blazemoji.Core` | What Blazemoji knows about Emojicode and about projects, with no UI: the keyword catalog, the code intelligence, the project model, and the sample programs and project templates themselves. |
 | `Blazemoji.Components` | The editor as Razor components, the state behind them, and the interfaces a host implements. |
 | `Blazemoji` | The web host: a Blazor Server app that shows the editor and keeps projects in the browser. |
 
@@ -26,7 +26,7 @@ The web host's containers set it to `http://toolchain:8080`. A desktop host poin
 // The same for every host.
 services.AddMudServices();
 services.AddToolchainClient(configuration);   // reads ToolchainClient:BaseUrl
-services.AddBlazemojiEditor(configuration);   // catalog, code intelligence, templates, state
+services.AddBlazemojiEditor(configuration);   // catalog, code intelligence, templates, samples, state
 
 // What only the host can supply.
 services.AddScoped<IProjectStore, YourProjectStore>();
@@ -38,19 +38,22 @@ The types are in `MudBlazor.Services`, `Blazemoji.Toolchain.Http`, `Blazemoji` (
 | The host supplies | For | The web host's version |
 | --- | --- | --- |
 | `IProjectStore` | Where projects are kept between sessions. | `LocalStorageProjectStore`: the browser's local storage. A desktop host would write files. |
-| `ILibraryService` | The sample programs and saved snippets in the Library tab. | `LibraryService`: samples from `Emojicode/Samples`, snippets in local storage. |
-| `"ProjectTemplates": { "Path": "..." }` in configuration (optional) | The folder of project templates. Defaults to `Emojicode/Templates` beside the app. | The default. The folders are content of the host project. |
+| `ILibraryService` | The snippets saved from the editor, listed in the Library tab. | `LibraryService`: local storage. |
+| `"ProjectTemplates": { "Path": "..." }` in configuration (optional) | The folder of project templates. Defaults to `Emojicode/Templates` beside the app. | The default. |
+| `"Samples": { "Path": "..." }` in configuration (optional) | The folder of sample programs in the Library tab. Defaults to `Emojicode/Samples` beside the app. | The default. |
+
+The templates and samples are files of `Blazemoji.Core` (`Emojicode/Templates`, `Emojicode/Samples`). The build copies them beside any app that references the library, so every host offers the same ones without keeping copies.
 
 `AddBlazemojiEditor` keeps whatever was registered before it is called. Two uses:
 
 - **State lifetime.** It registers the state classes (`RunState`, `ProjectState`, `RequestState`, `LocalStorageFiles`) as scoped, which on a server is one set per circuit. A desktop host with one user can register them as singletons first, and its own `IProjectStore` to match.
-- **Templates from somewhere other than a folder.** Register your own `IProjectTemplates` first.
+- **Templates or samples from somewhere other than a folder.** Register your own `IProjectTemplates` or `ISamples` first.
 
 The web host also raises the size of a message from the browser to 4 MiB (`AddHubOptions` in `Program.cs`), because the editor hands over a file's whole text. That limit belongs to Blazor Server; a Blazor Hybrid host has none.
 
 ## In the page shell
 
-1. MudBlazor's providers (`MudThemeProvider`, `MudPopoverProvider`, `MudDialogProvider`, `MudSnackbarProvider`) and its style sheet and script. The theme is the host's: the web host's is `Blazemoji/Layout/Theme.cs`. The editor has no colours of its own. It reads the palette MudBlazor writes into the page (surface, text, primary and so on) and makes its Monaco theme from that, so it matches whatever theme the host has. To have it read them again when the page goes dark or light, cascade a `bool` named `DarkMode` around the editor, as `MainLayout.razor` does; a host whose colours never change needs nothing.
+1. MudBlazor's providers (`MudThemeProvider`, `MudPopoverProvider`, `MudDialogProvider`, `MudSnackbarProvider`) and its style sheet and script. Blazemoji's own theme is `Blazemoji.Layout.Theme` in the components library, and the web host hands that to `MudThemeProvider`; a host may hand it another. The editor has no colours of its own. It reads the palette MudBlazor writes into the page (surface, text, primary and so on) and makes its Monaco theme from that, so it matches whatever theme the host has. To have it read them again when the page goes dark or light, cascade a `bool` named `DarkMode` around the editor, as `MainLayout.razor` does; a host whose colours never change needs nothing.
 2. The style sheets `_content/Blazemoji.Components/blazemoji.css` and the host's own `<HostAssembly>.styles.css`, which pulls in the components' scoped styles. `blazemoji.css` makes the workspace fill the window below the host's title bar, with a gap above and below it (`--workspace-gap` on `.workspace`), and the editor and both side panels take their height from that. It works the bar's height out from MudBlazor's own `--mud-appbar-height`; a host whose bar is another height, or that has none, sets `--blazemoji-chrome-height` to what it does have above the workspace.
 
    The web host links Bootstrap 5.1 as well, ahead of these. The components do not use its classes, but a few of them draw plain headings, paragraphs and `<pre>` blocks, which Bootstrap's reset styles. Without Bootstrap those take MudBlazor's and the browser's defaults: the same content, slightly different spacing.
@@ -84,7 +87,6 @@ That is the whole editor: the Files, Toolbox and Library tabs, the editor with i
 
 - No desktop host has been built.
 - There is no file-based `IProjectStore`.
-- The sample programs and project templates are files of the web host. A second host needs its own copies or a shared content project.
 - `ILibraryService` and the Library tab still speak of "local storage", which is where the web host keeps snippets. A desktop host implements the same methods over files, and the wording wants changing when one exists.
 - Copying uses the browser's clipboard API. Whether a desktop WebView allows it has not been tried.
 - The libraries are referenced as projects, not published as packages.

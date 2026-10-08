@@ -87,7 +87,7 @@ Either way the programs you run can reach the network, which `docker compose up`
 
 A project is a set of files that are compiled together, a name, and one file marked as the entry: the file handed to the compiler. Other files join in when a file includes them with `📜`, by a path from the including file. The **Files** tab lists them as a tree, and each file has a menu to rename it, make it the entry, or delete it. A name with slashes puts a file in folders (`lib/greeter.🍇`).
 
-Projects are kept in the browser's local storage, so they are still there after a reload and are not shared between browsers. New projects start from a template: a folder under `Blazemoji/Emojicode/Templates` with a `template.json` and the files.
+Projects are kept in the browser's local storage, so they are still there after a reload and are not shared between browsers. New projects start from a template: a folder under `Blazemoji.Core/Emojicode/Templates` with a `template.json` and the files.
 
 A project runs either as a **Program**, which runs to the end and stops, or as a **Web server**, which keeps running until it is stopped or has had no request for ten minutes. A web server is told which port to listen on through the `PORT` environment variable. While it runs, the **Requests** tab sends it HTTP requests (method, path, headers, body) and shows the status, headers and body that come back.
 
