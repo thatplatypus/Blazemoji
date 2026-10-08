@@ -12,7 +12,7 @@
 @inject ProjectState _projectState
 
 
-<MudContainer Style="max-height:90dvh;overflow:hidden;" MaxWidth="MaxWidth.ExtraExtraLarge">
+<MudContainer Class="workspace" MaxWidth="MaxWidth.ExtraExtraLarge">
     <MudGrid Justify="Justify.Center" Spacing="1">
         <MudItem xs="3">
             <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" OnEmojicodeInsertedCallback="@InsertEmojicodeAsync" CopiedToClipboard="OnCopiedToClipboard" BeforeProjectChange="SyncOpenFileAsync" />

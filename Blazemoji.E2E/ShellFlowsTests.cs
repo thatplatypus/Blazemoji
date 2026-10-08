@@ -146,6 +146,21 @@ namespace Blazemoji.E2E
         }
 
         [Fact]
+        public async Task The_panels_start_a_little_below_the_title_bar_and_the_page_still_does_not_scroll()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+
+            var bar = await editor.Page.Locator(".mud-appbar").BoundingBoxAsync();
+            var panel = await editor.Page.Locator(".mud-grid > .mud-grid-item > .mud-paper").First.BoundingBoxAsync();
+
+            bar.ShouldNotBeNull();
+            panel.ShouldNotBeNull();
+            (panel.Y - (bar.Y + bar.Height)).ShouldBeInRange(8, 20);
+            (await editor.Page.EvaluateAsync<bool>("() => document.documentElement.scrollHeight > innerHeight")).ShouldBeFalse();
+        }
+
+        [Fact]
         public async Task Copy_in_the_toolbox_puts_the_emoji_on_the_clipboard()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);

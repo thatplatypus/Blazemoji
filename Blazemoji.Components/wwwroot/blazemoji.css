@@ -59,8 +59,18 @@ button:disabled .emoji-icon {
     height: 80vh;
 }
 
+/* The panels start a little below the host's title bar. The gap is taken out of the
+   workspace's own height, and the editor is that much shorter, so the page still does not
+   scroll. */
+.workspace {
+    --workspace-gap: 12px;
+    max-height: 90dvh;
+    overflow: hidden;
+    padding-top: var(--workspace-gap);
+}
+
 .editor {
-    height: 83vh;
+    height: calc(83vh - var(--workspace-gap, 0px));
 }
 
 .tree-view-no-arrow > * > .mud-treeview-item-arrow {
