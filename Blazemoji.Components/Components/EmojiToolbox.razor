@@ -1,6 +1,6 @@
 @using Blazemoji.Emojicode.Keywords;
 
-<MudList T="string" ReadOnly="true" Style="overflow-x:clip;overflow-y:auto;max-height:84vh;">
+<MudList T="string" ReadOnly="true">
     @if (_emojisByCategory != null)
     {
         @foreach (var category in _emojisByCategory.Keys)

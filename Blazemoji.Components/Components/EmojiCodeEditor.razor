@@ -75,7 +75,8 @@
 
         return new StandaloneEditorConstructionOptions
         {
-            AutomaticLayout = false,
+            // The editor is as big as the room the workspace gives it, which changes with the window.
+            AutomaticLayout = true,
             Language = LanguageId,
             Value = string.Empty,
 

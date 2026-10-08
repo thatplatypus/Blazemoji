@@ -17,7 +17,7 @@
         <MudItem xs="3">
             <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" OnEmojicodeInsertedCallback="@InsertEmojicodeAsync" CopiedToClipboard="OnCopiedToClipboard" BeforeProjectChange="SyncOpenFileAsync" />
         </MudItem>
-        <MudItem xs="6">
+        <MudItem xs="6" Class="d-flex flex-column">
             <MudPaper Elevation="0" Outlined="true" Class="mb-2">
                 <MudToolBar>
                     <h4 class="text-nowrap">🍇 Emojicode Editor</h4>

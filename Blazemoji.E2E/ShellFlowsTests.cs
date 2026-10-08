@@ -145,18 +145,81 @@ namespace Blazemoji.E2E
             Math.Abs(left.Y - right.Y).ShouldBeLessThan(2);
         }
 
+        private static ILocator Panels(EditorPage editor) => editor.Page.Locator(".mud-grid > .mud-grid-item > .mud-paper");
+
+        private static Task<float> WindowHeightAsync(EditorPage editor) => editor.Page.EvaluateAsync<float>("() => innerHeight");
+
         [Fact]
-        public async Task The_panels_start_a_little_below_the_title_bar_and_the_page_still_does_not_scroll()
+        public async Task The_panels_are_framed_by_the_same_gap_under_the_title_bar_and_above_the_bottom_of_the_window()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await EditorPage.OpenAsync(browser);
 
             var bar = await editor.Page.Locator(".mud-appbar").BoundingBoxAsync();
-            var panel = await editor.Page.Locator(".mud-grid > .mud-grid-item > .mud-paper").First.BoundingBoxAsync();
+            var left = await Panels(editor).First.BoundingBoxAsync();
+            var right = await Panels(editor).Last.BoundingBoxAsync();
 
             bar.ShouldNotBeNull();
+            left.ShouldNotBeNull();
+            right.ShouldNotBeNull();
+            var above = left.Y - (bar.Y + bar.Height);
+            above.ShouldBeInRange(8, 20);
+            foreach (var panel in new[] { left, right })
+                (await WindowHeightAsync(editor) - (panel.Y + panel.Height)).ShouldBe(above, 2f, "the gap below matches the gap above");
+
+            (await editor.Page.EvaluateAsync<bool>("() => document.documentElement.scrollHeight > innerHeight")).ShouldBeFalse();
+        }
+
+        [Fact]
+        public async Task The_editor_ends_where_the_panels_end_and_follows_the_window_when_it_is_resized()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            var monaco = editor.Page.Locator(".monaco-editor").First;
+
+            async Task ShouldEndTogetherAsync()
+            {
+                // Monaco measures itself a moment after its surroundings change size.
+                for (var attempt = 0; attempt < 60; attempt++)
+                {
+                    var panel = await Panels(editor).Last.BoundingBoxAsync();
+                    var text = await monaco.BoundingBoxAsync();
+                    if (panel is not null && text is not null && Math.Abs(panel.Y + panel.Height - (text.Y + text.Height)) < 2)
+                        return;
+
+                    await Task.Delay(50, TestContext.Current.CancellationToken);
+                }
+
+                var panelNow = await Panels(editor).Last.BoundingBoxAsync();
+                var textNow = await monaco.BoundingBoxAsync();
+                (textNow!.Y + textNow.Height).ShouldBe(panelNow!.Y + panelNow.Height, 2f);
+            }
+
+            await ShouldEndTogetherAsync();
+
+            await editor.Page.SetViewportSizeAsync(1300, 700);
+            await ShouldEndTogetherAsync();
+            var after = await Panels(editor).Last.BoundingBoxAsync();
+            (after!.Y + after.Height).ShouldBeLessThan(700);
+        }
+
+        [Fact]
+        public async Task The_toolbox_scrolls_inside_its_panel_all_the_way_to_its_last_emoji()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await editor.Page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Toolbox" }).ClickAsync();
+            var last = editor.Page.Locator(".emoji-tile").Last;
+            await last.WaitForAsync();
+
+            await last.ScrollIntoViewIfNeededAsync();
+
+            var tile = await last.BoundingBoxAsync();
+            var panel = await Panels(editor).First.BoundingBoxAsync();
+            tile.ShouldNotBeNull();
             panel.ShouldNotBeNull();
-            (panel.Y - (bar.Y + bar.Height)).ShouldBeInRange(8, 20);
+            (tile.Y + tile.Height).ShouldBeLessThanOrEqualTo(panel.Y + panel.Height);
+            (panel.Y + panel.Height).ShouldBeLessThan(await WindowHeightAsync(editor));
             (await editor.Page.EvaluateAsync<bool>("() => document.documentElement.scrollHeight > innerHeight")).ShouldBeFalse();
         }
 
