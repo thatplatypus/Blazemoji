@@ -9,8 +9,10 @@ using Blazemoji.Toolchain;
 using BlazorMonaco.Editor;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
+using MudBlazor;
 using MudBlazor.Services;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace Blazemoji.Test.Components
 {
@@ -30,6 +32,8 @@ namespace Blazemoji.Test.Components
 
         private readonly IToolchain _toolchain = Substitute.For<IToolchain>();
         private readonly IProjectStore _store = Substitute.For<IProjectStore>();
+        private readonly ILibraryService _library = Substitute.For<ILibraryService>();
+        private readonly IDialogService _dialogs = Substitute.For<IDialogService>();
 
         public WorkspaceTests()
         {
@@ -47,7 +51,8 @@ namespace Blazemoji.Test.Components
             Services.AddSingleton(TimeProvider.System);
             Services.AddSingleton(_store);
             Services.AddSingleton(templates);
-            Services.AddSingleton(Substitute.For<ILibraryService>());
+            Services.AddSingleton(_library);
+            Services.AddSingleton(_dialogs);
             Services.AddSingleton(new LocalStorageFiles());
             Services.AddScoped<RunState>();
             Services.AddScoped<ProjectState>();
@@ -139,6 +144,41 @@ namespace Blazemoji.Test.Components
             cut.WaitForAssertion(() => _toolchain.ReceivedCalls().ShouldContain(call => call.GetMethodInfo().Name == nameof(IToolchain.CompileAsync)));
             Project.Current.Find("a.🍇")!.Content.ShouldBe("a, edited");
             await running;
+        }
+
+        private void TheSaveDialogIsAnsweredWith(string name)
+        {
+            var dialog = Substitute.For<IDialogReference>();
+            dialog.Result.Returns(Task.FromResult<DialogResult?>(DialogResult.Ok(name)));
+            _dialogs.ShowAsync<SaveFileDialog>(Arg.Any<string?>(), Arg.Any<DialogOptions?>()).Returns(Task.FromResult(dialog));
+        }
+
+        [Fact]
+        public async Task The_editors_text_is_saved_to_the_library_under_the_name_given()
+        {
+            JSInterop.Setup<string>("blazorMonaco.editor.getValue", _ => true).SetResult("what is in the editor");
+            TheSaveDialogIsAnsweredWith("Mine.🍇");
+            _library.GetSavedAsync().Returns([]);
+            var cut = RenderShowingTheFirstFile();
+
+            await cut.Find("[data-testid=save-to-library]").ClickAsync();
+
+            await _library.Received(1).SaveAsync(Arg.Is<Blazemoji.Shared.Models.Library.EmojicFile>(file => file.Name == "Mine.🍇" && file.Code == "what is in the editor"));
+            Services.GetRequiredService<ISnackbar>().ShownSnackbars.ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task Text_that_cannot_be_saved_to_the_library_is_reported_and_the_workspace_stays_up()
+        {
+            JSInterop.Setup<string>("blazorMonaco.editor.getValue", _ => true).SetResult("what is in the editor");
+            TheSaveDialogIsAnsweredWith("Mine.🍇");
+            _library.SaveAsync(Arg.Any<Blazemoji.Shared.Models.Library.EmojicFile>()).ThrowsAsync(new ProjectStoreException("full", new IOException("/secret/path")));
+            var cut = RenderShowingTheFirstFile();
+
+            await cut.Find("[data-testid=save-to-library]").ClickAsync();
+
+            Services.GetRequiredService<ISnackbar>().ShownSnackbars.Single().Message.ShouldBe("The file could not be saved.");
+            cut.Find("[data-testid=run-button]").ShouldNotBeNull();
         }
 
         [Fact]

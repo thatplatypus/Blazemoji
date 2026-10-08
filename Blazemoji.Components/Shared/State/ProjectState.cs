@@ -54,7 +54,7 @@ namespace Blazemoji.Shared.State
 
         /// <summary>
         /// The last attempt to save did not work, so what is on screen is only in memory.
-        /// It stays there, and can be come back to, until the page is closed.
+        /// It stays there, and can be come back to, until the app is closed.
         /// </summary>
         public bool SaveFailed { get; private set; }
 

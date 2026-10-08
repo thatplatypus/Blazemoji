@@ -116,7 +116,7 @@ namespace Blazemoji.Test.Components
 
             await cut.InvokeAsync(() => _state.UpdateContentAsync("readme.🍇", "edited"));
 
-            cut.WaitForAssertion(() => cut.Find("[data-testid=save-failed]").TextContent.ShouldContain("not being saved in this browser"));
+            cut.WaitForAssertion(() => cut.Find("[data-testid=save-failed]").TextContent.Trim().ShouldBe("Changes are not being saved. They will last until Blazemoji is closed."));
         }
     }
 }

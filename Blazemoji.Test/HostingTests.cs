@@ -160,7 +160,7 @@ namespace Blazemoji.Test
         [Fact]
         public void Every_tab_renders_with_those_registrations_alone()
         {
-            Services.GetRequiredService<ILibraryService>().GetUserSavedFiles().Returns([]);
+            Services.GetRequiredService<ILibraryService>().GetSavedAsync().Returns([]);
 
             Should.NotThrow(() => Render<Library>());
             Should.NotThrow(() => Render<EmojiToolbox>());

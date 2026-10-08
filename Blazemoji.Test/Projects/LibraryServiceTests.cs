@@ -1,6 +1,10 @@
 using Blazemoji.Services.Library;
+using Blazemoji.Services.Projects;
+using Blazemoji.Shared.Models.Library;
 using Blazored.LocalStorage;
+using Microsoft.JSInterop;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace Blazemoji.Test.Projects
 {
@@ -13,7 +17,7 @@ namespace Blazemoji.Test.Projects
             localStorage.KeysAsync(Arg.Any<CancellationToken>())
                 .Returns(new ValueTask<IEnumerable<string>>(["a.🍇", "old.emojic", "blazemoji.projects", "blazemoji.project.abc", "theme"]));
 
-            await new LibraryService(localStorage).ClearLocalStorageAsync();
+            await new LibraryService(localStorage).ClearSavedAsync();
 
             await localStorage.Received(1).RemoveItemAsync("a.🍇", Arg.Any<CancellationToken>());
             await localStorage.Received(1).RemoveItemAsync("old.emojic", Arg.Any<CancellationToken>());
@@ -34,10 +38,23 @@ namespace Blazemoji.Test.Projects
             localStorage.KeysAsync(Arg.Any<CancellationToken>())
                 .Returns(new ValueTask<IEnumerable<string>>(["a.🍇", AProjectsFile, "blazemoji.project.abc", "blazemoji.projects"]));
 
-            await new LibraryService(localStorage).ClearLocalStorageAsync();
+            await new LibraryService(localStorage).ClearSavedAsync();
 
             await localStorage.Received(1).RemoveItemAsync("a.🍇", Arg.Any<CancellationToken>());
             await localStorage.DidNotReceive().RemoveItemAsync(AProjectsFile, Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_browser_that_refuses_to_store_is_reported_as_a_store_failure()
+        {
+            var localStorage = Substitute.For<ILocalStorageService>();
+            localStorage.SetItemAsStringAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).ThrowsAsync(new JSException("QuotaExceededError"));
+            localStorage.KeysAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new JSDisconnectedException("gone"));
+            var library = new LibraryService(localStorage);
+
+            await Should.ThrowAsync<ProjectStoreException>(() => library.SaveAsync(new EmojicFile { Name = "a.🍇", Code = "x" }));
+            await Should.ThrowAsync<ProjectStoreException>(() => library.GetSavedAsync());
+            await Should.ThrowAsync<ProjectStoreException>(() => library.ClearSavedAsync());
         }
 
         [Fact]
@@ -48,7 +65,7 @@ namespace Blazemoji.Test.Projects
                 .Returns(new ValueTask<IEnumerable<string>>(["a.🍇", AProjectsFile]));
             localStorage.GetItemAsStringAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new ValueTask<string?>("code"));
 
-            var saved = await new LibraryService(localStorage).GetUserSavedFiles();
+            var saved = await new LibraryService(localStorage).GetSavedAsync();
 
             saved.Select(file => file.Name).ShouldBe(["a.🍇"]);
         }
