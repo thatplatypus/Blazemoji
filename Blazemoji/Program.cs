@@ -3,6 +3,7 @@ using Blazemoji.Components;
 using Blazemoji.Services.Layout;
 using Blazemoji.Services.Library;
 using Blazemoji.Services.Projects;
+using Blazemoji.Services.Settings;
 using Blazemoji.Toolchain.Http;
 using MudBlazor.Services;
 
@@ -22,10 +23,11 @@ builder.Services.AddMudServices();
 builder.Services.AddToolchainClient(builder.Configuration);
 builder.Services.AddBlazemojiEditor(builder.Configuration);
 
-// What this host supplies because it runs in a browser: projects and snippets in local storage.
+// What this host supplies because it runs in a browser: projects, snippets, the layout and settings in local storage.
 builder.Services.AddBlazoredLocalStorage();
 builder.Services.AddScoped<IProjectStore, LocalStorageProjectStore>();
 builder.Services.AddScoped<ILayoutStore, LocalStorageLayoutStore>();
+builder.Services.AddScoped<ISettingsStore, LocalStorageSettingsStore>();
 builder.Services.AddTransient<ILibraryService, LibraryService>();
 
 var app = builder.Build();
