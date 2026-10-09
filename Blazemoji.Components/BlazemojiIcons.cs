@@ -20,6 +20,9 @@ namespace Blazemoji
 
         public static string MoreActions => Icons.Material.Filled.MoreVert;
 
+        /// <summary>The cross on a file's tab above the editor.</summary>
+        public static string CloseTab => Icons.Material.Filled.Close;
+
         /// <summary>On the button that hides the sidebar while it is shown.</summary>
         public static string HideSidebar => Icons.Material.Filled.MenuOpen;
 

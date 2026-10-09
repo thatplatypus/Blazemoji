@@ -309,5 +309,73 @@ namespace Blazemoji.Test.Components
             await _layoutStore.Received(1).SaveAsync(WorkspaceLayout.Default with { SidebarHidden = true });
             await _layoutStore.Received(1).SaveAsync(WorkspaceLayout.Default);
         }
+
+        private static IReadOnlyList<string> TabNames(IRenderedComponent<Workspace> cut) =>
+            cut.FindAll("[data-testid=editor-tab]").Select(tab => tab.TextContent.Trim()).ToList();
+
+        private static AngleSharp.Dom.IElement TabOf(IRenderedComponent<Workspace> cut, string path) =>
+            cut.FindAll("[data-testid=editor-tab]").Single(tab => tab.GetAttribute("data-path") == path).Closest("[role=tab]")!;
+
+        [Fact]
+        public void The_file_a_project_opens_on_has_the_only_tab()
+        {
+            var cut = RenderShowingTheFirstFile();
+
+            TabNames(cut).ShouldBe(["a.🍇"]);
+        }
+
+        [Fact]
+        public async Task A_file_shown_from_the_files_list_gets_a_tab_and_a_click_on_the_first_tab_brings_the_first_back()
+        {
+            ModelCreation(2).SetResult(Model(2));
+            ModelHolds(1, "text of a");
+            ModelHolds(2, "text of b\nline 2\nline 3");
+            var cut = RenderShowingTheFirstFile();
+
+            await cut.InvokeAsync(() => Project.SelectFile("b.🍇"));
+            cut.WaitForAssertion(() => TabNames(cut).ShouldBe(["a.🍇", "b.🍇"]));
+            TabOf(cut, "b.🍇").GetAttribute("aria-selected").ShouldBe("true");
+
+            await TabOf(cut, "a.🍇").ClickAsync(new());
+
+            cut.WaitForAssertion(() => Project.OpenPath.ShouldBe("a.🍇"));
+            cut.Find("[data-testid=open-file]").TextContent.ShouldContain("a.🍇");
+            TabNames(cut).ShouldBe(["a.🍇", "b.🍇"]);
+        }
+
+        [Fact]
+        public async Task The_cross_on_a_tab_closes_the_tab_and_leaves_the_file_in_the_project()
+        {
+            ModelCreation(2).SetResult(Model(2));
+            ModelHolds(1, "text of a");
+            ModelHolds(2, "text of b\nline 2\nline 3");
+            var cut = RenderShowingTheFirstFile();
+            await cut.InvokeAsync(() => Project.SelectFile("b.🍇"));
+            cut.WaitForAssertion(() => TabNames(cut).ShouldBe(["a.🍇", "b.🍇"]));
+
+            await TabOf(cut, "b.🍇").QuerySelector(".editor-tab-close")!.ClickAsync(new());
+
+            cut.WaitForAssertion(() => TabNames(cut).ShouldBe(["a.🍇"]));
+            Project.OpenPath.ShouldBe("a.🍇");
+            Project.Current.Files.Select(file => file.Path).ShouldBe(["a.🍇", "b.🍇"]);
+        }
+
+        [Fact]
+        public async Task What_was_typed_in_a_file_is_kept_before_its_tab_is_left_for_another()
+        {
+            ModelCreation(2).SetResult(Model(2));
+            ModelHolds(1, "a, edited and not yet saved");
+            ModelHolds(2, "text of b\nline 2\nline 3");
+            var cut = RenderShowingTheFirstFile();
+            await cut.InvokeAsync(() => Project.SelectFile("b.🍇"));
+            cut.WaitForAssertion(() => TabNames(cut).ShouldBe(["a.🍇", "b.🍇"]));
+            await cut.InvokeAsync(() => Project.SelectFile("a.🍇"));
+            cut.WaitForAssertion(() => Project.OpenPath.ShouldBe("a.🍇"));
+
+            await TabOf(cut, "b.🍇").ClickAsync(new());
+
+            cut.WaitForAssertion(() => Project.OpenPath.ShouldBe("b.🍇"));
+            Project.Current.Find("a.🍇")!.Content.ShouldBe("a, edited and not yet saved");
+        }
     }
 }

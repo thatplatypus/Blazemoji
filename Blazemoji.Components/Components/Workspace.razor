@@ -70,6 +70,7 @@
                             </MudToolBar>
                             <div class="open-file" data-testid="open-file">@_projectState.Current.Name / @_projectState.OpenPath</div>
                         </MudPaper>
+                        <EditorTabs Paths="@_projectState.OpenPaths" Shown="@_projectState.OpenPath" Selected="ShowTabAsync" Closed="CloseTabAsync" />
                         <EmojiCodeEditor EmojiPickerOpened="@OpenEmojiPickerAsync" Ready="OnEditorReady" ContentSettled="OnContentSettledAsync" @ref="_editor" />
                     </div>
                 </First>
@@ -257,6 +258,20 @@
         _compiledProjectId = project.Id;
         var files = project.Files.ToDictionary(file => file.Path, file => file.Content);
         return new RunTarget(files, project.Entry, project.Kind == ProjectKind.Server);
+    }
+
+    // What was typed in the file on show reaches the project when typing pauses. A tab can
+    // be clicked sooner than that, so it is taken first.
+    private async Task ShowTabAsync(string path)
+    {
+        await SyncOpenFileAsync();
+        _projectState.SelectFile(path);
+    }
+
+    private async Task CloseTabAsync(string path)
+    {
+        await SyncOpenFileAsync();
+        _projectState.CloseFile(path);
     }
 
     private async Task StopClicked()

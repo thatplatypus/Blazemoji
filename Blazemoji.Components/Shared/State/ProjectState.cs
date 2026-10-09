@@ -22,6 +22,7 @@ namespace Blazemoji.Shared.State
         private readonly IProjectTemplates _templates;
         private readonly ILogger<ProjectState> _logger;
         private readonly List<ProjectSummary> _projects = [];
+        private readonly List<string> _openPaths = [];
 
         // Projects whose latest state could not be saved. They are only here, so this is
         // where they are opened from for as long as the page lives.
@@ -36,6 +37,7 @@ namespace Blazemoji.Shared.State
             // Something to show and edit before the saved projects have been read.
             Current = FromTemplate(DefaultTemplate, DefaultTemplate.Name);
             OpenPath = Current.Entry;
+            _openPaths.Add(OpenPath);
         }
 
         public event Action? StateChanged;
@@ -49,6 +51,13 @@ namespace Blazemoji.Shared.State
         public string OpenPath { get; private set; }
 
         public ProjectFile OpenFile => Current.Find(OpenPath) ?? Current.Files[0];
+
+        /// <summary>
+        /// The files that have a tab above the editor, in the order they were opened. The one
+        /// that is shown, <see cref="OpenPath"/>, is always among them. They last as long as
+        /// the project is open: another project starts with its entry file alone.
+        /// </summary>
+        public IReadOnlyList<string> OpenPaths => _openPaths;
 
         public IReadOnlyList<ProjectSummary> Projects => _projects;
 
@@ -236,7 +245,7 @@ namespace Blazemoji.Shared.State
                 return refusal;
 
             Current = Current with { Files = Sorted([.. Current.Files, new ProjectFile(cleanPath, string.Empty)]) };
-            OpenPath = cleanPath;
+            Reveal(cleanPath);
 
             await SaveAsync();
             NotifyStateChanged();
@@ -262,6 +271,8 @@ namespace Blazemoji.Shared.State
             };
             if (OpenPath == from)
                 OpenPath = cleanPath;
+            if (_openPaths.IndexOf(from) is >= 0 and var tab)
+                _openPaths[tab] = cleanPath;
 
             await SaveAsync();
             NotifyStateChanged();
@@ -282,8 +293,7 @@ namespace Blazemoji.Shared.State
                 Files = remaining,
                 Entry = Current.Entry == path ? remaining[0].Path : Current.Entry,
             };
-            if (OpenPath == path)
-                OpenPath = Current.Entry;
+            CloseTab(path, otherwise: Current.Entry);
 
             await SaveAsync();
             NotifyStateChanged();
@@ -310,13 +320,52 @@ namespace Blazemoji.Shared.State
             NotifyStateChanged();
         }
 
+        /// <summary>Shows a file in the editor, giving it a tab if it has none.</summary>
         public void SelectFile(string path)
         {
             if (Current.Find(path) is null || OpenPath == path)
                 return;
 
-            OpenPath = path;
+            Reveal(path);
             NotifyStateChanged();
+        }
+
+        /// <summary>
+        /// Closes a file's tab. The file stays in the project. The editor always shows a
+        /// file, so the only tab cannot be closed.
+        /// </summary>
+        public void CloseFile(string path)
+        {
+            if (_openPaths.Count == 1 || !_openPaths.Contains(path))
+                return;
+
+            CloseTab(path, otherwise: OpenPath);
+            NotifyStateChanged();
+        }
+
+        private void Reveal(string path)
+        {
+            OpenPath = path;
+            if (!_openPaths.Contains(path))
+                _openPaths.Add(path);
+        }
+
+        /// <summary>
+        /// Takes a file's tab away. If it was the one shown, the tab that takes its place in
+        /// the row is shown, or the one before it when it was the last.
+        /// </summary>
+        /// <param name="otherwise">What to show when no tab is left.</param>
+        private void CloseTab(string path, string otherwise)
+        {
+            var tab = _openPaths.IndexOf(path);
+            if (tab >= 0)
+                _openPaths.RemoveAt(tab);
+
+            if (_openPaths.Count == 0)
+                _openPaths.Add(otherwise);
+
+            if (OpenPath == path)
+                OpenPath = _openPaths[Math.Clamp(tab, 0, _openPaths.Count - 1)];
         }
 
         /// <summary>
@@ -367,6 +416,8 @@ namespace Blazemoji.Shared.State
         {
             Current = project;
             OpenPath = project.Entry;
+            _openPaths.Clear();
+            _openPaths.Add(OpenPath);
         }
 
         /// <returns>The path to use, or null and why not.</returns>

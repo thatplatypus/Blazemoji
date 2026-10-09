@@ -1,0 +1,70 @@
+@* The files that are open, as a row of tabs above the editor. These are MudBlazor's tabs
+   with a close button, used for the row alone: there is one editor under them, so no tab
+   has content of its own. Which files are open and which is shown is the project's to say
+   (ProjectState); a click here only asks. *@
+<MudDynamicTabs Class="editor-tabs"
+                Elevation="0"
+                Outlined="true"
+                Rounded="true"
+                MinimumTabWidth="0px"
+                ActivePanelIndex="@ShownIndex"
+                ActivePanelIndexChanged="OnActivatedAsync"
+                CloseTab="OnCloseAsync"
+                CloseTabIcon="@BlazemojiIcons.CloseTab"
+                CloseIconClass="editor-tab-close"
+                CloseIconToolTip="Close"
+                AddIconClass="d-none"
+                data-testid="editor-tabs">
+    @foreach (var tab in _tabs)
+    {
+        <MudTabPanel @key="tab.Path" ID="@tab.Path" ToolTip="@tab.Path" ShowCloseIcon="@(_tabs.Count > 1)">
+            <TabContent>
+                <span class="editor-tab-name" data-testid="editor-tab" data-path="@tab.Path">@tab.Name</span>
+            </TabContent>
+        </MudTabPanel>
+    }
+</MudDynamicTabs>
+
+@code {
+    private IReadOnlyList<(string Path, string Name)> _tabs = [];
+
+    /// <summary>The files that have a tab, in the order of the tabs.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> Paths { get; set; } = [];
+
+    /// <summary>The one of them that is in the editor.</summary>
+    [Parameter, EditorRequired]
+    public string Shown { get; set; } = string.Empty;
+
+    /// <summary>Raised with a file's path when its tab is clicked and it is not the one shown.</summary>
+    [Parameter]
+    public EventCallback<string> Selected { get; set; }
+
+    /// <summary>Raised with a file's path when the cross on its tab is clicked.</summary>
+    [Parameter]
+    public EventCallback<string> Closed { get; set; }
+
+    private int ShownIndex => Math.Max(0, _tabs.ToList().FindIndex(tab => tab.Path == Shown));
+
+    protected override void OnParametersSet()
+    {
+        // A tab is named by its file alone, as there is not room for more. Two open files of
+        // one name in different folders would then look the same, so those say their folders.
+        var names = Paths.Select(NameOf).ToList();
+        _tabs = Paths.Select((path, index) => (path, names.Count(name => name == names[index]) > 1 ? path : names[index])).ToList();
+    }
+
+    private static string NameOf(string path) => path[(path.LastIndexOf('/') + 1)..];
+
+    private async Task OnActivatedAsync(int index)
+    {
+        if (index >= 0 && index < _tabs.Count && _tabs[index].Path != Shown)
+            await Selected.InvokeAsync(_tabs[index].Path);
+    }
+
+    private async Task OnCloseAsync(MudTabPanel tab)
+    {
+        if (tab.ID is string path)
+            await Closed.InvokeAsync(path);
+    }
+}
