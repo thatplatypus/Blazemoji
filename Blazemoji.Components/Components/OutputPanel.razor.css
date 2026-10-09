@@ -48,3 +48,21 @@
     color: var(--mud-palette-text-secondary);
     font-style: italic;
 }
+
+/* What was typed for the program, after whatever the program had printed on the line. */
+.output-typed {
+    color: var(--mud-palette-primary);
+}
+
+/* The line for typing input, under the output and never scrolled away with it. */
+.output-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+}
+
+.output-input-line {
+    flex: 1 1 0;
+    min-width: 0;
+}

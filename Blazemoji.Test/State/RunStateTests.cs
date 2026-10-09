@@ -123,16 +123,178 @@ namespace Blazemoji.Test.State
         }
 
         [Fact]
-        public async Task The_programs_input_is_closed_at_once_because_the_page_cannot_supply_any()
+        public async Task The_programs_input_is_left_open_so_that_a_line_can_be_typed_for_it()
         {
             CompileSucceeds();
             await using var state = CreateState();
+            state.AcceptsInput.ShouldBeFalse();
 
             var running = state.RunAsync(Code);
+            await UntilAsync(() => state.AcceptsInput);
+
+            _run.Input.ShouldBeEmpty();
             _run.Exit();
             await running;
+            state.AcceptsInput.ShouldBeFalse();
+            _run.Input.ShouldBeEmpty();
+        }
 
+        [Fact]
+        public async Task A_line_sent_to_the_program_reaches_it_with_its_newline_and_is_shown_as_typed()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.AcceptsInput);
+
+            await state.SendInputAsync("🍇 grapes");
+
+            _run.Input.ShouldBe([("🍇 grapes\n", false)]);
+            state.Lines.ShouldHaveSingleItem().ShouldBe(new OutputLine(1, OutputStream.Stdout, string.Empty, "🍇 grapes"));
+            state.AcceptsInput.ShouldBeTrue();
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task A_question_without_a_newline_is_shown_while_the_program_waits_and_the_answer_goes_on_its_line()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+            var announced = 0;
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.AcceptsInput);
+            state.StateChanged += () => announced++;
+
+            _run.Emit(new StdoutEvent("What is your name? "));
+
+            // The page is told there is something to show, though no line has been finished.
+            await UntilAsync(() => announced > 0);
+            state.UnfinishedOutput.ShouldBe("What is your name? ");
+            state.Lines.ShouldBeEmpty();
+
+            await state.SendInputAsync("Tom");
+
+            state.UnfinishedOutput.ShouldBeNull();
+            state.Lines.ShouldHaveSingleItem().ShouldBe(new OutputLine(1, OutputStream.Stdout, "What is your name? ", "Tom"));
+
+            _run.Emit(new StdoutEvent("Hello, Tom!\n"));
+            await UntilAsync(() => state.Lines.Count == 2);
+            state.Lines[1].ShouldBe(new OutputLine(2, OutputStream.Stdout, "Hello, Tom!"));
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task An_unfinished_line_becomes_a_line_when_its_newline_arrives_and_is_gone_when_the_program_ends()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.AcceptsInput);
+
+            _run.Emit(new StdoutEvent("half"));
+            await UntilAsync(() => state.UnfinishedOutput == "half");
+            _run.Emit(new StdoutEvent(" and half\nnext"));
+            await UntilAsync(() => state.Lines.Count == 1);
+
+            state.Lines[0].Text.ShouldBe("half and half");
+            state.UnfinishedOutput.ShouldBe("next");
+
+            _run.Exit();
+            await running;
+            state.UnfinishedOutput.ShouldBeNull();
+            state.Lines.Select(line => line.Text).ShouldBe(["half and half", "next"]);
+        }
+
+        [Fact]
+        public async Task Lines_sent_one_after_another_reach_the_program_in_the_order_they_were_sent()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.AcceptsInput);
+            var firstMayGo = new TaskCompletionSource();
+            _run.BeforeInput = text => text.StartsWith("one", StringComparison.Ordinal) ? firstMayGo.Task : Task.CompletedTask;
+
+            var first = state.SendInputAsync("one");
+            var second = state.SendInputAsync("two");
+            _run.Input.ShouldBeEmpty("the first is still on its way, and the second waits behind it");
+            firstMayGo.SetResult();
+            await first;
+            await second;
+
+            _run.Input.Select(input => input.Text).ShouldBe(["one\n", "two\n"]);
+            state.Lines.Select(line => line.Typed).ShouldBe(["one", "two"]);
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task Ending_the_input_tells_the_program_once_and_no_more_can_be_sent()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.AcceptsInput);
+
+            await state.EndInputAsync();
+            await state.EndInputAsync();
+            await state.SendInputAsync("too late");
+
+            state.AcceptsInput.ShouldBeFalse();
             _run.Input.ShouldBe([(string.Empty, true)]);
+            state.Lines.ShouldBeEmpty();
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task Input_for_a_program_that_has_just_ended_is_dropped_without_a_word()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.AcceptsInput);
+            _run.BeforeInput = _ => throw new InvalidOperationException("The run is not accepting input.");
+
+            await state.SendInputAsync("anyone there?");
+
+            state.AcceptsInput.ShouldBeFalse();
+            state.Lines.Where(line => line.Stream == OutputStream.System).ShouldBeEmpty();
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task Input_that_cannot_be_sent_is_reported_in_plain_words_and_the_run_goes_on()
+        {
+            CompileSucceeds();
+            await using var state = CreateState();
+            var running = state.RunAsync(Code);
+            await UntilAsync(() => state.AcceptsInput);
+            _run.BeforeInput = _ => throw new HttpRequestException("Connection refused (toolchain:8080)");
+
+            await state.SendInputAsync("hello");
+
+            var said = state.Lines.Single(line => line.Stream == OutputStream.System).Text;
+            said.ShouldBe("The input could not be sent.");
+            state.AcceptsInput.ShouldBeTrue();
+            state.Status.ShouldBe(RunStatus.Running);
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task With_nothing_running_there_is_nobody_to_send_input_to()
+        {
+            await using var state = CreateState();
+
+            await state.SendInputAsync("hello");
+            await state.EndInputAsync();
+
+            state.Lines.ShouldBeEmpty();
+            _run.Input.ShouldBeEmpty();
         }
 
         [Fact]

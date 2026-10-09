@@ -22,6 +22,8 @@ namespace Blazemoji.Shared.State
         private readonly CancellationTokenSource _disposal = new();
 
         private IToolchainRun? _run;
+        private bool _inputOpen;
+        private Task _inputTurn = Task.CompletedTask;
         private CancellationTokenSource? _compileCancellation;
         private bool _stopRequested;
         private bool _server;
@@ -61,6 +63,19 @@ namespace Blazemoji.Shared.State
         /// A server program is running and can be sent requests.
         /// </summary>
         public bool ServerRunning => _server && Status == RunStatus.Running;
+
+        /// <summary>True while a program is running whose input has not been ended: a line can be sent to it.</summary>
+        public bool AcceptsInput => _inputOpen && _run is not null && Status == RunStatus.Running;
+
+        /// <summary>
+        /// What the program has printed since its last newline, or null when that is nothing.
+        /// A program that asks a question and waits for the answer often ends the question
+        /// with a space and not a newline, and it has to be seen before it can be answered.
+        /// </summary>
+        public string? UnfinishedOutput => _stdout.Pending;
+
+        /// <summary>The same for what the program has written to standard error.</summary>
+        public string? UnfinishedError => _stderr.Pending;
 
         public RunSummary? LastRun { get; private set; }
 
@@ -122,7 +137,10 @@ namespace Blazemoji.Shared.State
                 if (_stopRequested)
                     await _run.StopAsync();
 
-                await CloseInputAsync(_run, _disposal.Token);
+                // Its input is left open for lines to be sent to it. A program that reads and
+                // is sent none waits until it is stopped or reaches its time limit.
+                _inputOpen = true;
+                NotifyStateChanged();
 
                 await ConsumeAsync(_run, _disposal.Token);
             }
@@ -142,6 +160,7 @@ namespace Blazemoji.Shared.State
             finally
             {
                 _compileCancellation = null;
+                _inputOpen = false;
                 await EndRunAsync(buildId);
                 _server = false;
                 Status = RunStatus.Idle;
@@ -248,18 +267,75 @@ namespace Blazemoji.Shared.State
         }
 
         /// <summary>
-        /// The page has no way to type input yet, so a program that reads it must see the end
-        /// of its input instead of waiting for the time limit.
+        /// Sends a line to the running program's input, with the newline that ends it, and
+        /// shows it as typed. Does nothing when no program is taking input.
         /// </summary>
-        private static async Task CloseInputAsync(IToolchainRun run, CancellationToken cancellationToken)
+        public Task SendInputAsync(string text)
+        {
+            if (!AcceptsInput || _run is not { } run)
+                return Task.CompletedTask;
+
+            // Whatever the program has printed on this line so far is its question, and this
+            // is the answer: shown on one line as a terminal shows them, and before the write,
+            // so that the program's reply cannot arrive above it.
+            AddLine(OutputStream.Stdout, _stdout.Flush() ?? string.Empty, text);
+            NotifyStateChanged();
+
+            return InTurn(() => WriteInputAsync(run, text + "\n", endOfInput: false));
+        }
+
+        /// <summary>Tells the running program that it has had all of its input. Does nothing when no program is taking input.</summary>
+        public Task EndInputAsync()
+        {
+            if (!AcceptsInput || _run is not { } run)
+                return Task.CompletedTask;
+
+            _inputOpen = false;
+            NotifyStateChanged();
+
+            return InTurn(() => WriteInputAsync(run, string.Empty, endOfInput: true));
+        }
+
+        /// <summary>One write at a time, in the order they were asked for: two lines sent quickly must not overtake each other.</summary>
+        private Task InTurn(Func<Task> write)
+        {
+            var before = _inputTurn;
+            return _inputTurn = AfterAsync(before, write);
+        }
+
+        private static async Task AfterAsync(Task before, Func<Task> write)
+        {
+            await before;
+            await write();
+        }
+
+        private async Task WriteInputAsync(IToolchainRun run, string text, bool endOfInput)
         {
             try
             {
-                await run.WriteInputAsync(string.Empty, endOfInput: true, cancellationToken);
+                await run.WriteInputAsync(text, endOfInput, _disposal.Token);
             }
             catch (InvalidOperationException)
             {
-                // The program has already ended, or never started; its exit event says which.
+                // The program has ended, or its input has; its exit event says which.
+                if (ReferenceEquals(run, _run) && _inputOpen)
+                {
+                    _inputOpen = false;
+                    NotifyStateChanged();
+                }
+            }
+            catch (OperationCanceledException) when (_disposal.IsCancellationRequested)
+            {
+                // The circuit is going away; there is nobody left to tell.
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Input could not be sent to the program");
+                if (ReferenceEquals(run, _run))
+                {
+                    AddLine(OutputStream.System, "The input could not be sent.");
+                    NotifyStateChanged();
+                }
             }
         }
 
@@ -310,13 +386,17 @@ namespace Blazemoji.Shared.State
         {
             switch (runEvent)
             {
+                // Text with no newline yet makes no line, and is still something to show.
                 case StdoutEvent output:
-                    return AddLines(OutputStream.Stdout, _stdout.Append(output.Text));
+                    AddLines(OutputStream.Stdout, _stdout.Append(output.Text));
+                    return output.Text.Length > 0;
 
                 case StderrEvent error:
-                    return AddLines(OutputStream.Stderr, _stderr.Append(error.Text));
+                    AddLines(OutputStream.Stderr, _stderr.Append(error.Text));
+                    return error.Text.Length > 0;
 
                 case ExitEvent exit:
+                    _inputOpen = false;
                     FlushPartialLines();
                     LastRun = new RunSummary(exit.ExitCode, exit.Reason, exit.Duration);
                     if (EndMessage(exit.Reason) is { } message)
@@ -354,10 +434,10 @@ namespace Blazemoji.Shared.State
             return lines.Count > 0;
         }
 
-        private void AddLine(OutputStream stream, string text)
+        private void AddLine(OutputStream stream, string text, string? typed = null)
         {
             TotalLines++;
-            _lines.Add(new OutputLine(TotalLines, stream, text));
+            _lines.Add(new OutputLine(TotalLines, stream, text, typed));
 
             if (_lines.Count > MaxLines)
                 _lines.RemoveRange(0, _lines.Count - MaxLines);

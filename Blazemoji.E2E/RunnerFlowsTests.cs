@@ -177,5 +177,72 @@ namespace Blazemoji.E2E
             (await first.OutputLines.AllInnerTextsAsync()).ShouldBe(["marker-first"]);
             (await second.OutputLines.AllInnerTextsAsync()).ShouldBe(["marker-second"]);
         }
+
+        // 👄 prints without a newline, as a program does when it asks something and waits.
+        private const string AsksForAName =
+            "🏁 🍇\n  👄 🔤What is your name? 🔤❗️\n  🆕🔡▶️👂🏼❗️ ➡️ name\n  😀 🔤Hello, 🧲name🧲!🔤❗️\n🍉\n";
+
+        private const string ReadsTwoLines =
+            "🏁 🍇\n  🆕🔡▶️👂🏼❗️ ➡️ one\n  🆕🔡▶️👂🏼❗️ ➡️ two\n  😀 🔤Read [🧲one🧲] and [🧲two🧲]🔤❗️\n🍉\n";
+
+        [Fact]
+        public async Task A_program_that_asks_a_question_is_seen_asking_and_is_given_the_line_that_is_typed()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            var input = editor.Page.GetByTestId("program-input");
+            (await input.IsDisabledAsync()).ShouldBeTrue();
+
+            await editor.RunAsync(AsksForAName);
+
+            // The question has no newline after it, and has to be there before it can be answered.
+            await Assertions.Expect(editor.Page.GetByTestId("output-unfinished")).ToHaveTextAsync("What is your name?");
+            (await editor.RunStatus.InnerTextAsync()).ShouldBe("Running");
+            await editor.ScreenshotAsync("p6-01-a-program-asking");
+
+            await input.FillAsync("Tom 🍇");
+            await input.PressAsync("Enter");
+
+            await editor.WaitForStatusAsync("Exited with code 0");
+            (await editor.OutputLines.AllInnerTextsAsync()).ShouldBe(["What is your name? Tom 🍇", "Hello, Tom 🍇!"]);
+            (await input.InputValueAsync()).ShouldBeEmpty();
+            (await input.IsDisabledAsync()).ShouldBeTrue();
+            editor.ConsoleErrors.ShouldBeEmpty();
+            await editor.ScreenshotAsync("p6-02-answered");
+        }
+
+        [Fact]
+        public async Task Lines_typed_one_after_another_reach_the_program_in_order_and_an_empty_one_counts()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            var input = editor.Page.GetByTestId("program-input");
+
+            await editor.RunAsync(ReadsTwoLines);
+            await Assertions.Expect(input).ToBeEnabledAsync();
+            await input.FillAsync("first");
+            await input.PressAsync("Enter");
+            await input.PressAsync("Enter");
+
+            await editor.WaitForStatusAsync("Exited with code 0");
+            (await editor.OutputLines.AllInnerTextsAsync()).ShouldBe(["first", string.Empty, "Read [first] and []"]);
+        }
+
+        [Fact]
+        public async Task Ending_the_input_lets_a_program_that_is_waiting_to_read_carry_on()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            var end = editor.Page.GetByTestId("end-input");
+
+            await editor.RunAsync(ReadsTwoLines);
+            await Assertions.Expect(end).ToBeEnabledAsync();
+            await end.ClickAsync();
+
+            // With no more to read, each read comes back with nothing and the program goes on to its end.
+            await editor.WaitForStatusAsync("Exited with code 0");
+            (await editor.OutputLines.AllInnerTextsAsync()).ShouldBe(["Read [] and []"]);
+            (await end.IsDisabledAsync()).ShouldBeTrue();
+        }
     }
 }

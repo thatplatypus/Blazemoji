@@ -3,6 +3,7 @@ using Blazemoji.Shared.State;
 using Blazemoji.Test.State;
 using Blazemoji.Toolchain;
 using Bunit;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
@@ -19,6 +20,7 @@ namespace Blazemoji.Test.Components
 
         private readonly IToolchain _toolchain = Substitute.For<IToolchain>();
         private readonly ScriptedRun _run = new();
+        private readonly FakeTimeProvider _time = new();
         private readonly RunState _state;
 
         public OutputPanelTests()
@@ -26,7 +28,7 @@ namespace Blazemoji.Test.Components
             Services.AddMudServices();
             JSInterop.Mode = JSRuntimeMode.Loose;
 
-            _state = new RunState(_toolchain, NullLogger<RunState>.Instance, new FakeTimeProvider());
+            _state = new RunState(_toolchain, NullLogger<RunState>.Instance, _time);
             Services.AddSingleton(_state);
             Services.AddSingleton(new RequestState(_state));
         }
@@ -53,6 +55,123 @@ namespace Blazemoji.Test.Components
 
             StatusOf(cut).ShouldBe("Ready");
             cut.FindAll("[data-testid=output-line]").ShouldBeEmpty();
+        }
+
+        private const string InputBox = "[data-testid=program-input]";
+        private const string EndInput = "[data-testid=end-input]";
+
+        /// <summary>Starts a program and waits until it can be given input. The task is the run, which ends when the program does.</summary>
+        private Task Running(IRenderedComponent<OutputPanel> cut)
+        {
+            CompileSucceeds();
+            var running = _state.RunAsync(Code);
+            cut.WaitForAssertion(() => cut.Find(InputBox).HasAttribute("disabled").ShouldBeFalse());
+            return running;
+        }
+
+        [Fact]
+        public void With_nothing_running_the_place_for_input_is_there_and_cannot_be_typed_in()
+        {
+            var cut = Render<OutputPanel>();
+
+            // It keeps its place whether or not a program is running, so that one starting moves nothing.
+            cut.Find(InputBox).HasAttribute("disabled").ShouldBeTrue();
+            cut.Find(EndInput).HasAttribute("disabled").ShouldBeTrue();
+        }
+
+        [Fact]
+        public async Task While_a_program_runs_a_line_and_Enter_sends_it_and_empties_the_box()
+        {
+            var cut = Render<OutputPanel>();
+            var running = Running(cut);
+
+            await cut.Find(InputBox).InputAsync("🍇 grapes");
+            await cut.Find(InputBox).KeyDownAsync(new KeyboardEventArgs { Key = "Enter" });
+
+            _run.Input.ShouldBe([("🍇 grapes\n", false)]);
+            cut.WaitForAssertion(() => cut.Find(InputBox).GetAttribute("value").ShouldBeNullOrEmpty());
+            cut.Find("[data-testid=output-typed]").TextContent.ShouldBe("🍇 grapes");
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task Enter_on_an_empty_box_sends_an_empty_line_which_is_a_line_all_the_same()
+        {
+            var cut = Render<OutputPanel>();
+            var running = Running(cut);
+
+            await cut.Find(InputBox).KeyDownAsync(new KeyboardEventArgs { Key = "Enter" });
+
+            _run.Input.ShouldBe([("\n", false)]);
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task Other_keys_send_nothing()
+        {
+            var cut = Render<OutputPanel>();
+            var running = Running(cut);
+
+            await cut.Find(InputBox).InputAsync("half a li");
+            await cut.Find(InputBox).KeyDownAsync(new KeyboardEventArgs { Key = "n" });
+
+            _run.Input.ShouldBeEmpty();
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task The_end_of_input_button_tells_the_program_and_then_neither_can_be_used()
+        {
+            var cut = Render<OutputPanel>();
+            var running = Running(cut);
+
+            await cut.Find(EndInput).ClickAsync(new());
+
+            _run.Input.ShouldBe([(string.Empty, true)]);
+            cut.WaitForAssertion(() => cut.Find(InputBox).HasAttribute("disabled").ShouldBeTrue());
+            cut.Find(EndInput).HasAttribute("disabled").ShouldBeTrue();
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task A_question_the_program_has_not_ended_with_a_newline_is_shown_under_the_lines()
+        {
+            var cut = Render<OutputPanel>();
+            var running = Running(cut);
+
+            _run.Emit(new StdoutEvent("first\nWhat is your name? "));
+
+            // Output is shown a moment after it arrives, so that a flood of it is not a flood of redraws.
+            cut.WaitForAssertion(() =>
+            {
+                _time.Advance(TimeSpan.FromSeconds(1));
+                cut.Find("[data-testid=output-unfinished]").TextContent.ShouldBe("What is your name? ");
+            });
+            cut.FindAll("[data-testid=output-line]").Select(line => line.TextContent).ShouldBe(["first"]);
+
+            await cut.Find(InputBox).InputAsync("Tom");
+            await cut.Find(InputBox).KeyDownAsync(new KeyboardEventArgs { Key = "Enter" });
+
+            cut.WaitForAssertion(() => cut.FindAll("[data-testid=output-unfinished]").ShouldBeEmpty());
+            cut.FindAll("[data-testid=output-line]").Select(line => line.TextContent).ShouldBe(["first", "What is your name? Tom"]);
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
+        public async Task When_the_program_ends_the_place_for_input_cannot_be_typed_in_again()
+        {
+            var cut = Render<OutputPanel>();
+            var running = Running(cut);
+
+            _run.Exit();
+            await running;
+
+            cut.WaitForAssertion(() => cut.Find(InputBox).HasAttribute("disabled").ShouldBeTrue());
         }
 
         [Fact]

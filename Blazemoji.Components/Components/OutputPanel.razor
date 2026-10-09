@@ -20,9 +20,27 @@
                 <div class="output-lines">
                     @foreach (var line in State.Lines)
                     {
-                        <div @key="line.Number" class="@LineClass(line)" data-testid="output-line">@line.Text</div>
+                        <div @key="line.Number" class="@LineClass(line)" data-testid="output-line">@line.Text@if (line.Typed is { } typed) {<span class="output-typed" data-testid="output-typed">@typed</span>}</div>
+                    }
+                    @if (State.UnfinishedError is { } unfinishedError)
+                    {
+                        <div class="output-line output-line-stderr" data-testid="output-unfinished-error">@unfinishedError</div>
+                    }
+                    @if (State.UnfinishedOutput is { } unfinished)
+                    {
+                        <div class="output-line" data-testid="output-unfinished">@unfinished</div>
                     }
                 </div>
+            </div>
+            @* Always here, and only usable while a program is taking input, so that a program
+               starting or ending moves nothing above it. *@
+            <div class="output-input">
+                <div class="output-input-line">
+                    <MudTextField T="string" @bind-Value="_input" Placeholder="@InputHint" Disabled="@(!State.AcceptsInput)" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" MaxLength="MostInput" OnKeyDown="OnInputKeyDownAsync" aria-label="A line of input for the program" data-testid="program-input" />
+                </div>
+                <MudTooltip Text="Tell the program it has had all of its input">
+                    <MudButton Variant="Variant.Text" Disabled="@(!State.AcceptsInput)" OnClick="@State.EndInputAsync" data-testid="end-input">End input</MudButton>
+                </MudTooltip>
             </div>
         </div>
     </SegmentedTab>
@@ -38,8 +56,20 @@
     private const string OutputTab = "output";
     private const string ProblemsTab = "problems";
 
+    /// <summary>
+    /// The longest line that can be typed for a program. What is typed goes to the server in
+    /// one message, and a session ends on a message over 32 KB; an emoji is twelve characters
+    /// of such a message. This many of them is well inside that.
+    /// </summary>
+    private const int MostInput = 2000;
+
     private string? _activeTab = OutputTab;
     private RunStatus _lastStatus = RunStatus.Idle;
+    private string _input = string.Empty;
+
+    private string InputHint => State.AcceptsInput ? "Type a line for the program and press Enter"
+        : State.Status == RunStatus.Running ? "The program's input has ended"
+        : "A running program can be given input here";
 
     [Parameter]
     public EventCallback<Diagnostic> ProblemSelected { get; set; }
@@ -76,6 +106,16 @@
 
         _lastStatus = State.Status;
         InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnInputKeyDownAsync(KeyboardEventArgs pressed)
+    {
+        if (pressed.Key != "Enter" || !State.AcceptsInput)
+            return;
+
+        var line = _input ?? string.Empty;
+        _input = string.Empty;
+        await State.SendInputAsync(line);
     }
 
     private void OnDiagnosticsChanged()

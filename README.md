@@ -25,6 +25,7 @@ Blazemoji is a modern web application designed specifically for emojicode. It's 
 
 Features include:
 - Compile and run emojicode right in the browser!
+- Programs that ask for input can be given it: a question is shown as the program waits, and a line typed under the output is sent to it
 - Light / Dark theme built in
 - Emojicode quick reference toolbox
 - Code editor keybindings for common emojis like `shift`+`"` turns into `🔤`
@@ -104,7 +105,7 @@ A project is a set of files that are compiled together, a name, and one file mar
 
 In the web app projects are kept in the browser's local storage, so they are still there after a reload and are not shared between browsers. In the desktop app they are folders on disk. New projects start from a template: a folder under `Blazemoji.Core/Emojicode/Templates` with a `template.json` and the files.
 
-A project runs either as a **Program**, which runs to the end and stops, or as a **Web server**, which keeps running until it is stopped or has had no request for ten minutes. A web server is told which port to listen on through the `PORT` environment variable. While it runs, the **Requests** tab sends it HTTP requests (method, path, headers, body) and shows the status, headers and body that come back.
+A project runs either as a **Program**, which runs to the end and stops, or as a **Web server**, which keeps running until it is stopped or has had no request for ten minutes. While either runs, the line under the output sends it a line of input when Enter is pressed, and **End input** tells it there is no more. A program that reads input and is given none waits, until it is stopped or reaches its time limit of thirty seconds. A web server is told which port to listen on through the `PORT` environment variable. While it runs, the **Requests** tab sends it HTTP requests (method, path, headers, body) and shows the status, headers and body that come back.
 
 ## Help while typing
 
