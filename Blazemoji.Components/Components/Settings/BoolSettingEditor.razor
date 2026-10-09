@@ -1,0 +1,12 @@
+<MudSwitch T="bool" Value="@Value" ValueChanged="@ValueChanged" Color="Color.Primary" aria-label="@Label" />
+
+@code {
+    [Parameter, EditorRequired]
+    public bool Value { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<bool> ValueChanged { get; set; }
+}

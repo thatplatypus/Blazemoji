@@ -1,0 +1,22 @@
+/* The words take the room that is left and the control keeps one width, so a row is the
+   same size whatever its value is. */
+.setting-row-words {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.setting-row-control {
+    flex: 0 0 12rem;
+}
+
+@media (max-width: 600px) {
+    .setting-row {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+
+    .setting-row-control {
+        flex-basis: auto;
+        justify-content: flex-start !important;
+    }
+}

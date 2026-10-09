@@ -1,0 +1,41 @@
+@inject SettingsState State
+
+<div class="setting-row d-flex align-center gap-4 py-2" data-testid="setting" data-setting="@Setting.Name">
+    <div class="setting-row-words d-flex flex-column">
+        <MudText Typo="Typo.body1">@Setting.Attribute.Label</MudText>
+        @if (!string.IsNullOrEmpty(Setting.Attribute.Description))
+        {
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">@Setting.Attribute.Description</MudText>
+        }
+    </div>
+    <div class="setting-row-control d-flex justify-end">
+        @if (Setting.Type == typeof(bool))
+        {
+            <BoolSettingEditor Value="@((bool)Value!)" Label="@Setting.Attribute.Label" ValueChanged="@((bool value) => ChangeAsync(value))" />
+        }
+        else if (Setting.Type == typeof(string) && Setting.Options.Count > 0)
+        {
+            <ChoiceSettingEditor Value="@((string)Value!)" Options="@Setting.Options" Label="@Setting.Attribute.Label" ValueChanged="@((string value) => ChangeAsync(value))" />
+        }
+        else if (Setting.Type == typeof(string))
+        {
+            <TextSettingEditor Value="@((string)Value!)" Label="@Setting.Attribute.Label" ValueChanged="@((string value) => ChangeAsync(value))" />
+        }
+        else
+        {
+            <NumberSettingEditor Setting="@Setting" Value="@(Value!)" ValueChanged="ChangeAsync" />
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public SettingsBase Section { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public SettingProperty Setting { get; set; } = default!;
+
+    private object? Value => Setting.Read(Section);
+
+    private Task ChangeAsync(object? value) => State.SetAsync(Section, Setting.Name, value);
+}

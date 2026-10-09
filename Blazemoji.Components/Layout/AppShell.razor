@@ -9,6 +9,7 @@
     <MudAppBar Elevation="0" Class="border-b border-solid mud-border-lines-default">
         <MudText Typo="Typo.h4">🔥 Blazemoji</MudText>
         <MudSpacer />
+        <SettingsButton />
         <MudTooltip Text="@(_isDarkMode ? "Light Mode" : "Dark Mode")">
             <MudIconButton Icon="@(_isDarkMode ? BlazemojiIcons.LightMode : BlazemojiIcons.DarkMode)" Color="Color.Inherit" OnClick="ToggleDarkMode" data-testid="dark-mode-toggle" />
         </MudTooltip>

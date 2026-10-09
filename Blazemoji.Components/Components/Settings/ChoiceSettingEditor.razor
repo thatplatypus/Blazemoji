@@ -1,0 +1,20 @@
+<MudSelect T="string" Value="@Value" ValueChanged="@ValueChanged" Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined" aria-label="@Label">
+    @foreach (var option in Options)
+    {
+        <MudSelectItem T="string" @key="option" Value="@option">@option</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> Options { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+}

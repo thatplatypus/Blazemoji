@@ -1,5 +1,8 @@
 using Blazemoji.Layout;
 using Blazemoji.Services;
+using Blazemoji.Services.Settings;
+using Blazemoji.Settings;
+using Blazemoji.Shared.State;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
@@ -15,6 +18,8 @@ namespace Blazemoji.Test.Components
         {
             JSInterop.Mode = JSRuntimeMode.Loose;
             Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
+            Services.Configure<SettingsOptions>(settings => settings.Add<EditorSettings>());
+            Services.AddScoped<SettingsState>();
         }
 
         private IRenderedComponent<AppShell> RenderAroundSomething() =>
@@ -22,6 +27,16 @@ namespace Blazemoji.Test.Components
 
         private static string[] LinkedTo(IRenderedComponent<AppShell> cut) =>
             cut.FindAll("a[href]").Select(link => link.GetAttribute("href")!).ToArray();
+
+        [Fact]
+        public async Task The_settings_button_opens_the_panel()
+        {
+            var cut = RenderAroundSomething();
+
+            await cut.Find("[data-testid=settings-button]").ClickAsync();
+
+            cut.WaitForAssertion(() => cut.FindAll("[data-testid=setting]").ShouldNotBeEmpty());
+        }
 
         [Fact]
         public void What_is_given_to_the_shell_is_shown_with_the_title()

@@ -54,7 +54,7 @@ namespace Blazemoji.E2E
 
         public ILocator Dialog => Page.Locator(".mud-dialog");
 
-        public ILocator ThemeToggle => Page.Locator("header button.mud-icon-button").First;
+        public ILocator ThemeToggle => Page.GetByTestId("dark-mode-toggle");
 
         public ILocator KeyCommandsButton => Page.GetByTestId("key-commands");
 

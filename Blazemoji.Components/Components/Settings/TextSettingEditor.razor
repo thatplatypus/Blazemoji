@@ -1,0 +1,13 @@
+@* Not Immediate: the setting changes when the field is left or Enter is pressed, not at each key. *@
+<MudTextField T="string" Value="@Value" ValueChanged="@ValueChanged" MaxLength="SettingProperty.LongestText" Variant="Variant.Outlined" Margin="Margin.Dense" aria-label="@Label" />
+
+@code {
+    [Parameter, EditorRequired]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+}

@@ -1,0 +1,37 @@
+@* The field is given the limits so that it shows the number it was brought to. The state
+   brings it within them whatever the field does. *@
+@if (Setting.Type == typeof(int))
+{
+    <MudNumericField T="int"
+                     Value="@((int)Value)"
+                     ValueChanged="@((int value) => ValueChanged.InvokeAsync(value))"
+                     Min="@(Setting.Attribute.HasRange ? (int)Setting.Attribute.Min : int.MinValue)"
+                     Max="@(Setting.Attribute.HasRange ? (int)Setting.Attribute.Max : int.MaxValue)"
+                     Step="@((int)Math.Max(1, Setting.Attribute.Step))"
+                     Variant="Variant.Outlined"
+                     Margin="Margin.Dense"
+                     aria-label="@Setting.Attribute.Label" />
+}
+else
+{
+    <MudNumericField T="double"
+                     Value="@((double)Value)"
+                     ValueChanged="@((double value) => ValueChanged.InvokeAsync(value))"
+                     Min="@(Setting.Attribute.HasRange ? Setting.Attribute.Min : double.MinValue)"
+                     Max="@(Setting.Attribute.HasRange ? Setting.Attribute.Max : double.MaxValue)"
+                     Step="@Setting.Attribute.Step"
+                     Variant="Variant.Outlined"
+                     Margin="Margin.Dense"
+                     aria-label="@Setting.Attribute.Label" />
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public SettingProperty Setting { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public object Value { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<object?> ValueChanged { get; set; }
+}
