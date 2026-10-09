@@ -147,7 +147,7 @@ scripts/desktop-smoke.sh --compile      # also compile and run a program, throug
 scripts/desktop-smoke.sh --app <path>   # a copy that is already built, such as the one inside an unpacked release
 ```
 
-With `HERMES_SMOKE_TEST=1` the app runs the checks in `Blazemoji.Desktop/Scripts/smoke.ts` once its page is up (the editor loads and shows the project, the style sheets and font arrive, the editor has the page's colours, a key and the toolbox each type an emoji pair, completion answers, dark mode reaches the editor). It adds what only its own side can see (the project is a folder on disk, and the samples and templates came with the app), prints the outcome and closes.
+With `HERMES_SMOKE_TEST=1` the app runs the checks in `Blazemoji.Desktop/Scripts/smoke.ts` once its page is up (the editor loads and shows the project, the style sheets and font arrive, the editor has the page's colours, a key and the toolbox each type an emoji pair, completion answers, dark mode reaches the editor). It adds what only its own side can see (the project is a folder on disk, and the samples, the templates and the window's icon came with the app), prints the outcome and closes.
 
 A smoke run types into the editor and what is typed is saved, so it never uses the folder the app is otherwise set to keep projects in, whatever `Projects__Root` says. It makes a temporary folder and removes it, or uses the one named by `BLAZEMOJI_SMOKE_PROJECTS` and leaves it.
 
@@ -158,6 +158,7 @@ It reports in the words of Hermes's smoke protocol: one `HERMES_SMOKE_CHECK_PASS
 - **Nothing is kept in the web view's own storage.** Projects and snippets are on disk, where other tools can reach them and where they do not depend on how a web view keeps its data.
 - **Hermes copies each library's static files flat as well as in their folders.** A publish holds Monaco twice: once under `_content/BlazorMonaco/lib/...`, where the page asks for it, and once more with every file at the top of `_content/BlazorMonaco/`. The copies are about 15 MB and do no harm.
 - **No lock may be contended on the window's thread.** Hermes's synchronization context runs a posted callback inline when the thread is free, which leaves a `SemaphoreSlim` taken with nobody holding it if a waiter finishes without really awaiting. `Workspace` uses `OnePassAtATime` for that reason, and the stores on disk take turns by each waiting for the one before, with no lock. A new lock in a component must only be taken by callers that go on to await the web view.
+- **The icon is three files in `wwwroot`**, cut from the drawings under `art/` by `scripts/build-icons.sh`: `logo.ico` for Windows, `logo.png` for Linux and `logo.icns` for macOS, where it is drawn on the rounded square that system expects. Hermes 1.2.0 gives the window itself an icon on Windows only. On macOS and Linux a window's icon comes from the packed app, so a copy started with `dotnet run` has the system's plain one.
 - **The page has Blazor's error bar** (`#blazor-error-ui` in `index.html`, styled by `wwwroot/app.css`). Without it a component that throws would leave the window as it was, with nothing said.
 
 ## What is not here yet
@@ -167,6 +168,6 @@ It reports in the words of Hermes's smoke protocol: one `HERMES_SMOKE_CHECK_PASS
 - Changes made to a project's files by something else are seen when the project is next opened, not as they happen. Two copies of the app on one projects folder would each take the other's saves for someone else's changes and move them to the trash.
 - What was typed in the last moment before the window is closed can be lost: text reaches the project when typing pauses.
 - The desktop app has only been run on macOS. On Windows some names it accepts cannot be files (`aux.🍇`, a name ending in a dot), and a save would fail there.
-- The desktop app has no icon of its own, and its packed builds are not signed. The **Publish Desktop** workflow, run by hand, packs it for Windows, macOS and Linux with Velopack and drafts a GitHub release; signing is in the workflow and waits for the keys. The app calls Velopack at start-up so that an installed copy works, but nothing checks for updates.
+- The desktop app's packed builds are not signed. The **Publish Desktop** workflow, run by hand, packs it for Windows, macOS and Linux with Velopack and drafts a GitHub release; signing is in the workflow and waits for the keys. The app calls Velopack at start-up so that an installed copy works, but nothing checks for updates.
 - Copying uses the browser's clipboard API from inside a click. It is accepted in the desktop web view on macOS; Windows and Linux have not been tried.
 - The libraries are referenced as projects, not published as packages.

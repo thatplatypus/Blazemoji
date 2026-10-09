@@ -113,6 +113,10 @@ The editor has no language server. Three small Monaco providers hand the text an
 
 The provider code is TypeScript in `Blazemoji.Components/Scripts`. Its compiled JavaScript is committed, so building the app needs no Node; `scripts/build-js.sh` recompiles it after a change.
 
+## The icon
+
+The flame is drawn once, in `art/flame.svg`. Beside it are the same flame fitted to 16 pixels, where the round eyes would blur, and the rounded square macOS expects an icon to sit on. `scripts/build-icons.sh` cuts every icon file from them: `favicon.ico` and `apple-touch-icon.png` for the web app, and `logo.ico`, `logo.png` and `logo.icns` for the desktop one. What it writes is committed, so it only needs running after a drawing changes. It needs librsvg and ImageMagick, and a Mac for the `.icns`.
+
 ## Grapevine
 
 Grapevine is an HTTP framework written in Emojicode. It has its own repository, so its package and its Todo sample are not committed here. One script builds them from a local checkout:

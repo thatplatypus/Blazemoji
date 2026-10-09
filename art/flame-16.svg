@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Blazemoji, fitted to 16 pixels</title>
+  <!-- The same flame for a 16 pixel icon, where one pixel is 32 units here. The eyes are
+       squared and sit on whole pixels (three wide and four tall, with a pupil of two by two),
+       because the round ones blur into grey when they are drawn this small. -->
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF4A1C"/>
+      <stop offset="0.5" stop-color="#FF7A1A"/>
+      <stop offset="1" stop-color="#FFA41F"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFBE2E"/>
+      <stop offset="1" stop-color="#FFE57A"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#body)" d="M256 492C147 492 60 426 60 326C60 250 116 214 140 120C154 164 169 194 199 216C195 130 245 62 324 22C304 92 348 142 391 192C430 238 452 280 452 326C452 426 365 492 256 492Z"/>
+  <path fill="url(#core)" d="M256 472C184 472 135 432 135 374C135 326 178 296 209 262C229 240 243 216 245 190C263 222 301 250 330 282C359 314 377 342 377 374C377 432 328 472 256 472Z"/>
+  <g id="eyes">
+    <rect x="128" y="288" width="96" height="128" rx="24" fill="#fff"/>
+    <rect x="160" y="320" width="64" height="64" fill="#2A1A12"/>
+    <rect x="288" y="288" width="96" height="128" rx="24" fill="#fff"/>
+    <rect x="320" y="320" width="64" height="64" fill="#2A1A12"/>
+  </g>
+</svg>
