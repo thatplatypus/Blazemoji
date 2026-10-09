@@ -51,11 +51,14 @@ namespace Blazemoji.E2E
             editor.ConsoleErrors.ShouldBeEmpty();
         }
 
-        [Fact]
-        public async Task Turning_the_minimap_off_takes_it_away_and_restoring_defaults_brings_it_back()
+        [Theory]
+        [InlineData(1920, 1080)]
+        [InlineData(1024, 768)]
+        public async Task Turning_the_minimap_off_takes_it_away_and_restoring_defaults_brings_it_back(int width, int height)
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await EditorPage.OpenAsync(browser);
+            await editor.Page.SetViewportSizeAsync(width, height);
             await editor.OpenSettingsAsync();
 
             await editor.Setting("Minimap").Locator(".mud-switch").ClickAsync();

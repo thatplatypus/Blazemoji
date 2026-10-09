@@ -290,3 +290,11 @@ To be added to "What is not here yet" in `docs/hosting.md`:
 8. Settings have private setters.
 9. The first five options are the ones in the table.
 10. The editor waits two seconds at most for kept settings before it shows.
+
+Taken while it was being built, each for Tom to overturn:
+
+11. Emoji in a text setting are kept as `\u` escapes in the file and in local storage, and read back as typed. .NET's JSON writer escapes every character outside the basic plane whatever it is told, and writing the JSON by hand to avoid that was judged the worse choice.
+12. The state has a second event, `SaveFailedChanged`, beside `SaveFailed`, because a save ends after the change is announced and the panel needs telling.
+13. A load that ends badly, a handler that throws while a load is announced, or a load that is cancelled never leaves the state unable to change a setting for the rest of the session.
+14. The editor stops waiting for settings when it is disposed.
+15. In the browser, the two tests that drive the panel's controls (the font size, and the minimap with "Restore defaults") run at 1920 by 1080 and at 1024 by 768. The four about storage, a second visitor and focus run at the size the other browser tests use, 1600 by 900: at 1024 wide the sidebar's tabs fold into a menu, and nothing those four prove depends on the window's size.
