@@ -57,6 +57,7 @@ namespace Blazemoji
             services.TryAddScoped<ProjectState>();
             services.TryAddScoped<RequestState>();
             services.TryAddScoped<LayoutState>();
+            services.TryAddScoped<SettingsState>();
             services.TryAddScoped<LocalStorageFiles>();
 
             return services;

@@ -51,6 +51,7 @@ namespace Blazemoji.Test
             Services.GetRequiredService<LocalStorageFiles>().ShouldNotBeNull();
             Services.GetRequiredService<EmojicodeLanguageInterop>().ShouldNotBeNull();
             Services.GetRequiredService<ICodeIntelligence>().ShouldNotBeNull();
+            Services.GetRequiredService<SettingsState>().ShouldNotBeNull();
             Services.GetRequiredService<IPackageLibrary>().ShouldNotBeNull();
             Services.GetRequiredService<IProjectTemplates>().All.ShouldNotBeEmpty();
             Services.GetRequiredService<ISamples>().ShouldBeOfType<FileSamples>();
@@ -76,6 +77,7 @@ namespace Blazemoji.Test
             one.ServiceProvider.GetRequiredService<ProjectState>().ShouldNotBeSameAs(two.ServiceProvider.GetRequiredService<ProjectState>());
             one.ServiceProvider.GetRequiredService<RunState>().ShouldNotBeSameAs(two.ServiceProvider.GetRequiredService<RunState>());
             one.ServiceProvider.GetRequiredService<LocalStorageFiles>().ShouldNotBeSameAs(two.ServiceProvider.GetRequiredService<LocalStorageFiles>());
+            one.ServiceProvider.GetRequiredService<SettingsState>().ShouldNotBeSameAs(two.ServiceProvider.GetRequiredService<SettingsState>());
             one.ServiceProvider.GetRequiredService<ICodeIntelligence>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<ICodeIntelligence>());
         }
 
