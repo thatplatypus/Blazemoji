@@ -1,5 +1,6 @@
 using Blazemoji.Services.Settings;
 using Blazemoji.Settings;
+using Blazemoji.Shared.Models.Settings;
 using Blazemoji.Shared.State;
 using Blazored.LocalStorage;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,6 +33,24 @@ namespace Blazemoji.Test.Settings
             first.Get<EditorSettings>().ShouldNotBeSameAs(second.Get<EditorSettings>());
             first.Get<EditorSettings>().FontSize.ShouldBe(20);
             second.Get<EditorSettings>().FontSize.ShouldBe(14);
+        }
+
+        [Fact]
+        public void A_host_with_one_user_has_one_set_and_can_say_it_is_the_desktop()
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton<SettingsState>();
+            services.Configure<SettingsOptions>(settings => settings.Host = SettingHosts.Desktop);
+            services.Configure<SettingsOptions>(settings => settings.Add<DesktopOnlySettings>());
+            services.AddBlazemojiEditor();
+            using var provider = services.BuildServiceProvider(validateScopes: true);
+            using var one = provider.CreateScope();
+            using var two = provider.CreateScope();
+
+            var state = one.ServiceProvider.GetRequiredService<SettingsState>();
+
+            state.ShouldBeSameAs(two.ServiceProvider.GetRequiredService<SettingsState>());
+            state.Sections.Select(section => section.SettingsId).ShouldBe(["editor", "desktopOnly"]);
         }
     }
 }

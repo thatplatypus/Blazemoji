@@ -2,12 +2,14 @@
 @using Blazemoji.Services.Layout
 @using Blazemoji.Services.Library
 @using Blazemoji.Services.Projects
+@using Blazemoji.Services.Settings
 @using Blazemoji.Shared.Models.Layout
 @inject SmokeSession Session
 @inject SmokeInterop Interop
 @inject ISamples Samples
 @inject IProjectTemplates Templates
 @inject ILayoutStore LayoutStore
+@inject ISettingsStore SettingsStore
 
 @* On the page only for a smoke run. Has the page check itself once it is up, adds what only
    this side can see, and hands the lot to the session, which reports it and closes the app. *@
@@ -19,6 +21,7 @@
     private const string TemplatesShipped = "templates-came-with-the-app";
     private const string IconShipped = "icon-came-with-the-app";
     private const string LayoutOnDisk = "layout-is-kept-on-disk";
+    private const string SettingsOnDisk = "settings-are-kept-on-disk";
 
     // What FileProjectTemplates offers when it finds no templates beside the app.
     private const string TemplateWhenNoneAreFound = "hello-world";
@@ -44,6 +47,7 @@
         checks.Add(TheTemplatesCameWithTheApp());
         checks.Add(TheIconCameWithTheApp());
         checks.Add(await TheLayoutIsOnDiskAsync());
+        checks.Add(await TheSettingsAreOnDiskAsync());
         Session.Report(checks);
     }
 
@@ -94,6 +98,29 @@
         }
 
         return new SmokeCheckOutcome(LayoutOnDisk, problem is null, timer.ElapsedMilliseconds, problem);
+    }
+
+    /// <summary>The page's checks turn the minimap off in the panel. This is where that has to end up.</summary>
+    private async Task<SmokeCheckOutcome> TheSettingsAreOnDiskAsync()
+    {
+        var timer = Stopwatch.StartNew();
+        var file = Path.Combine(Session.ProjectsRoot, ".blazemoji", "settings.json");
+        string? problem;
+        try
+        {
+            // The store takes its turns in order, so this is answered after the save the switch started.
+            var kept = await SettingsStore.LoadAsync();
+            problem = kept is null ? "No settings were kept after the minimap was turned off."
+                : !kept.Contains("\"minimap\": false") ? "The settings that were kept do not have the minimap off."
+                : !File.Exists(file) ? "The settings were kept somewhere other than the projects folder."
+                : null;
+        }
+        catch (ProjectStoreException exception)
+        {
+            problem = "The kept settings could not be read (" + exception.InnerException?.GetType().Name + ").";
+        }
+
+        return new SmokeCheckOutcome(SettingsOnDisk, problem is null, timer.ElapsedMilliseconds, problem);
     }
 
     private static SmokeCheckOutcome TheIconCameWithTheApp()

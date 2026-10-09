@@ -2,6 +2,8 @@ using Blazemoji.Desktop.Services;
 using Blazemoji.Desktop.Smoke;
 using Blazemoji.Services;
 using Blazemoji.Services.Projects;
+using Blazemoji.Services.Settings;
+using Blazemoji.Shared.Models.Settings;
 using Blazemoji.Shared.State;
 using Blazemoji.Toolchain.Http;
 using Hermes.Blazor;
@@ -76,6 +78,8 @@ public static class Program
         builder.Services.AddSingleton<ProjectState>();
         builder.Services.AddSingleton<RequestState>();
         builder.Services.AddSingleton<LayoutState>();
+        builder.Services.AddSingleton<SettingsState>();
+        builder.Services.Configure<SettingsOptions>(settings => settings.Host = SettingHosts.Desktop);
         builder.Services.AddSingleton<LocalStorageFiles>();
         builder.Services.AddBlazemojiEditor(builder.Configuration);
 
