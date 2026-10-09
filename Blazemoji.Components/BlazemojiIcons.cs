@@ -62,6 +62,11 @@ namespace Blazemoji
 
         public static string KeyCommands { get; } = Emoji("🔣");
 
+        public static string Settings { get; } = Emoji("⚙️");
+
+        /// <summary>The Editor section of the settings.</summary>
+        public static string EditorSettings { get; } = Emoji("📝");
+
         public static string Save { get; } = Emoji("💾");
 
         public static string EmojiPicker { get; } = Emoji("🙂");

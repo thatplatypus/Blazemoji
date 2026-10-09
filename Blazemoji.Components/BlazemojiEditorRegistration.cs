@@ -4,6 +4,7 @@ using Blazemoji.Services.Layout;
 using Blazemoji.Services.Library;
 using Blazemoji.Services.Projects;
 using Blazemoji.Services.Settings;
+using Blazemoji.Settings;
 using Blazemoji.Shared.State;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,6 +33,7 @@ namespace Blazemoji
         {
             services.AddOptions();
             services.AddLogging();
+            services.Configure<SettingsOptions>(settings => settings.Add<EditorSettings>());
             if (configuration is not null)
             {
                 services.Configure<ProjectTemplateOptions>(configuration.GetSection(ProjectTemplateOptions.SectionName));
