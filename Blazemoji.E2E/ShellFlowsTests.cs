@@ -315,5 +315,24 @@ namespace Blazemoji.E2E
             count.Y.ShouldBeGreaterThanOrEqualTo((float)problemsTab[2]);
             (count.Y + count.Height).ShouldBeLessThanOrEqualTo((float)problemsTab[3]);
         }
+
+        [Fact]
+        public async Task The_icons_the_page_names_are_ones_the_app_serves()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+
+            var icons = await editor.Page.Locator("link[rel~=icon], link[rel=apple-touch-icon]")
+                .EvaluateAllAsync<string[]>("links => links.map(link => link.href)");
+
+            // One for the tab, and one for where a phone or Safari keeps a page.
+            icons.Length.ShouldBe(2);
+            foreach (var icon in icons)
+            {
+                var response = await editor.Page.APIRequest.GetAsync(icon);
+                response.Status.ShouldBe(200, icon);
+                response.Headers["content-type"].ShouldStartWith("image/", customMessage: icon);
+            }
+        }
     }
 }

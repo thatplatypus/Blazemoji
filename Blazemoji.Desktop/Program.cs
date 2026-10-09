@@ -59,6 +59,7 @@ public static class Program
             // An empty key has Hermes remember the window's size and place under its title.
             options.WindowStateKey = string.Empty;
             options.DevToolsEnabled = isDevelopment;
+            options.IconPath = WindowIcon.Path;
         });
 
         builder.Logging.AddSimpleConsole(options => options.SingleLine = true);

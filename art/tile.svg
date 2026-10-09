@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <title>The tile behind the flame in the macOS icon</title>
+  <!-- macOS draws every app's icon on a rounded square of this size and place in a 1024
+       canvas, and puts an icon of any other shape on a grey one of its own. The colours are
+       the app's dark theme, with the flame's light on it. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#303037"/>
+      <stop offset="1" stop-color="#18181B"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="512" cy="610" r="380" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF7A1A" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#FF7A1A" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soften" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+  <!-- The shadow is a shape of its own under the tile. A filter on the tile itself has its
+       colours worked out in linear light, where these dark ones have few steps, and the
+       gradient comes out in bands. -->
+  <rect x="100" y="110" width="824" height="824" rx="185" fill="#000" opacity="0.3" filter="url(#soften)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#glow)"/>
+</svg>

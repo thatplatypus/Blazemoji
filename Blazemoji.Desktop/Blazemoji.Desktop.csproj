@@ -12,6 +12,8 @@
     <!-- The program is called what the app is called, which is what packaging and signing
          look for: Blazemoji.app holds an executable named Blazemoji. -->
     <AssemblyName>Blazemoji</AssemblyName>
+    <!-- The icon Windows shows for the program's file. scripts/build-icons.sh makes it. -->
+    <ApplicationIcon>wwwroot\logo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
