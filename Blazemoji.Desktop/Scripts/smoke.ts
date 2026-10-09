@@ -46,6 +46,26 @@ function put(value: string, line: number, column: number): void {
     editor().focus();
 }
 
+const windowSize = () => `The window is ${window.innerWidth} by ${window.innerHeight}.`;
+
+// In a wide window the Toolbox has a tab of its own. In a narrow one, which is what a build
+// machine's small screen gives, the strip shows only the open tab and a menu of them all.
+async function openTheToolbox(): Promise<void> {
+    const named = (candidates: Iterable<HTMLElement>) => [...candidates].find(candidate => candidate.textContent?.includes("Toolbox"));
+    const tab = named(document.querySelectorAll<HTMLElement>("[role=tab]"));
+    if (tab) {
+        tab.click();
+        return;
+    }
+
+    const menu = document.querySelector<HTMLElement>("[data-testid=more-tabs] button");
+    must(menu, `There is no Toolbox tab, and no menu of tabs to find it in. ${windowSize()}`);
+    menu.click();
+    const item = await until(() => named(document.querySelectorAll<HTMLElement>(".mud-popover-open .mud-menu-item")), 5000);
+    must(item, `The menu of tabs has no Toolbox in it. ${windowSize()}`);
+    item.click();
+}
+
 const checks: Check[] = [
     ["editor-shows-the-project", async () => {
         must(await until(() => typeof monaco !== "undefined" && editor(), 30000), "Monaco did not load, or no editor was made.");
@@ -70,9 +90,9 @@ const checks: Check[] = [
     }],
     ["toolbox-types-an-emoji", async () => {
         put("🏁 ", 1, 4);
-        [...document.querySelectorAll<HTMLElement>("[role=tab]")].find(tab => tab.textContent?.includes("Toolbox"))?.click();
+        await openTheToolbox();
         const tile = await until(() => [...document.querySelectorAll<HTMLElement>(".emoji-tile-insert")].find(button => button.textContent?.includes("🍇")), 10000);
-        must(tile, "The toolbox has no 🍇 to press.");
+        must(tile, `The toolbox is open and has no 🍇 to press. ${windowSize()}`);
         tile.click();
         must(await until(() => text() === "🏁 🍇🍉", 5000), `Pressing 🍇 in the toolbox left ${JSON.stringify(text())}.`);
     }],
