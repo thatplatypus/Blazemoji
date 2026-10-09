@@ -67,6 +67,7 @@ namespace Blazemoji.Test.Components
             Services.AddSingleton(_layoutStore);
             Services.AddScoped<LayoutState>();
             Services.AddScoped<SplitViewInterop>();
+            Services.AddScoped<ProgramInputInterop>();
         }
 
         private const string Columns = "[data-testid=workspace-columns]";

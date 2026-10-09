@@ -1,4 +1,5 @@
 using Blazemoji.Components;
+using Blazemoji.Interop;
 using Blazemoji.Shared.State;
 using Blazemoji.Test.State;
 using Blazemoji.Toolchain;
@@ -22,6 +23,7 @@ namespace Blazemoji.Test.Components
         private readonly ScriptedRun _run = new();
         private readonly FakeTimeProvider _time = new();
         private readonly RunState _state;
+        private readonly BunitJSModuleInterop _inputScript;
 
         public OutputPanelTests()
         {
@@ -29,6 +31,9 @@ namespace Blazemoji.Test.Components
             JSInterop.Mode = JSRuntimeMode.Loose;
 
             _state = new RunState(_toolchain, NullLogger<RunState>.Instance, _time);
+            _inputScript = JSInterop.SetupModule(InputScript);
+            _inputScript.Mode = JSRuntimeMode.Loose;
+            Services.AddScoped<ProgramInputInterop>();
             Services.AddSingleton(_state);
             Services.AddSingleton(new RequestState(_state));
         }
@@ -57,6 +62,7 @@ namespace Blazemoji.Test.Components
             cut.FindAll("[data-testid=output-line]").ShouldBeEmpty();
         }
 
+        private const string InputScript = "./_content/Blazemoji.Components/js/programInput.js";
         private const string InputBox = "[data-testid=program-input]";
         private const string EndInput = "[data-testid=end-input]";
 
@@ -80,28 +86,48 @@ namespace Blazemoji.Test.Components
         }
 
         [Fact]
-        public async Task While_a_program_runs_a_line_and_Enter_sends_it_and_empties_the_box()
+        public void The_script_that_sends_a_line_on_Enter_is_set_on_the_box_once()
+        {
+            var cut = Render<OutputPanel>();
+            cut.Render();
+
+            // Enter and the emptying of the box are the script's, in the browser, so that a
+            // slow line to the server cannot lose what is typed next. The browser tests type.
+            _inputScript.Invocations.Count(call => call.Identifier == "attach").ShouldBe(1);
+        }
+
+        [Fact]
+        public void The_box_is_bound_to_nothing_so_the_server_is_never_told_what_is_in_it()
+        {
+            var cut = Render<OutputPanel>();
+
+            var box = cut.FindComponent<MudBlazor.MudTextField<string>>().Instance;
+            box.Immediate.ShouldBeFalse();
+            box.ValueChanged.HasDelegate.ShouldBeFalse();
+            box.MaxLength.ShouldBe(RunState.MaxInputLength);
+        }
+
+        [Fact]
+        public async Task A_line_handed_over_by_the_script_is_sent_to_the_program_and_shown_as_typed()
         {
             var cut = Render<OutputPanel>();
             var running = Running(cut);
 
-            await cut.Find(InputBox).InputAsync("🍇 grapes");
-            await cut.Find(InputBox).KeyDownAsync(new KeyboardEventArgs { Key = "Enter" });
+            await cut.InvokeAsync(() => cut.Instance.SendLineAsync("🍇 grapes"));
 
             _run.Input.ShouldBe([("🍇 grapes\n", false)]);
-            cut.WaitForAssertion(() => cut.Find(InputBox).GetAttribute("value").ShouldBeNullOrEmpty());
-            cut.Find("[data-testid=output-typed]").TextContent.ShouldBe("🍇 grapes");
+            cut.WaitForAssertion(() => cut.Find("[data-testid=output-typed]").TextContent.ShouldBe("🍇 grapes"));
             _run.Exit();
             await running;
         }
 
         [Fact]
-        public async Task Enter_on_an_empty_box_sends_an_empty_line_which_is_a_line_all_the_same()
+        public async Task An_empty_line_is_a_line_all_the_same()
         {
             var cut = Render<OutputPanel>();
             var running = Running(cut);
 
-            await cut.Find(InputBox).KeyDownAsync(new KeyboardEventArgs { Key = "Enter" });
+            await cut.InvokeAsync(() => cut.Instance.SendLineAsync(string.Empty));
 
             _run.Input.ShouldBe([("\n", false)]);
             _run.Exit();
@@ -109,15 +135,36 @@ namespace Blazemoji.Test.Components
         }
 
         [Fact]
-        public async Task Other_keys_send_nothing()
+        public async Task The_words_in_the_empty_box_say_what_it_is_for_now()
+        {
+            var cut = Render<OutputPanel>();
+            string Hint() => cut.Find(InputBox).GetAttribute("placeholder") ?? string.Empty;
+            Hint().ShouldBe("A running program can be given input here");
+
+            var running = Running(cut);
+            Hint().ShouldBe("Type a line for the program and press Enter");
+
+            await cut.Find(EndInput).ClickAsync(new());
+            cut.WaitForAssertion(() => Hint().ShouldBe("The program's input has ended"));
+
+            _run.Exit();
+            await running;
+            cut.WaitForAssertion(() => Hint().ShouldBe("A running program can be given input here"));
+        }
+
+        [Fact]
+        public async Task A_question_asked_on_standard_error_is_shown_as_it_waits_too()
         {
             var cut = Render<OutputPanel>();
             var running = Running(cut);
 
-            await cut.Find(InputBox).InputAsync("half a li");
-            await cut.Find(InputBox).KeyDownAsync(new KeyboardEventArgs { Key = "n" });
+            _run.Emit(new StderrEvent("Name: "));
 
-            _run.Input.ShouldBeEmpty();
+            cut.WaitForAssertion(() =>
+            {
+                _time.Advance(TimeSpan.FromSeconds(1));
+                cut.Find("[data-testid=output-unfinished-error]").TextContent.ShouldBe("Name: ");
+            });
             _run.Exit();
             await running;
         }
@@ -153,8 +200,7 @@ namespace Blazemoji.Test.Components
             });
             cut.FindAll("[data-testid=output-line]").Select(line => line.TextContent).ShouldBe(["first"]);
 
-            await cut.Find(InputBox).InputAsync("Tom");
-            await cut.Find(InputBox).KeyDownAsync(new KeyboardEventArgs { Key = "Enter" });
+            await cut.InvokeAsync(() => cut.Instance.SendLineAsync("Tom"));
 
             cut.WaitForAssertion(() => cut.FindAll("[data-testid=output-unfinished]").ShouldBeEmpty());
             cut.FindAll("[data-testid=output-line]").Select(line => line.TextContent).ShouldBe(["first", "What is your name? Tom"]);

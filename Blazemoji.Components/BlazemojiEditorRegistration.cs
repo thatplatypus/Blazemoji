@@ -51,6 +51,7 @@ namespace Blazemoji
             services.TryAddScoped<EmojicodeLanguageInterop>();
             services.TryAddScoped<ClipboardInterop>();
             services.TryAddScoped<SplitViewInterop>();
+            services.TryAddScoped<ProgramInputInterop>();
             services.TryAddScoped<RunState>();
             services.TryAddScoped<ProjectState>();
             services.TryAddScoped<RequestState>();

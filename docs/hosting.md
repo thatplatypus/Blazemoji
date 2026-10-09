@@ -81,7 +81,7 @@ The web host also raises the size of a message from the browser to 4 MiB (`AddHu
    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
    ```
 
-4. The scripts the components import themselves need nothing from the page: `_content/Blazemoji.Components/js/emojicodeLanguage.js` (the editor's help), `_content/Blazemoji.Components/js/clipboard.js` (the Copy buttons) and `_content/Blazemoji.Components/js/splitView.js` (hearing where a divider was let go) are loaded as modules when first used.
+4. The scripts the components import themselves need nothing from the page: `_content/Blazemoji.Components/js/emojicodeLanguage.js` (the editor's help), `_content/Blazemoji.Components/js/clipboard.js` (the Copy buttons), `_content/Blazemoji.Components/js/splitView.js` (settling a divider where it was let go) and `_content/Blazemoji.Components/js/programInput.js` (sending a line typed for a running program) are loaded as modules when first used.
 5. Blazor started from Monaco's ready callback, not automatically. Monaco defines itself a moment after its script loads, and an editor created before that silently does nothing:
 
    ```html

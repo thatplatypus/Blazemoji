@@ -37,6 +37,13 @@ namespace Blazemoji.Test.State
             Ended = true;
         }
 
+        /// <summary>Ends the events with a failure, as when the toolchain goes away in the middle of a run.</summary>
+        public void Fail(Exception failure)
+        {
+            _events.Writer.Complete(failure);
+            Ended = true;
+        }
+
         public IAsyncEnumerable<RunEvent> ReadEventsAsync(CancellationToken cancellationToken = default) =>
             _events.Reader.ReadAllAsync(cancellationToken);
 

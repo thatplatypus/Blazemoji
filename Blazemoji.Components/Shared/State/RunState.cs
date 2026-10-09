@@ -11,6 +11,18 @@ namespace Blazemoji.Shared.State
         public const int MaxLines = 5000;
         public const int MaxLineLength = 4000;
 
+        /// <summary>
+        /// The longest line that can be sent to a program. The box it is typed in holds no
+        /// more, but a page can be made to send anything, and what is sent is kept here.
+        /// </summary>
+        public const int MaxInputLength = 2000;
+
+        /// <summary>
+        /// How many lines may be waiting for a program to read them. One that never reads
+        /// stops taking them once its pipe is full, and the rest would otherwise pile up here.
+        /// </summary>
+        public const int MaxPendingInputs = 50;
+
         private const string EntryFile = "main.🍇";
 
         // Output can arrive thousands of times a second. Subscribers are told at most this often.
@@ -23,7 +35,8 @@ namespace Blazemoji.Shared.State
 
         private IToolchainRun? _run;
         private bool _inputOpen;
-        private Task _inputTurn = Task.CompletedTask;
+        private bool _inputEnded;
+        private InputQueue _inputQueue = new();
         private CancellationTokenSource? _compileCancellation;
         private bool _stopRequested;
         private bool _server;
@@ -63,6 +76,9 @@ namespace Blazemoji.Shared.State
         /// A server program is running and can be sent requests.
         /// </summary>
         public bool ServerRunning => _server && Status == RunStatus.Running;
+
+        /// <summary>True while a program is running that has been told, or has said, that its input is over.</summary>
+        public bool InputHasEnded => _inputEnded && Status == RunStatus.Running;
 
         /// <summary>True while a program is running whose input has not been ended: a line can be sent to it.</summary>
         public bool AcceptsInput => _inputOpen && _run is not null && Status == RunStatus.Running;
@@ -138,7 +154,11 @@ namespace Blazemoji.Shared.State
                     await _run.StopAsync();
 
                 // Its input is left open for lines to be sent to it. A program that reads and
-                // is sent none waits until it is stopped or reaches its time limit.
+                // is sent none waits until it is stopped or reaches its time limit. The lines
+                // wait in a queue of this run's own: one still on its way to an earlier
+                // program must not hold these up.
+                _inputQueue = new InputQueue();
+                _inputEnded = false;
                 _inputOpen = true;
                 NotifyStateChanged();
 
@@ -150,17 +170,21 @@ namespace Blazemoji.Shared.State
             }
             catch (OperationCanceledException) when (_stopRequested)
             {
+                FlushPartialLines();
                 AddLine(OutputStream.System, "Stopped.");
             }
             catch (Exception exception)
             {
                 logger.LogError(exception, "The run failed");
+                FlushPartialLines();
                 AddLine(OutputStream.System, "The run could not be completed. The details are in the server log.");
             }
             finally
             {
                 _compileCancellation = null;
                 _inputOpen = false;
+                _inputEnded = false;
+                FlushPartialLines();
                 await EndRunAsync(buildId);
                 _server = false;
                 Status = RunStatus.Idle;
@@ -275,13 +299,33 @@ namespace Blazemoji.Shared.State
             if (!AcceptsInput || _run is not { } run)
                 return Task.CompletedTask;
 
+            if (text.Length > MaxInputLength)
+                return Refuse(FormattableString.Invariant($"A line of input can be at most {MaxInputLength:N0} characters."));
+
+            if (_inputQueue.Waiting >= MaxPendingInputs)
+                return Refuse("The program has not read the lines it was already sent.");
+
             // Whatever the program has printed on this line so far is its question, and this
             // is the answer: shown on one line as a terminal shows them, and before the write,
-            // so that the program's reply cannot arrive above it.
-            AddLine(OutputStream.Stdout, _stdout.Flush() ?? string.Empty, text);
+            // so that the program's reply cannot arrive above it. A question is usually asked
+            // on standard output. Unfinished text on the other stream becomes a line above.
+            var question = _stdout.Flush();
+            var aside = _stderr.Flush();
+            if (question is null && aside is not null)
+            {
+                AddLine(OutputStream.Stderr, aside, text);
+            }
+            else
+            {
+                if (aside is not null)
+                    AddLine(OutputStream.Stderr, aside);
+
+                AddLine(OutputStream.Stdout, question ?? string.Empty, text);
+            }
+
             NotifyStateChanged();
 
-            return InTurn(() => WriteInputAsync(run, text + "\n", endOfInput: false));
+            return InTurn(_inputQueue, queue => WriteInputAsync(run, queue, text + "\n", endOfInput: false));
         }
 
         /// <summary>Tells the running program that it has had all of its input. Does nothing when no program is taking input.</summary>
@@ -291,26 +335,46 @@ namespace Blazemoji.Shared.State
                 return Task.CompletedTask;
 
             _inputOpen = false;
+            _inputEnded = true;
             NotifyStateChanged();
 
-            return InTurn(() => WriteInputAsync(run, string.Empty, endOfInput: true));
+            return InTurn(_inputQueue, queue => WriteInputAsync(run, queue, string.Empty, endOfInput: true));
+        }
+
+        private Task Refuse(string why)
+        {
+            AddLine(OutputStream.System, why);
+            NotifyStateChanged();
+            return Task.CompletedTask;
         }
 
         /// <summary>One write at a time, in the order they were asked for: two lines sent quickly must not overtake each other.</summary>
-        private Task InTurn(Func<Task> write)
+        private static Task InTurn(InputQueue queue, Func<InputQueue, Task> write)
         {
-            var before = _inputTurn;
-            return _inputTurn = AfterAsync(before, write);
+            queue.Waiting++;
+            var before = queue.Last;
+            return queue.Last = AfterAsync(before, queue, write);
         }
 
-        private static async Task AfterAsync(Task before, Func<Task> write)
+        private static async Task AfterAsync(Task before, InputQueue queue, Func<InputQueue, Task> write)
         {
-            await before;
-            await write();
+            try
+            {
+                await before;
+                await write(queue);
+            }
+            finally
+            {
+                queue.Waiting--;
+            }
         }
 
-        private async Task WriteInputAsync(IToolchainRun run, string text, bool endOfInput)
+        private async Task WriteInputAsync(IToolchainRun run, InputQueue queue, string text, bool endOfInput)
         {
+            // Whether this is still the program on the page. A line can still be on its way
+            // to one that has ended, and what becomes of it is no news for the next.
+            bool Current() => ReferenceEquals(run, _run) && ReferenceEquals(queue, _inputQueue);
+
             try
             {
                 await run.WriteInputAsync(text, endOfInput, _disposal.Token);
@@ -318,9 +382,10 @@ namespace Blazemoji.Shared.State
             catch (InvalidOperationException)
             {
                 // The program has ended, or its input has; its exit event says which.
-                if (ReferenceEquals(run, _run) && _inputOpen)
+                if (Current() && !_inputEnded)
                 {
                     _inputOpen = false;
+                    _inputEnded = true;
                     NotifyStateChanged();
                 }
             }
@@ -331,12 +396,27 @@ namespace Blazemoji.Shared.State
             catch (Exception exception)
             {
                 logger.LogWarning(exception, "Input could not be sent to the program");
-                if (ReferenceEquals(run, _run))
+                if (!Current())
+                    return;
+
+                // The program was not told its input is over, and is still waiting to be.
+                if (endOfInput)
                 {
-                    AddLine(OutputStream.System, "The input could not be sent.");
-                    NotifyStateChanged();
+                    _inputOpen = true;
+                    _inputEnded = false;
                 }
+
+                AddLine(OutputStream.System, "The input could not be sent.");
+                NotifyStateChanged();
             }
+        }
+
+        /// <summary>The lines on their way to one program, which go one at a time.</summary>
+        private sealed class InputQueue
+        {
+            public Task Last { get; set; } = Task.CompletedTask;
+
+            public int Waiting { get; set; }
         }
 
         private async Task ConsumeAsync(IToolchainRun run, CancellationToken cancellationToken)
@@ -397,6 +477,7 @@ namespace Blazemoji.Shared.State
 
                 case ExitEvent exit:
                     _inputOpen = false;
+                    _inputEnded = false;
                     FlushPartialLines();
                     LastRun = new RunSummary(exit.ExitCode, exit.Reason, exit.Duration);
                     if (EndMessage(exit.Reason) is { } message)

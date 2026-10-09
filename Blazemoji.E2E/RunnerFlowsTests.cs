@@ -229,6 +229,30 @@ namespace Blazemoji.E2E
         }
 
         [Fact]
+        public async Task Two_lines_typed_one_straight_after_the_other_are_the_two_that_reach_the_program()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            var input = editor.Page.GetByTestId("program-input");
+
+            await editor.RunAsync(ReadsTwoLines);
+            await Assertions.Expect(input).ToBeEnabledAsync();
+            await input.ClickAsync();
+
+            // Key by key, as a person types, with no wait for the server between the two lines.
+            // The box is emptied in the browser as Enter goes down, so the second starts clean.
+            await editor.Page.Keyboard.TypeAsync("yes");
+            await editor.Page.Keyboard.PressAsync("Enter");
+            (await input.InputValueAsync()).ShouldBeEmpty();
+            await editor.Page.Keyboard.TypeAsync("no");
+            await editor.Page.Keyboard.PressAsync("Enter");
+
+            await editor.WaitForStatusAsync("Exited with code 0");
+            (await editor.OutputLines.AllInnerTextsAsync()).ShouldBe(["yes", "no", "Read [yes] and [no]"]);
+            editor.ConsoleErrors.ShouldBeEmpty();
+        }
+
+        [Fact]
         public async Task Ending_the_input_lets_a_program_that_is_waiting_to_read_carry_on()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
