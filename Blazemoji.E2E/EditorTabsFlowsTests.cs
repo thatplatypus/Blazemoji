@@ -136,12 +136,16 @@ namespace Blazemoji.E2E
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await WithBothFilesOpenAsync(browser);
 
-            var caption = await editor.Page.GetByTestId("open-file").BoundingBoxAsync();
+            var toolbar = await editor.Page.Locator(".mud-paper:has(> [data-testid=open-file])").BoundingBoxAsync();
             var tabs = await editor.Page.GetByTestId("editor-tabs").BoundingBoxAsync();
             var monaco = await editor.Page.Locator(".monaco-editor").First.BoundingBoxAsync();
 
-            tabs!.Y.ShouldBeGreaterThanOrEqualTo(caption!.Y + caption.Height);
-            monaco!.Y.ShouldBeGreaterThanOrEqualTo(tabs.Y + tabs.Height - 1);
+            // The same gap under the row as above it, so that the row is a thing of its own
+            // and not the editor's top edge.
+            var above = tabs!.Y - (toolbar!.Y + toolbar.Height);
+            var under = monaco!.Y - (tabs.Y + tabs.Height);
+            above.ShouldBeInRange(6, 12);
+            ((double)under).ShouldBe(above, 1);
             tabs.Height.ShouldBeLessThan(60);
             ((double)tabs.Width).ShouldBe(monaco.Width, 2);
             (await editor.Page.EvaluateAsync<int[]>("() => [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight]")).ShouldBe([0, 0]);
