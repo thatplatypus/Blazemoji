@@ -125,7 +125,7 @@ That is the whole editor: the Files, Toolbox and Library tabs, the editor with i
 
 ## The desktop host
 
-`Blazemoji.Desktop` is a [Hermes](https://github.com/Mythetech/Hermes) window around `<Workspace />`. It targets .NET 10 with `Mythetech.Hermes.Blazor` pinned at 1.2.0, the last release built for .NET 10, so it builds with the repository's own SDK.
+`Blazemoji.Desktop` is a [Hermes](https://github.com/Mythetech/Hermes) window around `<Workspace />`. The program it builds is named `Blazemoji`, after the app, which is the name packaging looks for. It targets .NET 10 with `Mythetech.Hermes.Blazor` pinned at 1.2.0, the last release built for .NET 10, so it builds with the repository's own SDK.
 
 ```sh
 scripts/dev-toolchain.sh                    # the compiler, in its container, on 127.0.0.1:5290
@@ -144,6 +144,7 @@ Nothing outside the window can see into it, so the app checks itself from inside
 scripts/desktop-smoke.sh                # the build `dotnet run` would start
 scripts/desktop-smoke.sh --published    # a self-contained single-file publish, as a release is built
 scripts/desktop-smoke.sh --compile      # also compile and run a program, through the toolchain service
+scripts/desktop-smoke.sh --app <path>   # a copy that is already built, such as the one inside an unpacked release
 ```
 
 With `HERMES_SMOKE_TEST=1` the app runs the checks in `Blazemoji.Desktop/Scripts/smoke.ts` once its page is up (the editor loads and shows the project, the style sheets and font arrive, the editor has the page's colours, a key and the toolbox each type an emoji pair, completion answers, dark mode reaches the editor). It adds what only its own side can see (the project is a folder on disk, and the samples and templates came with the app), prints the outcome and closes.
@@ -166,6 +167,6 @@ It reports in the words of Hermes's smoke protocol: one `HERMES_SMOKE_CHECK_PASS
 - Changes made to a project's files by something else are seen when the project is next opened, not as they happen. Two copies of the app on one projects folder would each take the other's saves for someone else's changes and move them to the trash.
 - What was typed in the last moment before the window is closed can be lost: text reaches the project when typing pauses.
 - The desktop app has only been run on macOS. On Windows some names it accepts cannot be files (`aux.🍇`, a name ending in a dot), and a save would fail there.
-- The desktop app is not packaged, signed or given an icon, and nothing builds it but `dotnet`.
+- The desktop app has no icon of its own, and its packed builds are not signed. The **Publish Desktop** workflow, run by hand, packs it for Windows, macOS and Linux with Velopack and drafts a GitHub release; signing is in the workflow and waits for the keys. The app calls Velopack at start-up so that an installed copy works, but nothing checks for updates.
 - Copying uses the browser's clipboard API from inside a click. It is accepted in the desktop web view on macOS; Windows and Linux have not been tried.
 - The libraries are referenced as projects, not published as packages.

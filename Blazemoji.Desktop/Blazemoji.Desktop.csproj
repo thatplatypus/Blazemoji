@@ -9,11 +9,16 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Blazemoji.Desktop</RootNamespace>
+    <!-- The program is called what the app is called, which is what packaging and signing
+         look for: Blazemoji.app holds an executable named Blazemoji. -->
+    <AssemblyName>Blazemoji</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- 1.2.0 is the last release of Hermes built for .NET 10. Later ones are .NET 11 only. -->
     <PackageReference Include="Mythetech.Hermes.Blazor" Version="1.2.0" />
+    <!-- What an installed copy needs so that its installer and updater can talk to it. -->
+    <PackageReference Include="Velopack" Version="0.0.1298" />
   </ItemGroup>
 
   <ItemGroup>

@@ -117,6 +117,12 @@ export async function run(alsoCompile: boolean): Promise<Outcome[]> {
             await check();
         } catch (thrown) {
             error = thrown instanceof Error ? thrown.message : String(thrown);
+            if (document.hidden) {
+                // A web view whose window is covered, minimized or behind a locked screen
+                // stops drawing and slows its timers, and several checks wait for something
+                // to be drawn.
+                error += " The window was not in view at the time, and a page that is not in view does not draw: run it again with the window showing.";
+            }
         }
         outcomes.push({ name, passed: error === null, durationMs: Math.round(performance.now() - started), error });
     }

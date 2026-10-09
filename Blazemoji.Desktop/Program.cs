@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MudBlazor.Services;
+using Velopack;
 
 namespace Blazemoji.Desktop;
 
@@ -19,6 +20,19 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        try
+        {
+            // An installed copy is started by its installer and updater with errands of their
+            // own, which this runs and then exits. It has to come before anything else.
+            VelopackApp.Build().Run();
+        }
+        catch (Exception exception)
+        {
+            // Expected wherever the app is not an installed copy: dotnet run, a plain publish.
+            // Nothing has been built yet to log with, so standard error is all there is.
+            Console.Error.WriteLine($"Not started as an installed copy ({exception.GetType().Name}).");
+        }
+
         var isDevelopment = string.Equals(Environment.GetEnvironmentVariable(EnvironmentVariable), "Development", StringComparison.OrdinalIgnoreCase);
         var smoke = SmokeSettings.FromEnvironment();
 

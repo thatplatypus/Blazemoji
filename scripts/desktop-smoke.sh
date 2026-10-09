@@ -8,6 +8,8 @@
 #   scripts/desktop-smoke.sh --published     publish for this machine first, and test that
 #   scripts/desktop-smoke.sh --compile       also compile and run a program (needs the
 #                                            toolchain service: scripts/dev-toolchain.sh)
+#   scripts/desktop-smoke.sh --app <path>    test a copy that is already built: the program
+#                                            itself, such as the one inside an unpacked release
 #
 # A window opens for a few seconds and closes itself. The run's projects go to a temporary
 # folder, never to your own. The app reports in the words of Hermes's smoke protocol, so
@@ -22,11 +24,13 @@ cd "$(dirname "$0")/.."
 
 published=0
 compile=0
-for option in "$@"; do
-  case "$option" in
-    --published) published=1 ;;
-    --compile) compile=1 ;;
-    *) echo "Unknown option: $option" >&2; exit 2 ;;
+app=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --published) published=1; shift ;;
+    --compile) compile=1; shift ;;
+    --app) app="$2"; shift 2 ;;
+    *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
 
@@ -35,20 +39,30 @@ keep=0
 trap '[ "$keep" -eq 1 ] || rm -rf "$work"' EXIT
 limit="${SMOKE_TIMEOUT:-120}"
 
-if [ "$published" -eq 1 ]; then
+if [ -n "$app" ]; then
+  case "$app" in
+    /* | ?:*) ;;
+    *) app="$(pwd)/$app" ;;
+  esac
+elif [ "$published" -eq 1 ]; then
   rid="$(dotnet --info | tr -d '\r' | awk '/^ *RID:/ { print $2; exit }')"
   echo "Publishing for $rid..."
   dotnet publish Blazemoji.Desktop/Blazemoji.Desktop.csproj -c Release -r "$rid" --self-contained \
     -p:PublishSingleFile=true -p:PublishTrimmed=false -o "$work/app" > "$work/build.log" 2>&1 \
     || { tail -30 "$work/build.log"; exit 1; }
-  app="$work/app/Blazemoji.Desktop"
+  app="$work/app/Blazemoji"
 else
   dotnet build Blazemoji.Desktop/Blazemoji.Desktop.csproj > "$work/build.log" 2>&1 \
     || { tail -30 "$work/build.log"; exit 1; }
-  app="$(pwd)/Blazemoji.Desktop/bin/Debug/net10.0/Blazemoji.Desktop"
+  app="$(pwd)/Blazemoji.Desktop/bin/Debug/net10.0/Blazemoji"
 fi
 
 [ -f "$app" ] || app="$app.exe"
+
+# Git for Windows gives its own kind of path, which a Windows program cannot open.
+native() {
+  if command -v cygpath > /dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
 
 # Started from somewhere else on purpose: the app must find its own files wherever it is run from.
 # The app times itself out once it is up. The alarm is for one that hangs before that or
@@ -58,9 +72,9 @@ status=0
   cd "$work"
   HERMES_SMOKE_TEST=1 \
   HERMES_SMOKE_TEST_TIMEOUT="$limit" \
-  HERMES_SMOKE_TEST_RESULT="$work/result.json" \
+  HERMES_SMOKE_TEST_RESULT="$(native "$work/result.json")" \
   BLAZEMOJI_SMOKE_COMPILE="$compile" \
-  BLAZEMOJI_SMOKE_PROJECTS="$work/projects" \
+  BLAZEMOJI_SMOKE_PROJECTS="$(native "$work/projects")" \
     perl -e 'alarm shift; exec @ARGV or die "could not start $ARGV[0]: $!\n"' "$((limit + 60))" "$app" > "$work/app.log" 2>&1
 ) || status=$?
 
