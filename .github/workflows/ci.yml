@@ -4,9 +4,8 @@
 # had again at a desk: scripts/test-in-docker.sh, scripts/e2e.sh, scripts/desktop-smoke.sh.
 #
 # After a merge, once the tests have passed on main, the last job builds the app's image and
-# has the site run it. That job is skipped until the repository variable DEPLOY_SITE is
-# "true", and reads everything it needs to know about the site from the secrets of the
-# "production" environment.
+# has the site run it. It does nothing until the variable DEPLOY_SITE is "true", and reads
+# that, and everything it needs to know about the site, from the "production" environment.
 name: CI
 
 on:
@@ -137,7 +136,7 @@ jobs:
   deploy-site:
     name: Put the merged build on the site
     needs: [tests, browser-tests]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.DEPLOY_SITE == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
@@ -150,10 +149,27 @@ jobs:
       group: site
       cancel-in-progress: false
     steps:
+    # The switch is read here and not in the job's own condition. A job's condition is
+    # decided before the job joins its environment, and the environment is where the switch
+    # is kept, beside the secrets it guards. One set on the repository is seen here as well.
+    - name: See whether deploying is switched on
+      id: switch
+      shell: bash
+      env:
+        DEPLOY_SITE: ${{ vars.DEPLOY_SITE }}
+      run: |
+        if [ "$DEPLOY_SITE" = "true" ]; then
+          echo "on=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::Nothing was deployed. To switch deploying on, set the variable DEPLOY_SITE to \"true\" on the production environment."
+        fi
+
     - name: Checkout
+      if: steps.switch.outputs.on == 'true'
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
     - name: Sign in to Azure
+      if: steps.switch.outputs.on == 'true'
       uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
       with:
         client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -163,6 +179,7 @@ jobs:
     # The same script a person runs to do this by hand. It builds what is committed, pushes
     # the image under this commit, and sets the site to run that image.
     - name: Build the image, push it, and have the site run it
+      if: steps.switch.outputs.on == 'true'
       run: scripts/deploy-azure.sh --registry "$SITE_REGISTRY" --point "$SITE_APP" "$SITE_RESOURCE_GROUP" --yes
       env:
         SITE_REGISTRY: ${{ secrets.SITE_REGISTRY }}
