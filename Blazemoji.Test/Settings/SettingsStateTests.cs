@@ -276,6 +276,62 @@ namespace Blazemoji.Test.Settings
         }
 
         [Fact]
+        public async Task A_handler_that_throws_while_a_load_is_announced_does_not_stop_settings_from_changing()
+        {
+            var answering = new TaskCompletionSource<string?>();
+            _store.LoadAsync().Returns(answering.Task);
+            var state = CreateState();
+            var sample = state.Get<SampleSettings>();
+            var throws = true;
+            state.SettingsChanged += _ =>
+            {
+                if (throws)
+                    throw new InvalidOperationException("a handler's own fault");
+            };
+            var loading = state.LoadAsync();
+
+            answering.SetResult("{ \"sample\": { \"size\": 20 } }");
+            loading.IsCompleted.ShouldBeTrue();
+            await Should.ThrowAsync<InvalidOperationException>(() => loading);
+            throws = false;
+            var again = state.LoadAsync();
+            again.IsCompletedSuccessfully.ShouldBeTrue();
+            await state.SetAsync(sample, nameof(SampleSettings.Wrap), true);
+
+            sample.Size.ShouldBe(20);
+            sample.Wrap.ShouldBeTrue();
+        }
+
+        [Fact]
+        public async Task A_load_that_is_cancelled_at_once_does_not_stop_settings_from_changing()
+        {
+            _store.LoadAsync().Returns(Task.FromCanceled<string?>(new CancellationToken(true)));
+            var state = CreateState();
+
+            var first = state.LoadAsync();
+            first.IsCanceled.ShouldBeTrue();
+            var again = state.LoadAsync();
+            again.IsCompletedSuccessfully.ShouldBeTrue();
+            await state.SetAsync(state.Get<SampleSettings>(), nameof(SampleSettings.Size), 20);
+
+            state.Get<SampleSettings>().Size.ShouldBe(20);
+        }
+
+        [Fact]
+        public async Task A_handler_that_asks_for_the_settings_while_a_load_is_announced_does_not_read_the_store_again()
+        {
+            _kept = "{ \"sample\": { \"size\": 20 } }";
+            var state = CreateState();
+            Task? asked = null;
+            state.SettingsChanged += _ => asked = state.LoadAsync();
+
+            await state.LoadAsync();
+
+            asked.ShouldNotBeNull().IsCompletedSuccessfully.ShouldBeTrue();
+            await _store.Received(1).LoadAsync();
+        }
+
+        [Fact]
         public void Asking_for_a_section_that_was_never_added_is_a_mistake_in_the_caller()
         {
             var state = new SettingsState(Options.Create(new SettingsOptions()), _logger);

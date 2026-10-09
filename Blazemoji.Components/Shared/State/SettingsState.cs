@@ -68,10 +68,11 @@ namespace Blazemoji.Shared.State
             if (_loading is not null)
                 return _loading;
 
-            // A store that fails at once has failed before there is a task to remember. The
-            // failure is for whoever asked first; after it the defaults stand.
+            // A store that answers or fails at once has finished before there is a task to
+            // remember, and has already left a finished one here. A failure is for whoever
+            // asked first; after it the defaults stand.
             var loading = LoadFromAsync(_store);
-            _loading = loading.IsFaulted ? Task.CompletedTask : loading;
+            _loading ??= loading;
             return loading;
         }
 
@@ -102,6 +103,10 @@ namespace Blazemoji.Shared.State
                 if (!changed.Contains(kept.Section))
                     changed.Add(kept.Section);
             }
+
+            // The load is over before anyone hears of it. A handler that throws must not leave
+            // a failed load remembered, and one that asks for the settings must not start another.
+            _loading = Task.CompletedTask;
 
             foreach (var section in changed)
                 SettingsChanged?.Invoke(section);
