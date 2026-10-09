@@ -146,5 +146,122 @@ namespace Blazemoji.E2E
             ((double)tabs.Width).ShouldBe(monaco.Width, 2);
             (await editor.Page.EvaluateAsync<int[]>("() => [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight]")).ShouldBe([0, 0]);
         }
+
+        /// <summary>Adds a file to the open project from the Files list. It is shown, and gets a tab.</summary>
+        private static Task AddFileAsync(EditorPage editor, string path) =>
+            editor.ShowsAnotherFileAsync(
+                async () =>
+                {
+                    await editor.Page.GetByTestId("new-file").ClickAsync();
+                    await editor.AnswerPromptAsync(path);
+                },
+                Project,
+                path);
+
+        private static async Task<string> SelectedTabAsync(EditorPage editor) =>
+            (await editor.Page.Locator("[role=tab][aria-selected=true] [data-testid=editor-tab]").InnerTextAsync()).Trim();
+
+        [Fact]
+        public async Task Closing_the_first_of_three_tabs_while_the_last_is_shown_leaves_the_last_shown()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await WithBothFilesOpenAsync(browser);
+            await AddFileAsync(editor, "notes.🍇");
+            await editor.SetCodeAsync("💭 the third file\n");
+            (await Tabs(editor).AllInnerTextsAsync()).ShouldBe([Main, Greeter, "notes.🍇"]);
+
+            await CrossOn(editor, Main).ClickAsync();
+
+            await Assertions.Expect(Tabs(editor)).ToHaveCountAsync(2);
+            (await Tabs(editor).AllInnerTextsAsync()).ShouldBe([Greeter, "notes.🍇"]);
+            await editor.Page.WaitForTimeoutAsync(500);
+            await editor.WaitForOpenFileAsync(Project, "notes.🍇");
+            (await editor.GetCodeAsync()).ShouldContain("the third file");
+            (await SelectedTabAsync(editor)).ShouldBe("notes.🍇");
+            editor.ConsoleErrors.ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_file_renamed_from_the_list_keeps_its_tab_in_its_place_and_every_tab_still_opens_its_own_file()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await WithBothFilesOpenAsync(browser);
+
+            // The first tab's file, while the second is the one shown.
+            await editor.ChooseFileActionAsync(Main, "rename-file");
+            await editor.AnswerPromptAsync("start.🍇");
+            await editor.WaitForFilesAsync(Greeter, "start.🍇");
+
+            await Assertions.Expect(Tabs(editor).First).ToHaveTextAsync("start.🍇");
+            (await Tabs(editor).AllInnerTextsAsync()).ShouldBe(["start.🍇", Greeter]);
+            await editor.WaitForOpenFileAsync(Project, Greeter);
+            (await SelectedTabAsync(editor)).ShouldBe(Greeter);
+            (await editor.GetCodeAsync()).ShouldContain("🐇 🙋");
+
+            await ClickTabAsync(editor, "start.🍇");
+            (await editor.GetCodeAsync()).ShouldContain("📜");
+            (await SelectedTabAsync(editor)).ShouldBe("start.🍇");
+            await ClickTabAsync(editor, Greeter);
+            (await editor.GetCodeAsync()).ShouldContain("🐇 🙋");
+            (await SelectedTabAsync(editor)).ShouldBe(Greeter);
+        }
+
+        [Fact]
+        public async Task A_file_deleted_from_the_list_loses_its_tab_and_the_shown_file_stays_shown()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await WithBothFilesOpenAsync(browser);
+            await AddFileAsync(editor, "notes.🍇");
+            await editor.SetCodeAsync("💭 the third file\n");
+
+            await editor.ChooseFileActionAsync(Greeter, "delete-file");
+            await editor.Dialog.GetByText("Delete", new LocatorGetByTextOptions { Exact = true }).Last.ClickAsync();
+            await editor.WaitForFilesAsync(Main, "notes.🍇");
+
+            await Assertions.Expect(Tabs(editor)).ToHaveCountAsync(2);
+            (await Tabs(editor).AllInnerTextsAsync()).ShouldBe([Main, "notes.🍇"]);
+            await editor.WaitForOpenFileAsync(Project, "notes.🍇");
+            (await editor.GetCodeAsync()).ShouldContain("the third file");
+            (await SelectedTabAsync(editor)).ShouldBe("notes.🍇");
+        }
+
+        [Fact]
+        public async Task A_click_on_the_tab_of_the_file_already_shown_gives_the_editor_the_keys()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await WithBothFilesOpenAsync(browser);
+
+            await TabOf(editor, Greeter).ClickAsync();
+            await editor.Page.WaitForFunctionAsync("() => document.activeElement?.closest('.monaco-editor') !== null");
+            await editor.Page.Keyboard.PressAsync("Control+End");
+            await editor.Page.Keyboard.TypeAsync("💭 typed after the click");
+
+            (await editor.GetCodeAsync()).ShouldContain("💭 typed after the click");
+            (await Tabs(editor).AllInnerTextsAsync()).ShouldBe([Main, Greeter]);
+        }
+
+        [Fact]
+        public async Task Two_open_files_of_one_name_show_their_folders_and_many_tabs_do_not_widen_the_page()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await WithBothFilesOpenAsync(browser);
+            await editor.Page.SetViewportSizeAsync(1100, 800);
+
+            await AddFileAsync(editor, "lib/greeter.🍇");
+            (await Tabs(editor).AllInnerTextsAsync()).ShouldBe([Main, Greeter, "lib/greeter.🍇"]);
+            (await Tabs(editor).Nth(2).GetAttributeAsync("title")).ShouldBe("lib/greeter.🍇");
+
+            foreach (var name in new[] { "one", "two", "three", "four", "five", "six", "seven" })
+                await AddFileAsync(editor, $"more/a-long-name-for-file-{name}.🍇");
+
+            // More tabs than the row has room for: the row moves along inside itself.
+            await Assertions.Expect(Tabs(editor)).ToHaveCountAsync(10);
+            (await editor.Page.EvaluateAsync<int[]>("() => [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight]")).ShouldBe([0, 0]);
+            var row = await editor.Page.GetByTestId("editor-tabs").BoundingBoxAsync();
+            var monaco = await editor.Page.Locator(".monaco-editor").First.BoundingBoxAsync();
+            ((double)row!.Width).ShouldBe(monaco!.Width, 2);
+            (await SelectedTabAsync(editor)).ShouldBe("a-long-name-for-file-seven.🍇");
+            await editor.ScreenshotAsync("p7-02-many-tabs");
+        }
     }
 }

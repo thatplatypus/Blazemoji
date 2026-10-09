@@ -104,9 +104,11 @@ function editorWithId(editorId: string): any | undefined {
 const whereItWasLeft = new Map<string, unknown>();
 
 // Shows another file's model in the editor with this element id, and puts the cursor and the
-// scroll back where they were when that file was last shown. All in one call, so that
-// switching files is one round trip. False when there is no such editor or no such model.
-export function showModel(editorId: string, modelUri: string): boolean {
+// scroll back where they were when that file was last shown. With takeKeys the editor is
+// given the keyboard as well, here and in the same step: given it before the file is
+// shown, what is typed in between would go into the file being left. All in one call, so
+// that switching files is one round trip. False when there is no such editor or no such model.
+export function showModel(editorId: string, modelUri: string, takeKeys: boolean): boolean {
     const editor = editorWithId(editorId);
     const model = monaco.editor.getModels().find((candidate: any) => candidate.uri.toString() === modelUri);
     if (!editor || !model) {
@@ -132,6 +134,10 @@ export function showModel(editorId: string, modelUri: string): boolean {
         if (!open.has(uri)) {
             whereItWasLeft.delete(uri);
         }
+    }
+
+    if (takeKeys) {
+        editor.focus();
     }
 
     return true;

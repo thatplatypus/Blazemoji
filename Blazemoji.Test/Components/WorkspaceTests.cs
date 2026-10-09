@@ -377,5 +377,139 @@ namespace Blazemoji.Test.Components
             cut.WaitForAssertion(() => Project.OpenPath.ShouldBe("b.🍇"));
             Project.Current.Find("a.🍇")!.Content.ShouldBe("a, edited and not yet saved");
         }
+
+        private static readonly Project ThreeFiles = new(
+            "p1", "Three", ProjectKind.Program, "a.🍇",
+            [new ProjectFile("a.🍇", "text of a"), new ProjectFile("b.🍇", "text of b"), new ProjectFile("c.🍇", "text of c")]);
+
+        /// <summary>A workspace on a project of three files with every one of them open, the last shown.</summary>
+        private async Task<IRenderedComponent<Workspace>> RenderWithThreeTabsAsync()
+        {
+            _store.ListAsync().Returns([new ProjectSummary(ThreeFiles.Id, ThreeFiles.Name)]);
+            _store.LoadAsync(ThreeFiles.Id).Returns(ThreeFiles);
+            foreach (var created in new[] { 1, 2, 3, 4 })
+            {
+                ModelCreation(created).SetResult(Model(created));
+                ModelHolds(created, "text");
+            }
+
+            var cut = Render<Workspace>();
+            cut.WaitForAssertion(() => cut.Find("[data-testid=open-file]").TextContent.ShouldContain("a.🍇"));
+            await cut.InvokeAsync(() => Project.SelectFile("b.🍇"));
+            await cut.InvokeAsync(() => Project.SelectFile("c.🍇"));
+            cut.WaitForAssertion(() => TabNames(cut).ShouldBe(["a.🍇", "b.🍇", "c.🍇"]));
+            return cut;
+        }
+
+        private static string SelectedTab(IRenderedComponent<Workspace> cut) =>
+            cut.FindAll("[role=tab][aria-selected=true] [data-testid=editor-tab]").Select(tab => tab.TextContent.Trim()).ShouldHaveSingleItem();
+
+        [Fact]
+        public async Task Closing_a_tab_well_to_the_left_of_the_shown_one_leaves_the_shown_file_where_it_is()
+        {
+            var cut = await RenderWithThreeTabsAsync();
+
+            await TabOf(cut, "a.🍇").QuerySelector(".editor-tab-close")!.ClickAsync(new());
+
+            cut.WaitForAssertion(() => TabNames(cut).ShouldBe(["b.🍇", "c.🍇"]));
+            Project.OpenPath.ShouldBe("c.🍇");
+            SelectedTab(cut).ShouldBe("c.🍇");
+        }
+
+        [Fact]
+        public async Task Deleting_a_file_well_to_the_left_of_the_shown_one_leaves_the_shown_file_where_it_is()
+        {
+            var cut = await RenderWithThreeTabsAsync();
+
+            await cut.InvokeAsync(() => Project.DeleteFileAsync("b.🍇"));
+            await cut.InvokeAsync(() => Project.DeleteFileAsync("a.🍇"));
+
+            cut.WaitForAssertion(() => TabNames(cut).ShouldBe(["c.🍇"]));
+            Project.OpenPath.ShouldBe("c.🍇");
+            SelectedTab(cut).ShouldBe("c.🍇");
+        }
+
+        [Fact]
+        public async Task A_file_renamed_while_another_is_shown_keeps_its_tab_in_its_place_and_each_tab_still_opens_its_own_file()
+        {
+            var cut = await RenderWithThreeTabsAsync();
+
+            (await cut.InvokeAsync(() => Project.RenameFileAsync("a.🍇", "first.🍇"))).ShouldBeNull();
+
+            // Files are listed by name, and the tabs stay in the order they were opened.
+            cut.WaitForAssertion(() => TabNames(cut).ShouldBe(["first.🍇", "b.🍇", "c.🍇"]));
+            Project.OpenPath.ShouldBe("c.🍇");
+            SelectedTab(cut).ShouldBe("c.🍇");
+
+            await TabOf(cut, "b.🍇").ClickAsync(new());
+            cut.WaitForAssertion(() => Project.OpenPath.ShouldBe("b.🍇"));
+            SelectedTab(cut).ShouldBe("b.🍇");
+
+            await TabOf(cut, "first.🍇").ClickAsync(new());
+            cut.WaitForAssertion(() => Project.OpenPath.ShouldBe("first.🍇"));
+            SelectedTab(cut).ShouldBe("first.🍇");
+        }
+
+        [Fact]
+        public async Task The_shown_file_renamed_keeps_its_tab_selected_in_its_place()
+        {
+            var cut = await RenderWithThreeTabsAsync();
+            await cut.InvokeAsync(() => Project.SelectFile("b.🍇"));
+            cut.WaitForAssertion(() => SelectedTab(cut).ShouldBe("b.🍇"));
+
+            (await cut.InvokeAsync(() => Project.RenameFileAsync("b.🍇", "second.🍇"))).ShouldBeNull();
+
+            cut.WaitForAssertion(() => TabNames(cut).ShouldBe(["a.🍇", "second.🍇", "c.🍇"]));
+            Project.OpenPath.ShouldBe("second.🍇");
+            SelectedTab(cut).ShouldBe("second.🍇");
+        }
+
+        [Fact]
+        public async Task What_was_typed_in_the_shown_file_is_kept_before_its_tab_is_closed()
+        {
+            ModelCreation(2).SetResult(Model(2));
+            ModelHolds(1, "text of a");
+            ModelHolds(2, "b, edited and not yet saved");
+            var cut = RenderShowingTheFirstFile();
+            await cut.InvokeAsync(() => Project.SelectFile("b.🍇"));
+            cut.WaitForAssertion(() => TabNames(cut).ShouldBe(["a.🍇", "b.🍇"]));
+            cut.WaitForAssertion(() => JSInterop.Invocations[CreateModel].Count.ShouldBe(2));
+
+            await TabOf(cut, "b.🍇").QuerySelector(".editor-tab-close")!.ClickAsync(new());
+
+            cut.WaitForAssertion(() => TabNames(cut).ShouldBe(["a.🍇"]));
+            Project.Current.Find("b.🍇")!.Content.ShouldBe("b, edited and not yet saved");
+        }
+
+        [Fact]
+        public async Task The_editor_is_given_the_keys_with_the_file_a_tab_asks_for_and_not_before_it_is_shown()
+        {
+            const string showModel = "showModel";
+            var language = JSInterop.SetupModule("./_content/Blazemoji.Components/js/emojicodeLanguage.js");
+            language.Mode = JSRuntimeMode.Loose;
+            language.SetupModule("register", _ => true);
+            language.Setup<bool>(showModel, _ => true).SetResult(true);
+            var cut = await RenderWithThreeTabsAsync();
+            var before = language.Invocations[showModel].Count;
+            var focusedBefore = JSInterop.Invocations.Count(call => call.Identifier == "blazorMonaco.editor.focus");
+
+            await TabOf(cut, "a.🍇").ClickAsync(new());
+
+            cut.WaitForAssertion(() => language.Invocations[showModel].Count.ShouldBe(before + 1));
+            language.Invocations[showModel].Last().Arguments[2].ShouldBe(true, "the keys go with the file, in the same step");
+            JSInterop.Invocations.Count(call => call.Identifier == "blazorMonaco.editor.focus").ShouldBe(focusedBefore, "the editor is not given the keys while it still shows the other file");
+        }
+
+        [Fact]
+        public async Task A_click_on_the_tab_of_the_file_already_shown_gives_the_editor_the_keys_at_once()
+        {
+            var cut = await RenderWithThreeTabsAsync();
+            var focusedBefore = JSInterop.Invocations.Count(call => call.Identifier == "blazorMonaco.editor.focus");
+
+            await TabOf(cut, "c.🍇").ClickAsync(new());
+
+            cut.WaitForAssertion(() => JSInterop.Invocations.Count(call => call.Identifier == "blazorMonaco.editor.focus").ShouldBe(focusedBefore + 1));
+            Project.OpenPath.ShouldBe("c.🍇");
+        }
     }
 }

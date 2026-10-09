@@ -53,7 +53,7 @@ namespace Blazemoji.Test.Components
         {
             var cut = RenderTabs(["app/main.🍇", "shared/util.🍇"], shown: "shared/util.🍇");
 
-            TabOf(cut, "shared/util.🍇").GetAttribute("aria-selected").ShouldBe("true");
+            cut.WaitForAssertion(() => TabOf(cut, "shared/util.🍇").GetAttribute("aria-selected").ShouldBe("true"));
             TabOf(cut, "app/main.🍇").GetAttribute("aria-selected").ShouldBe("false");
         }
 
@@ -77,14 +77,60 @@ namespace Blazemoji.Test.Components
         }
 
         [Fact]
-        public async Task Clicking_the_tab_that_is_already_shown_asks_for_nothing()
+        public async Task Clicking_the_tab_that_is_already_shown_says_so_too_so_that_the_editor_can_be_given_the_keys()
         {
             var asked = new List<string>();
             var cut = RenderTabs(["app/main.🍇", "shared/util.🍇"], shown: "app/main.🍇", selected: asked.Add);
 
             await TabOf(cut, "app/main.🍇").ClickAsync(new());
 
-            asked.ShouldBeEmpty();
+            asked.ShouldBe(["app/main.🍇"]);
+        }
+
+        [Fact]
+        public async Task A_click_that_the_caller_does_not_act_on_leaves_the_shown_file_as_the_selected_tab()
+        {
+            var cut = RenderTabs(["app/main.🍇", "shared/util.🍇"], shown: "app/main.🍇");
+            cut.WaitForAssertion(() => TabOf(cut, "app/main.🍇").GetAttribute("aria-selected").ShouldBe("true"));
+
+            // The row marks a tab as soon as it is clicked. Which file is shown is not the row's to say.
+            await TabOf(cut, "shared/util.🍇").ClickAsync(new());
+            cut.Render();
+
+            cut.WaitForAssertion(() => TabOf(cut, "app/main.🍇").GetAttribute("aria-selected").ShouldBe("true"));
+            TabOf(cut, "shared/util.🍇").GetAttribute("aria-selected").ShouldBe("false");
+        }
+
+        [Fact]
+        public void A_tab_says_where_its_file_is_when_it_is_pointed_at()
+        {
+            var cut = RenderTabs(["app/main.🍇"], shown: "app/main.🍇");
+
+            cut.Find(Tab).GetAttribute("title").ShouldBe("app/main.🍇");
+        }
+
+        [Fact]
+        public void A_file_renamed_keeps_its_place_in_the_row()
+        {
+            var cut = RenderTabs(["app/main.🍇", "shared/util.🍇", "README.md"], shown: "README.md");
+
+            cut.Render(parameters => parameters.Add(tabs => tabs.Paths, new[] { "app/start.🍇", "shared/util.🍇", "README.md" }));
+
+            Names(cut).ShouldBe(["start.🍇", "util.🍇", "README.md"]);
+            cut.WaitForAssertion(() => TabOf(cut, "README.md").GetAttribute("aria-selected").ShouldBe("true"));
+        }
+
+        [Fact]
+        public void With_a_tab_gone_from_the_left_the_shown_file_is_still_the_selected_tab()
+        {
+            var cut = RenderTabs(["app/main.🍇", "shared/util.🍇", "README.md"], shown: "README.md");
+            cut.WaitForAssertion(() => TabOf(cut, "README.md").GetAttribute("aria-selected").ShouldBe("true"));
+
+            cut.Render(parameters => parameters.Add(tabs => tabs.Paths, new[] { "shared/util.🍇", "README.md" }));
+
+            Names(cut).ShouldBe(["util.🍇", "README.md"]);
+            cut.WaitForAssertion(() => TabOf(cut, "README.md").GetAttribute("aria-selected").ShouldBe("true"));
+            TabOf(cut, "shared/util.🍇").GetAttribute("aria-selected").ShouldBe("false");
         }
 
         [Fact]
@@ -117,16 +163,6 @@ namespace Blazemoji.Test.Components
         }
 
         [Fact]
-        public void A_file_name_keeps_its_own_letters()
-        {
-            var cut = RenderTabs(["Notes.MD"], shown: "Notes.MD");
-
-            // MudBlazor writes a tab's text in capitals. A file's name is not a heading.
-            cut.Find(Tab).ClassList.ShouldContain("editor-tab-name");
-            Names(cut).ShouldBe(["Notes.MD"]);
-        }
-
-        [Fact]
         public void The_tabs_follow_when_the_open_files_change()
         {
             var cut = RenderTabs(["app/main.🍇", "shared/util.🍇"], shown: "shared/util.🍇");
@@ -136,7 +172,7 @@ namespace Blazemoji.Test.Components
                 .Add(tabs => tabs.Shown, "app/main.🍇"));
 
             Names(cut).ShouldBe(["main.🍇"]);
-            TabOf(cut, "app/main.🍇").GetAttribute("aria-selected").ShouldBe("true");
+            cut.WaitForAssertion(() => TabOf(cut, "app/main.🍇").GetAttribute("aria-selected").ShouldBe("true"));
         }
     }
 }

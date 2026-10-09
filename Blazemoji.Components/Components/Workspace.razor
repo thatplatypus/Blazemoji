@@ -96,6 +96,8 @@
     private HashSet<string> _openKeys = [];
     private string _compiledProjectId = string.Empty;
     private Diagnostic? _problemToReveal;
+    private string? _tabWanted;
+    private bool _takeKeysWhenShown;
 
     // Bringing the editor into line is several round trips to the browser, and another
     // render can arrive between two of them. A second pass beside the first would act on a
@@ -206,10 +208,17 @@
         }
 
         var open = (project.Id, _projectState.OpenPath);
+        var takeKeys = _takeKeysWhenShown;
+        _takeKeysWhenShown = false;
         if (_shown == open)
-            return;
+        {
+            if (takeKeys)
+                await _editor.Editor.Focus();
 
-        await _editor.OpenFileAsync(Key(project.Id, open.OpenPath), _projectState.OpenFile.Content);
+            return;
+        }
+
+        await _editor.OpenFileAsync(Key(project.Id, open.OpenPath), _projectState.OpenFile.Content, takeKeys);
         _shown = open;
 
         // A file opened for the first time has had no markers yet.
@@ -261,20 +270,39 @@
     }
 
     // What was typed in the file on show reaches the project when typing pauses. A tab can
-    // be clicked sooner than that, so it is taken first. The editor is given the keyboard
-    // afterwards: someone who has just chosen a file means to type in it.
+    // be clicked sooner than that, so it is taken first. Of two tabs asked for one straight
+    // after the other, the later is the one that is meant, whichever is ready first.
     private async Task ShowTabAsync(string path)
     {
+        _tabWanted = path;
         await SyncOpenFileAsync();
-        _projectState.SelectFile(path);
-        await _editor.Editor.Focus();
+        if (_tabWanted is not { } wanted)
+            return;
+
+        _tabWanted = null;
+        _projectState.SelectFile(wanted);
+        await GiveTheEditorTheKeysAsync();
     }
 
     private async Task CloseTabAsync(string path)
     {
         await SyncOpenFileAsync();
         _projectState.CloseFile(path);
-        await _editor.Editor.Focus();
+        await GiveTheEditorTheKeysAsync();
+    }
+
+    /// <summary>
+    /// Someone who has just chosen a file, or closed a tab, means to type in the editor. If
+    /// it is still showing another file, it takes the keyboard as it shows the right one, in
+    /// one step in the browser: given it sooner, what is typed in between would go into the
+    /// file being left, and stay behind there.
+    /// </summary>
+    private async Task GiveTheEditorTheKeysAsync()
+    {
+        if (_shown == (_projectState.Current.Id, _projectState.OpenPath))
+            await _editor.Editor.Focus();
+        else
+            _takeKeysWhenShown = true;
     }
 
     private async Task StopClicked()

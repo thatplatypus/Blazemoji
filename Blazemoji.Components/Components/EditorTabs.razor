@@ -1,32 +1,41 @@
 @* The files that are open, as a row of tabs above the editor. These are MudBlazor's tabs
    with a close button, used for the row alone: there is one editor under them, so no tab
    has content of its own. Which files are open and which is shown is the project's to say
-   (ProjectState); a click here only asks. *@
-<MudDynamicTabs Class="editor-tabs"
+   (ProjectState); a click here only asks.
+
+   MudBlazor's tabs keep a list and a chosen tab of their own, by number, and change both
+   by themselves as tabs come and go. Nothing here goes by their numbers. A tab says which
+   file it is when it is clicked, and after each draw the row is told which file is shown,
+   by name, if it has come to think otherwise. *@
+<MudDynamicTabs @ref="_row"
+                Class="editor-tabs"
                 Elevation="0"
                 Outlined="true"
                 Rounded="true"
                 MinimumTabWidth="0px"
-                ActivePanelIndex="@ShownIndex"
-                ActivePanelIndexChanged="OnActivatedAsync"
                 CloseTab="OnCloseAsync"
                 CloseTabIcon="@BlazemojiIcons.CloseTab"
                 CloseIconClass="editor-tab-close"
                 CloseIconToolTip="Close"
                 AddIconClass="d-none"
                 data-testid="editor-tabs">
-    @foreach (var tab in _tabs)
+    @* Keyed by place and not by file. A tab keyed by its file would be a new one after a
+       rename, and MudBlazor puts a new tab at the end of the row whatever order it is given. *@
+    @for (var place = 0; place < _tabs.Count; place++)
     {
-        <MudTabPanel @key="tab.Path" ID="@tab.Path" ToolTip="@tab.Path" ShowCloseIcon="@(_tabs.Count > 1)">
+        var tab = _tabs[place];
+        <MudTabPanel @key="place" ID="@tab.Path" ShowCloseIcon="@(_tabs.Count > 1)" OnClick="@(_ => Selected.InvokeAsync(tab.Path))">
             <TabContent>
-                <span class="editor-tab-name" data-testid="editor-tab" data-path="@tab.Path">@tab.Name</span>
+                <span class="editor-tab-name" title="@tab.Path" data-testid="editor-tab" data-path="@tab.Path">@tab.Name</span>
             </TabContent>
         </MudTabPanel>
     }
 </MudDynamicTabs>
 
 @code {
+    private MudDynamicTabs? _row;
     private IReadOnlyList<(string Path, string Name)> _tabs = [];
+    private bool _tabsChanged;
 
     /// <summary>The files that have a tab, in the order of the tabs.</summary>
     [Parameter, EditorRequired]
@@ -36,7 +45,11 @@
     [Parameter, EditorRequired]
     public string Shown { get; set; } = string.Empty;
 
-    /// <summary>Raised with a file's path when its tab is clicked and it is not the one shown.</summary>
+    /// <summary>
+    /// Raised with a file's path when its tab is clicked, or chosen from the keyboard. Also
+    /// for the tab of the file that is already shown: whoever clicked it is done with the
+    /// tabs and means the editor.
+    /// </summary>
     [Parameter]
     public EventCallback<string> Selected { get; set; }
 
@@ -44,23 +57,32 @@
     [Parameter]
     public EventCallback<string> Closed { get; set; }
 
-    private int ShownIndex => Math.Max(0, _tabs.ToList().FindIndex(tab => tab.Path == Shown));
-
     protected override void OnParametersSet()
     {
         // A tab is named by its file alone, as there is not room for more. Two open files of
         // one name in different folders would then look the same, so those say their folders.
         var names = Paths.Select(NameOf).ToList();
-        _tabs = Paths.Select((path, index) => (path, names.Count(name => name == names[index]) > 1 ? path : names[index])).ToList();
+        var tabs = Paths.Select((path, index) => (path, names.Count(name => name == names[index]) > 1 ? path : names[index])).ToList();
+        _tabsChanged |= !tabs.SequenceEqual(_tabs);
+        _tabs = tabs;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_row is null)
+            return;
+
+        // The row draws its tabs before they have been handed what they now say, so it is a
+        // draw behind whenever they change, and it may have chosen a tab of its own when one
+        // went. Telling it which file is shown has it draw again, with that one chosen.
+        if (_tabsChanged || _row.ActivePanel?.ID as string != Shown)
+        {
+            _tabsChanged = false;
+            await _row.ActivatePanelAsync(Shown);
+        }
     }
 
     private static string NameOf(string path) => path[(path.LastIndexOf('/') + 1)..];
-
-    private async Task OnActivatedAsync(int index)
-    {
-        if (index >= 0 && index < _tabs.Count && _tabs[index].Path != Shown)
-            await Selected.InvokeAsync(_tabs[index].Path);
-    }
 
     private async Task OnCloseAsync(MudTabPanel tab)
     {

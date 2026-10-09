@@ -94,9 +94,10 @@ namespace Blazemoji.Interop
         /// the scroll where they were when it was last shown.
         /// </summary>
         /// <param name="modelUri">The address the model was made with.</param>
+        /// <param name="takeKeys">Give the editor the keyboard as the file is shown, in the same step.</param>
         /// <returns>False when the script found no such editor or model, and nothing was shown.</returns>
-        public async Task<bool> ShowModelAsync(string editorId, string modelUri) =>
-            await (await ModuleAsync()).InvokeAsync<bool>(ShowModelFunction, editorId, modelUri);
+        public async Task<bool> ShowModelAsync(string editorId, string modelUri, bool takeKeys) =>
+            await (await ModuleAsync()).InvokeAsync<bool>(ShowModelFunction, editorId, modelUri, takeKeys);
 
         /// <summary>Gives every editor the colours the page has now.</summary>
         public async Task ApplyThemeAsync() =>
