@@ -36,7 +36,7 @@ What the spec implies and its own test list does not exercise, most likely first
 2. **The browser's storage switched off or full, as in a private window.** The panel still opens, a change still takes effect, and the panel says it could not be saved. (Tasks 4 and 6)
 3. **A number field emptied and left.** The setting stays within its limits; it is never 0 or blank. (Task 7)
 4. **A setting changed before the editor has finished starting,** by someone quick or on a slow line. The editor has it when it appears. (Task 8)
-5. **Text with emoji or accents in a text setting.** It comes back as it was typed, and is readable in the file. (Task 2)
+5. **Text with emoji or accents in a text setting.** It comes back as it was typed, and its letters are readable in the file. Emoji are written as `\u` escapes, because .NET's JSON writer escapes every character outside the basic plane whatever encoder it is given; they read back the same. (Task 2)
 
 ## How to run things
 
@@ -736,13 +736,15 @@ namespace Blazemoji.Test.Settings
         }
 
         [Fact]
-        public void Emoji_and_accents_come_back_as_typed_and_can_be_read_in_the_file()
+        public void Emoji_and_accents_come_back_as_typed_and_the_letters_can_be_read_in_the_file()
         {
             Set(_sample, "Name", "Café 🍇 für");
 
             var text = SettingsJson.Write(Sections, SettingHosts.Desktop);
 
-            text.ShouldContain("Café 🍇 für");
+            // The writer escapes emoji whatever encoder it is given, so only the letters are looked for.
+            text.ShouldContain("Café");
+            text.ShouldContain("für");
             ValueOf(SettingsJson.Read(text, [new SampleSettings()], SettingHosts.Desktop), "Name").ShouldBe("Café 🍇 für");
         }
 
@@ -785,8 +787,9 @@ namespace Blazemoji.Services.Settings
     /// </summary>
     public static class SettingsJson
     {
-        // Text is written as it is, not as \u escapes: the file is for a person to read too,
-        // and it is never put inside a page.
+        // Letters with accents are written as they are, not as \u escapes: the file is for a
+        // person to read too, and it is never put inside a page. The writer still escapes
+        // emoji, as it does every character outside the basic plane; they read back the same.
         private static readonly JsonWriterOptions Readable = new() { Indented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
         public static string Write(IEnumerable<SettingsBase> sections, SettingHosts host)

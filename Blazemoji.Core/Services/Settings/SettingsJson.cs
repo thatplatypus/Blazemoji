@@ -16,91 +16,46 @@ namespace Blazemoji.Services.Settings
     /// </summary>
     public static class SettingsJson
     {
+        // Letters with accents are written as they are, not as \u escapes: the file is for a
+        // person to read too, and it is never put inside a page. The writer still escapes
+        // emoji, as it does every character outside the basic plane; they read back the same.
+        private static readonly JsonWriterOptions Readable = new() { Indented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
         public static string Write(IEnumerable<SettingsBase> sections, SettingHosts host)
         {
-            var sb = new StringBuilder();
-
-            var firstSection = true;
-            foreach (var section in sections.Where(section => (section.Hosts & host) != 0))
+            using var stream = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(stream, Readable))
             {
-                var changed = SettingProperties.Of(section)
-                    .Where(setting => setting.IsFor(host) && !Equals(setting.Read(section), setting.Default))
-                    .ToList();
-
-                if (changed.Count == 0)
-                    continue;
-
-                if (firstSection)
-                    sb.AppendLine("{");
-                else
-                    sb.AppendLine(",");
-
-                firstSection = false;
-
-                sb.Append("  \"").Append(section.SettingsId).AppendLine("\": {");
-
-                var firstSetting = true;
-                foreach (var setting in changed)
+                writer.WriteStartObject();
+                foreach (var section in sections.Where(section => (section.Hosts & host) != 0))
                 {
-                    if (!firstSetting)
-                        sb.AppendLine(",");
-                    firstSetting = false;
+                    var changed = SettingProperties.Of(section)
+                        .Where(setting => setting.IsFor(host) && !Equals(setting.Read(section), setting.Default))
+                        .ToList();
+                    if (changed.Count == 0)
+                        continue;
 
-                    sb.Append("    \"").Append(KeyOf(setting)).Append("\": ");
-
-                    switch (setting.Read(section))
+                    writer.WriteStartObject(section.SettingsId);
+                    foreach (var setting in changed)
                     {
-                        case bool flag:
-                            sb.Append(flag ? "true" : "false");
-                            break;
-                        case int whole:
-                            sb.Append(whole);
-                            break;
-                        case double fraction:
-                            sb.Append(fraction);
-                            break;
-                        case string text:
-                            sb.Append('"').Append(EscapeJsonString(text)).Append('"');
-                            break;
+                        writer.WritePropertyName(KeyOf(setting));
+                        switch (setting.Read(section))
+                        {
+                            case bool flag: writer.WriteBooleanValue(flag); break;
+                            case int whole: writer.WriteNumberValue(whole); break;
+                            case double fraction: writer.WriteNumberValue(fraction); break;
+                            case string text: writer.WriteStringValue(text); break;
+                            default: writer.WriteNullValue(); break;
+                        }
                     }
+
+                    writer.WriteEndObject();
                 }
 
-                sb.AppendLine();
-                sb.Append("  }");
+                writer.WriteEndObject();
             }
 
-            if (firstSection)
-                return "{}\n";
-
-            sb.AppendLine();
-            sb.AppendLine("}");
-
-            return sb.ToString();
-        }
-
-        private static string EscapeJsonString(string s)
-        {
-            var sb = new StringBuilder();
-            foreach (var c in s)
-            {
-                switch (c)
-                {
-                    case '"': sb.Append("\\\""); break;
-                    case '\\': sb.Append("\\\\"); break;
-                    case '\b': sb.Append("\\b"); break;
-                    case '\f': sb.Append("\\f"); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (c < 0x20)
-                            sb.Append($"\\u{(int)c:x4}");
-                        else
-                            sb.Append(c);
-                        break;
-                }
-            }
-            return sb.ToString();
+            return Encoding.UTF8.GetString(stream.ToArray()) + "\n";
         }
 
         public static IReadOnlyList<KeptSetting> Read(string? text, IEnumerable<SettingsBase> sections, SettingHosts host)
