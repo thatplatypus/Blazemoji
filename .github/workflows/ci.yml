@@ -78,7 +78,9 @@ jobs:
         include:
           - os: macos-latest
             platform: macOS
-          - os: ubuntu-latest
+          # Named, not "latest": the display and web view below are installed by package
+          # name, and the names change between Ubuntu releases.
+          - os: ubuntu-24.04
             platform: Linux
           - os: windows-latest
             platform: Windows

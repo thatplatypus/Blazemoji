@@ -76,7 +76,7 @@ jobs:
           - os: windows-latest
             rid: win-x64
             platform: Windows
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             rid: linux-x64
             platform: Linux
           - os: macos-latest
@@ -198,7 +198,7 @@ jobs:
         ICON: ${{ steps.icon.outputs.path }}
 
     - name: Create Velopack Release (Linux)
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.platform == 'Linux'
       shell: bash
       run: vpk pack -u "$APP_NAME" -v ${{ needs.test.outputs.version }} -o "releases/${{ matrix.platform }}" -p "publish/${{ matrix.rid }}" ${ICON:+--icon "$ICON"}
       env:
@@ -400,7 +400,9 @@ jobs:
             platform: Windows
           - os: macos-latest
             platform: macOS
-          - os: ubuntu-latest
+          # Named, not "latest": the display and web view below are installed by package
+          # name, and the names change between Ubuntu releases.
+          - os: ubuntu-24.04
             platform: Linux
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
