@@ -450,21 +450,39 @@ namespace Blazemoji.Test.Components
             _settingsStore.LoadAsync().Returns(answering.Task);
             var ready = false;
             var cut = Render<EmojiCodeEditor>(parameters => parameters.Add(editor => editor.Ready, () => ready = true));
+
+            // The wait is timed from when the editor asks for the settings, so that comes first.
+            await EventuallyAsync(() => _settingsStore.ReceivedCalls().ShouldNotBeEmpty());
             ready.ShouldBeFalse();
 
-            _clock.Advance(TimeSpan.FromSeconds(1));
+            // A moment short of two seconds it is still waiting, however long the page is given.
+            _clock.Advance(TimeSpan.FromMilliseconds(1999));
+            await cut.InvokeAsync(() => { });
+            await Task.Delay(50, Xunit.TestContext.Current.CancellationToken);
             ready.ShouldBeFalse();
 
-            // The wait starts on whichever thread the editor's start-up reached it, so the clock
-            // is moved until the editor has seen it.
-            await EventuallyAsync(() =>
-            {
-                _clock.Advance(TimeSpan.FromSeconds(1));
-                ready.ShouldBeTrue();
-            });
+            // The last moment is all it takes. The clock is not moved again: only the page is waited for.
+            _clock.Advance(TimeSpan.FromMilliseconds(1));
+            await EventuallyAsync(() => ready.ShouldBeTrue());
 
             await cut.InvokeAsync(() => answering.SetResult("{ \"editor\": { \"fontSize\": 20 } }"));
             cut.WaitForAssertion(() => FontSizesSent(20).ShouldBe(1));
+        }
+
+        [Fact]
+        public async Task An_editor_that_goes_away_while_it_waits_for_settings_does_not_carry_on_without_itself()
+        {
+            _settingsStore.LoadAsync().Returns(new TaskCompletionSource<string?>().Task);
+            var ready = false;
+            Render<EmojiCodeEditor>(parameters => parameters.Add(editor => editor.Ready, () => ready = true));
+            await EventuallyAsync(() => _settingsStore.ReceivedCalls().ShouldNotBeEmpty());
+
+            await DisposeComponentsAsync();
+            _clock.Advance(TimeSpan.FromSeconds(3));
+            await Task.Delay(100, Xunit.TestContext.Current.CancellationToken);
+
+            ready.ShouldBeFalse();
+            JSInterop.Invocations[UpdateOptions].ShouldBeEmpty();
         }
 
         /// <summary>A page that tells what is inside it whether it is dark, as the web host's layout does.</summary>

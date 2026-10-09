@@ -2842,21 +2842,39 @@ Add to `Blazemoji.Test/Components/EmojiCodeEditorTests.cs`:
             _settingsStore.LoadAsync().Returns(answering.Task);
             var ready = false;
             var cut = Render<EmojiCodeEditor>(parameters => parameters.Add(editor => editor.Ready, () => ready = true));
+
+            // The wait is timed from when the editor asks for the settings, so that comes first.
+            await EventuallyAsync(() => _settingsStore.ReceivedCalls().ShouldNotBeEmpty());
             ready.ShouldBeFalse();
 
-            _clock.Advance(TimeSpan.FromSeconds(1));
+            // A moment short of two seconds it is still waiting, however long the page is given.
+            _clock.Advance(TimeSpan.FromMilliseconds(1999));
+            await cut.InvokeAsync(() => { });
+            await Task.Delay(50, Xunit.TestContext.Current.CancellationToken);
             ready.ShouldBeFalse();
 
-            // The wait starts on whichever thread the editor's start-up reached it, so the clock
-            // is moved until the editor has seen it.
-            await EventuallyAsync(() =>
-            {
-                _clock.Advance(TimeSpan.FromSeconds(1));
-                ready.ShouldBeTrue();
-            });
+            // The last moment is all it takes. The clock is not moved again: only the page is waited for.
+            _clock.Advance(TimeSpan.FromMilliseconds(1));
+            await EventuallyAsync(() => ready.ShouldBeTrue());
 
             await cut.InvokeAsync(() => answering.SetResult("{ \"editor\": { \"fontSize\": 20 } }"));
             cut.WaitForAssertion(() => FontSizesSent(20).ShouldBe(1));
+        }
+
+        [Fact]
+        public async Task An_editor_that_goes_away_while_it_waits_for_settings_does_not_carry_on_without_itself()
+        {
+            _settingsStore.LoadAsync().Returns(new TaskCompletionSource<string?>().Task);
+            var ready = false;
+            Render<EmojiCodeEditor>(parameters => parameters.Add(editor => editor.Ready, () => ready = true));
+            await EventuallyAsync(() => _settingsStore.ReceivedCalls().ShouldNotBeEmpty());
+
+            await DisposeComponentsAsync();
+            _clock.Advance(TimeSpan.FromSeconds(3));
+            await Task.Delay(100, Xunit.TestContext.Current.CancellationToken);
+
+            ready.ShouldBeFalse();
+            JSInterop.Invocations[UpdateOptions].ShouldBeEmpty();
         }
 ```
 
@@ -2871,22 +2889,34 @@ Expected: the new tests fail (`options.FontSize` is null, `FontSizesSent(18)` is
 
 In `Blazemoji.Components/Components/EmojiCodeEditor.razor`:
 
-At the top, after `@inject EmojicodeLanguageInterop _language`:
+At the top, with the other `@using` lines:
 
 ```razor
 @using Blazemoji.Settings
+```
+
+and after `@inject EmojicodeLanguageInterop _language`:
+
+```razor
 @inject SettingsState _settings
 @inject TimeProvider _clock
+```
+
+Beside `SettleTime`, with the other constants:
+
+```csharp
+    // How long the editor waits for kept settings before it shows itself with the defaults.
+    private static readonly TimeSpan LongestWaitForSettings = TimeSpan.FromSeconds(2);
 ```
 
 Among the fields, after `private bool _coloursAreDue;`:
 
 ```csharp
-    // How long the editor waits for kept settings before it shows itself with the defaults.
-    private static readonly TimeSpan LongestWaitForSettings = TimeSpan.FromSeconds(2);
-
     // What Monaco was last told. Null until it has been told anything.
     private EditorOptionValues? _applied;
+
+    // Cancelled when the editor goes away, so that what it was waiting for does not carry on without it.
+    private readonly CancellationTokenSource _leaving = new();
 ```
 
 In `EditorConstructionOptions`, replace `return new StandaloneEditorConstructionOptions` with `var options = new StandaloneEditorConstructionOptions`, and after the object's closing `};` add:
@@ -2900,7 +2930,9 @@ In `EditorConstructionOptions`, replace `return new StandaloneEditorConstruction
 In `InitEditor`, between `await _language.ApplyThemeAsync();` and `_initializing = false;`:
 
 ```csharp
-        await WaitForSettingsAsync();
+        if (!await WaitForSettingsAsync())
+            return;
+
         await BringOptionsInLineAsync();
 ```
 
@@ -2920,21 +2952,25 @@ Add before `OnParametersSet`:
 
     // Kept settings are worth a short wait, so that the editor first appears as it was left.
     // A store that is slow or broken must not keep it hidden: what arrives late is applied
-    // after the redraw its arrival asks for.
-    private async Task WaitForSettingsAsync()
+    // after the redraw its arrival asks for. False when the editor went away meanwhile.
+    private async Task<bool> WaitForSettingsAsync()
     {
+        if (_leaving.IsCancellationRequested)
+            return false;
+
         var loading = _settings.LoadAsync();
         if (!loading.IsCompleted)
         {
-            using var givingUp = new CancellationTokenSource();
+            using var givingUp = CancellationTokenSource.CreateLinkedTokenSource(_leaving.Token);
             var waited = Task.Delay(LongestWaitForSettings, _clock, givingUp.Token);
             if (await Task.WhenAny(loading, waited) != loading)
-                return;
+                return !_leaving.IsCancellationRequested;
 
             await givingUp.CancelAsync();
         }
 
         await loading;
+        return !_leaving.IsCancellationRequested;
     }
 
     private async Task BringOptionsInLineAsync()
@@ -2957,10 +2993,12 @@ In `OnAfterRenderAsync`, after the block that applies the colours:
             await BringOptionsInLineAsync();
 ```
 
-In `Dispose`, as the first line:
+In `Dispose`, as the first lines:
 
 ```csharp
         _settings.SettingsChanged -= OnSettingsChanged;
+        _leaving.Cancel();
+        _leaving.Dispose();
 ```
 
 - [ ] **Step 5: Run the tests to see them pass**
