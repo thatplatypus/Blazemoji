@@ -3,6 +3,7 @@ using Blazemoji.Interop;
 using Blazemoji.Services.Layout;
 using Blazemoji.Services.Library;
 using Blazemoji.Services.Projects;
+using Blazemoji.Services.Settings;
 using Blazemoji.Shared.State;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -63,7 +64,8 @@ namespace Blazemoji
 
         /// <summary>
         /// For a host with a disk of its own: projects as folders, and what is saved from the
-        /// editor as files beside them, under <see cref="FileProjectStoreOptions.Root"/>. One
+        /// editor as files beside them, with the layout and the settings in a folder of the app's own beside them,
+        /// under <see cref="FileProjectStoreOptions.Root"/>. One
         /// of each for the life of the app, since each remembers what it last read and wrote.
         /// </summary>
         /// <param name="configuration">
@@ -80,6 +82,7 @@ namespace Blazemoji
             services.AddSingleton<IProjectStore, FileProjectStore>();
             services.AddSingleton<ILibraryService, FileLibraryService>();
             services.AddSingleton<ILayoutStore, FileLayoutStore>();
+            services.AddSingleton<ISettingsStore, FileSettingsStore>();
 
             return services;
         }

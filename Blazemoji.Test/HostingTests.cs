@@ -4,6 +4,7 @@ using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Interop;
 using Blazemoji.Services.Library;
 using Blazemoji.Services.Projects;
+using Blazemoji.Services.Settings;
 using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
 using Blazemoji.Toolchain;
@@ -237,6 +238,8 @@ namespace Blazemoji.Test
             one.ServiceProvider.GetRequiredService<ILibraryService>().ShouldBeOfType<FileLibraryService>();
             one.ServiceProvider.GetRequiredService<IProjectStore>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<IProjectStore>());
             one.ServiceProvider.GetRequiredService<ProjectState>().ShouldNotBeNull();
+            one.ServiceProvider.GetRequiredService<ISettingsStore>().ShouldBeOfType<FileSettingsStore>();
+            one.ServiceProvider.GetRequiredService<ISettingsStore>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<ISettingsStore>());
         }
 
         [Fact]
