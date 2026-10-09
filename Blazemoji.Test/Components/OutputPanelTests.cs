@@ -75,6 +75,31 @@ namespace Blazemoji.Test.Components
             return running;
         }
 
+        /// <summary>
+        /// Output is shown a moment after it arrives, so that a flood of it is not a flood of
+        /// redraws, and the clock that moment is counted on is this test's. The program's
+        /// output is read on another thread, so the clock is moved on again and again until
+        /// what is expected has been drawn: moved once, it can be moved before the wait has begun.
+        /// </summary>
+        private async Task DrawnAsync(Action expected)
+        {
+            for (var attempt = 0; attempt < 400; attempt++)
+            {
+                _time.Advance(TimeSpan.FromSeconds(1));
+                try
+                {
+                    expected();
+                    return;
+                }
+                catch (Exception notYet) when (notYet is ShouldAssertException or ElementNotFoundException)
+                {
+                    await Task.Delay(10, Xunit.TestContext.Current.CancellationToken);
+                }
+            }
+
+            expected();
+        }
+
         [Fact]
         public void With_nothing_running_the_place_for_input_is_there_and_cannot_be_typed_in()
         {
@@ -160,11 +185,7 @@ namespace Blazemoji.Test.Components
 
             _run.Emit(new StderrEvent("Name: "));
 
-            cut.WaitForAssertion(() =>
-            {
-                _time.Advance(TimeSpan.FromSeconds(1));
-                cut.Find("[data-testid=output-unfinished-error]").TextContent.ShouldBe("Name: ");
-            });
+            await DrawnAsync(() => cut.Find("[data-testid=output-unfinished-error]").TextContent.ShouldBe("Name: "));
             _run.Exit();
             await running;
         }
@@ -192,12 +213,7 @@ namespace Blazemoji.Test.Components
 
             _run.Emit(new StdoutEvent("first\nWhat is your name? "));
 
-            // Output is shown a moment after it arrives, so that a flood of it is not a flood of redraws.
-            cut.WaitForAssertion(() =>
-            {
-                _time.Advance(TimeSpan.FromSeconds(1));
-                cut.Find("[data-testid=output-unfinished]").TextContent.ShouldBe("What is your name? ");
-            });
+            await DrawnAsync(() => cut.Find("[data-testid=output-unfinished]").TextContent.ShouldBe("What is your name? "));
             cut.FindAll("[data-testid=output-line]").Select(line => line.TextContent).ShouldBe(["first"]);
 
             await cut.InvokeAsync(() => cut.Instance.SendLineAsync("Tom"));
