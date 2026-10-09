@@ -1,10 +1,13 @@
 @using System.Diagnostics
+@using Blazemoji.Services.Layout
 @using Blazemoji.Services.Library
 @using Blazemoji.Services.Projects
+@using Blazemoji.Shared.Models.Layout
 @inject SmokeSession Session
 @inject SmokeInterop Interop
 @inject ISamples Samples
 @inject IProjectTemplates Templates
+@inject ILayoutStore LayoutStore
 
 @* On the page only for a smoke run. Has the page check itself once it is up, adds what only
    this side can see, and hands the lot to the session, which reports it and closes the app. *@
@@ -15,6 +18,7 @@
     private const string SamplesShipped = "samples-came-with-the-app";
     private const string TemplatesShipped = "templates-came-with-the-app";
     private const string IconShipped = "icon-came-with-the-app";
+    private const string LayoutOnDisk = "layout-is-kept-on-disk";
 
     // What FileProjectTemplates offers when it finds no templates beside the app.
     private const string TemplateWhenNoneAreFound = "hello-world";
@@ -39,6 +43,7 @@
         checks.Add(await TheSamplesCameWithTheAppAsync());
         checks.Add(TheTemplatesCameWithTheApp());
         checks.Add(TheIconCameWithTheApp());
+        checks.Add(await TheLayoutIsOnDiskAsync());
         Session.Report(checks);
     }
 
@@ -66,6 +71,29 @@
         var found = Templates.All.Any(template => template.Id != TemplateWhenNoneAreFound);
 
         return new SmokeCheckOutcome(TemplatesShipped, found, timer.ElapsedMilliseconds, found ? null : "Only the built-in template is offered: the templates were not found beside the app.");
+    }
+
+    /// <summary>The page's checks drag the divider beside the sidebar. This is where that has to end up.</summary>
+    private async Task<SmokeCheckOutcome> TheLayoutIsOnDiskAsync()
+    {
+        var timer = Stopwatch.StartNew();
+        var file = Path.Combine(Session.ProjectsRoot, ".blazemoji", "layout.json");
+        string? problem;
+        try
+        {
+            // The store takes its turns in order, so this is answered after the save the drag started.
+            var kept = await LayoutStore.LoadAsync();
+            problem = kept is null ? "No layout was kept after a divider was dragged."
+                : kept.SidebarShare == WorkspaceLayout.Default.SidebarShare ? "The layout that was kept still has the sidebar at its default width."
+                : !File.Exists(file) ? "The layout was kept somewhere other than the projects folder."
+                : null;
+        }
+        catch (ProjectStoreException exception)
+        {
+            problem = "The kept layout could not be read (" + exception.InnerException?.GetType().Name + ").";
+        }
+
+        return new SmokeCheckOutcome(LayoutOnDisk, problem is null, timer.ElapsedMilliseconds, problem);
     }
 
     private static SmokeCheckOutcome TheIconCameWithTheApp()

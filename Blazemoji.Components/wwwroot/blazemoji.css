@@ -60,28 +60,16 @@ button:disabled .emoji-icon {
 }
 
 /* The workspace fills the window below the host's title bar, with the same gap above it
-   and below it. Each of its three columns is exactly that tall, and what is in a column
-   scrolls inside it, so the page itself never scrolls. A host whose bar is another height,
-   or that has none, sets --blazemoji-chrome-height. */
+   and below it. The sidebar is beside the editor, the output is under the editor, and the
+   two dividers between them can be dragged (SplitView). What is in a part scrolls inside
+   it, so the page itself never scrolls. A host whose bar is another height, or that has
+   none, sets --blazemoji-chrome-height. */
 .workspace {
     --workspace-gap: 12px;
     box-sizing: border-box;
     height: calc(100dvh - var(--blazemoji-chrome-height, var(--mud-appbar-height, 0px)));
     padding-block: var(--workspace-gap);
     overflow: hidden;
-}
-
-.workspace > .mud-grid > .mud-grid-item {
-    height: 100%;
-    min-height: 0;
-}
-
-/* MudBlazor spaces a grid's items by padding each at the top and pulling the whole grid up
-   by as much: 4px at the spacing the workspace uses. The grid is that much taller than its
-   room, so that the items end where the room does. */
-.workspace > .mud-grid {
-    height: calc(100% + 4px);
-    min-height: 0;
 }
 
 /* For what should take the room its column has and no more ... */
@@ -105,7 +93,7 @@ button:disabled .emoji-icon {
     height: 83vh;
 }
 
-/* In one it takes what the middle column has left under the toolbar. */
+/* In one it takes what its part has left under the toolbar. */
 .workspace .editor {
     flex: 1 1 0;
     min-height: 0;

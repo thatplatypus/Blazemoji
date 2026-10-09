@@ -56,17 +56,9 @@ namespace Blazemoji.E2E
 
         public ILocator ThemeToggle => Page.Locator("header button.mud-icon-button").First;
 
-        /// <summary>
-        /// The icon buttons in the editor toolbar, leaving out the emoji picker's own button:
-        /// key commands first, then save.
-        /// </summary>
-        private ILocator ToolbarIconButtons =>
-            Page.Locator(".mud-toolbar", new PageLocatorOptions { HasTextString = "Emojicode Editor" })
-                .Locator("button.mud-icon-button:not([aria-label=\"Open Emoji Picker\"])");
+        public ILocator KeyCommandsButton => Page.GetByTestId("key-commands");
 
-        public ILocator KeyCommandsButton => ToolbarIconButtons.Nth(0);
-
-        public ILocator SaveButton => ToolbarIconButtons.Nth(1);
+        public ILocator SaveButton => Page.GetByTestId("save-to-library");
 
         /// <param name="beforeNavigation">Runs on the new page before it loads, for example to slow a request down.</param>
         public static async Task<EditorPage> OpenAsync(

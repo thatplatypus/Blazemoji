@@ -1,8 +1,11 @@
 using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Interop;
 using Blazemoji.Components;
+using Blazemoji.Components.Shared;
+using Blazemoji.Services.Layout;
 using Blazemoji.Services.Library;
 using Blazemoji.Services.Projects;
+using Blazemoji.Shared.Models.Layout;
 using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
 using Blazemoji.Toolchain;
@@ -34,6 +37,7 @@ namespace Blazemoji.Test.Components
         private readonly IProjectStore _store = Substitute.For<IProjectStore>();
         private readonly ILibraryService _library = Substitute.For<ILibraryService>();
         private readonly IDialogService _dialogs = Substitute.For<IDialogService>();
+        private readonly ILayoutStore _layoutStore = Substitute.For<ILayoutStore>();
 
         public WorkspaceTests()
         {
@@ -60,9 +64,18 @@ namespace Blazemoji.Test.Components
             Services.AddSingleton(Substitute.For<ICodeIntelligence>());
             Services.AddSingleton(Substitute.For<IPackageLibrary>());
             Services.AddScoped<EmojicodeLanguageInterop>();
+            Services.AddSingleton(_layoutStore);
+            Services.AddScoped<LayoutState>();
+            Services.AddScoped<SplitViewInterop>();
         }
 
+        private const string Columns = "[data-testid=workspace-columns]";
+        private const string Rows = "[data-testid=workspace-rows]";
+        private const string SidebarToggle = "[data-testid=sidebar-toggle]";
+
         private ProjectState Project => Services.GetRequiredService<ProjectState>();
+
+        private LayoutState Layout => Services.GetRequiredService<LayoutState>();
 
         private static string Uri(int created) => $"inmemory://blazemoji/{created}";
 
@@ -203,6 +216,95 @@ namespace Blazemoji.Test.Components
             second.SetResult(Model(2));
 
             cut.WaitForAssertion(() => JSInterop.Invocations[Reveal].ShouldHaveSingleItem().Arguments[1].ShouldBe(3));
+        }
+
+        [Fact]
+        public void The_sidebar_is_beside_everything_else_and_the_output_is_under_the_editor()
+        {
+            var cut = RenderShowingTheFirstFile();
+
+            cut.Find(Columns).ClassList.ShouldNotContain("stacked");
+            cut.Find(Columns + " > .split-view-panels > .split-view-first [aria-label='Files, toolbox and library']").ShouldNotBeNull();
+
+            var beside = Columns + " > .split-view-panels > .split-view-second " + Rows;
+            cut.Find(beside).ClassList.ShouldContain("stacked");
+            cut.Find(beside + " > .split-view-panels > .split-view-first [data-testid=open-file]").ShouldNotBeNull();
+            cut.Find(beside + " > .split-view-panels > .split-view-second [aria-label='Output, problems and requests']").ShouldNotBeNull();
+        }
+
+        [Fact]
+        public void Until_a_layout_is_kept_the_dividers_are_where_the_default_puts_them()
+        {
+            var cut = RenderShowingTheFirstFile();
+
+            var views = cut.FindComponents<SplitView>();
+            views.Single(view => !view.Instance.Stacked).Instance.Share.ShouldBe(WorkspaceLayout.Default.SidebarShare);
+            views.Single(view => view.Instance.Stacked).Instance.Share.ShouldBe(WorkspaceLayout.Default.EditorShare);
+            cut.Find(Columns).ClassList.ShouldNotContain("first-hidden");
+        }
+
+        [Fact]
+        public void The_layout_that_was_kept_is_taken_up()
+        {
+            _layoutStore.LoadAsync().Returns(new WorkspaceLayout(0.4, 0.5, true));
+
+            var cut = RenderShowingTheFirstFile();
+
+            cut.WaitForAssertion(() =>
+            {
+                var views = cut.FindComponents<SplitView>();
+                views.Single(view => !view.Instance.Stacked).Instance.Share.ShouldBe(0.4);
+                views.Single(view => view.Instance.Stacked).Instance.Share.ShouldBe(0.5);
+                cut.Find(Columns).ClassList.ShouldContain("first-hidden");
+            });
+        }
+
+        [Fact]
+        public async Task A_divider_let_go_somewhere_new_is_kept_as_part_of_the_layout()
+        {
+            var cut = RenderShowingTheFirstFile();
+            var views = cut.FindComponents<SplitView>();
+
+            await cut.InvokeAsync(() => views.Single(view => !view.Instance.Stacked).Instance.DividerMovedAsync(0.4));
+            await cut.InvokeAsync(() => views.Single(view => view.Instance.Stacked).Instance.DividerMovedAsync(0.5));
+
+            Layout.Current.ShouldBe(new WorkspaceLayout(0.4, 0.5, false));
+            await _layoutStore.Received(1).SaveAsync(new WorkspaceLayout(0.4, 0.5, false));
+        }
+
+        [Fact]
+        public async Task A_double_click_on_a_divider_puts_it_back_where_the_default_has_it()
+        {
+            _layoutStore.LoadAsync().Returns(new WorkspaceLayout(0.4, 0.5, false));
+            var cut = RenderShowingTheFirstFile();
+            cut.WaitForAssertion(() => Layout.Current.SidebarShare.ShouldBe(0.4));
+            var views = cut.FindComponents<SplitView>();
+
+            await cut.InvokeAsync(() => views.Single(view => !view.Instance.Stacked).Instance.DividerResetAsync());
+            await cut.InvokeAsync(() => views.Single(view => view.Instance.Stacked).Instance.DividerResetAsync());
+
+            Layout.Current.ShouldBe(WorkspaceLayout.Default);
+        }
+
+        [Fact]
+        public async Task The_sidebar_button_hides_the_sidebar_without_taking_it_off_the_page_and_then_shows_it_again()
+        {
+            var cut = RenderShowingTheFirstFile();
+            cut.Find(SidebarToggle).GetAttribute("aria-label").ShouldBe("Hide sidebar");
+
+            await cut.Find(SidebarToggle).ClickAsync(new());
+
+            cut.Find(Columns).ClassList.ShouldContain("first-hidden");
+            cut.FindComponents<Sidebar>().Count.ShouldBe(1);
+            cut.Find(SidebarToggle).GetAttribute("aria-label").ShouldBe("Show sidebar");
+            Layout.Current.SidebarHidden.ShouldBeTrue();
+
+            await cut.Find(SidebarToggle).ClickAsync(new());
+
+            cut.Find(Columns).ClassList.ShouldNotContain("first-hidden");
+            cut.Find(SidebarToggle).GetAttribute("aria-label").ShouldBe("Hide sidebar");
+            await _layoutStore.Received(1).SaveAsync(WorkspaceLayout.Default with { SidebarHidden = true });
+            await _layoutStore.Received(1).SaveAsync(WorkspaceLayout.Default);
         }
     }
 }

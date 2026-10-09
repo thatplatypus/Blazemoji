@@ -47,6 +47,24 @@ namespace Blazemoji.Test.Components
         }
 
         [Fact]
+        public async Task Until_a_request_has_been_answered_the_place_for_the_answer_says_what_will_be_there()
+        {
+            _run.Respond = _ => Answer(200, "{}");
+            var cut = Render<RequestPanel>();
+            cut.Find(".request-answers [data-testid=no-response]").TextContent.ShouldContain("shows here");
+            var running = StartServer();
+            cut.WaitForAssertion(() => cut.Find("[data-testid=request-send]").HasAttribute("disabled").ShouldBeFalse());
+
+            await cut.Find("[data-testid=request-send]").ClickAsync();
+
+            cut.WaitForAssertion(() => cut.Find(".request-answers [data-testid=response]").ShouldNotBeNull());
+            cut.FindAll("[data-testid=no-response]").ShouldBeEmpty();
+            cut.Find(".request-form [data-testid=request-send]").ShouldNotBeNull();
+            _run.Exit();
+            await running;
+        }
+
+        [Fact]
         public async Task Once_a_server_is_running_the_notice_goes_and_send_is_enabled()
         {
             var cut = Render<RequestPanel>();

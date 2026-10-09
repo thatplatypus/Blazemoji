@@ -2,26 +2,79 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    container-type: inline-size;
 }
 
-.request-line {
+/* The request, and under it what came back. */
+.request-columns {
     display: flex;
+    flex-direction: column;
     gap: 8px;
 }
 
-.request-line ::deep .request-method {
+.request-form,
+.request-answers {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.request-answers {
+    padding-top: 8px;
+    border-top: 1px solid var(--mud-palette-divider);
+}
+
+/* Where the panel is wide, which it is under the editor, they are side by side: such a
+   panel is not tall, and the answer would otherwise be a scroll away from Send. */
+@container (min-width: 720px) {
+    .request-columns {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .request-form {
+        flex: 2 1 0;
+    }
+
+    .request-answers {
+        flex: 3 1 0;
+        padding-top: 0;
+        padding-left: 16px;
+        border-top: 0;
+        border-left: 1px solid var(--mud-palette-divider);
+        align-self: stretch;
+    }
+}
+
+/* Method, path and Send on one line, so that sending never needs a scroll however short
+   the panel is. */
+.request-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.request-method {
     flex: 0 0 7.5rem;
 }
 
-.request-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-height: 2.5rem;
+.request-path {
+    flex: 1 1 0;
+    min-width: 0;
 }
 
+.request-send {
+    flex: none;
+}
+
+/* Room for one line is kept whether or not there is a problem to report, so that one
+   appearing moves nothing under it. */
 .request-problem {
+    min-height: 1.25rem;
     font-size: 0.8125rem;
+    line-height: 1.25rem;
 }
 
 .response {

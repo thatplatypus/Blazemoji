@@ -100,6 +100,27 @@ const checks = [
             toggle.click();
             must(await until(() => Boolean(document.querySelector(".monaco-editor.vs-dark")) === wasDark, 5000), "The editor did not go back.");
         }],
+    ["a-dragged-divider-is-heard", async () => {
+            // The mouse is stood in for, as the keys are above: nothing outside the window can
+            // reach into it. The panel moves the divider; the app has to hear where it was let
+            // go and settle the sidebar there, which is its own script calling back into .NET.
+            const columns = testId("workspace-columns");
+            const divider = columns?.querySelector(":scope > * > .split-view-divider");
+            const sidebar = columns?.querySelector(":scope > * > .split-view-first");
+            must(columns && divider && sidebar, "The workspace has no divider beside its sidebar.");
+            const share = () => columns.style.getPropertyValue("--split-share").trim();
+            const before = { share: share(), width: sidebar.getBoundingClientRect().width };
+            const at = divider.getBoundingClientRect();
+            const mouse = (x) => ({ clientX: x, clientY: at.top + at.height / 2, bubbles: true, cancelable: true });
+            divider.dispatchEvent(new MouseEvent("mousedown", mouse(at.left + 2)));
+            document.dispatchEvent(new MouseEvent("mousemove", mouse(at.left + 42)));
+            document.dispatchEvent(new MouseEvent("mousemove", mouse(at.left + 82)));
+            document.dispatchEvent(new MouseEvent("mouseup", mouse(at.left + 82)));
+            const settled = () => share() !== before.share && sidebar.style.width === "100%";
+            must(await until(settled, 10000), `The app did not take up where the divider was let go: the share is ${share()} and the sidebar is held at ${sidebar.style.width || "nothing"}. ${windowSize()}`);
+            const moved = sidebar.getBoundingClientRect().width - before.width;
+            must(Math.abs(moved - 80) < 3, `The sidebar is ${moved.toFixed(1)} pixels wider after a drag of 80. ${windowSize()}`);
+        }],
 ];
 const compiles = ["compiles-and-runs", async () => {
         put("🏁 🍇\n  😀 🔤Hello from a desktop window🔤❗️\n🍉\n", 1, 1);

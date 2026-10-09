@@ -20,6 +20,12 @@ namespace Blazemoji
 
         public static string MoreActions => Icons.Material.Filled.MoreVert;
 
+        /// <summary>On the button that hides the sidebar while it is shown.</summary>
+        public static string HideSidebar => Icons.Material.Filled.MenuOpen;
+
+        /// <summary>On the same button while the sidebar is hidden.</summary>
+        public static string ShowSidebar => Icons.Material.Filled.Menu;
+
         public static string GitHub => Icons.Custom.Brands.GitHub;
 
         public static string Copy => Icons.Material.Outlined.ContentCopy;

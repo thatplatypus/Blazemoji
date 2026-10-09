@@ -1,0 +1,151 @@
+@using System.Globalization
+@using Blazemoji.Interop
+@using MudBlazor.State
+@using MudBlazor.Utilities
+@inherits MudComponentBase
+@implements IAsyncDisposable
+@inject SplitViewInterop Interop
+
+@* Two parts with a divider between them that can be dragged, around MudBlazor's split panel.
+   The panel works in pixels, says nothing when its divider is let go and cannot hide a part.
+   This adds those: the divider's place is a share of the room, so it holds as the window
+   changes size; the caller is told where it was let go; and the first part can be hidden
+   without being taken off the page. SplitView.razor.css says how the share places it. *@
+<div class="@RootClass" style="@RootStyle" @attributes="UserAttributes" @ref="_root">
+    <MudSplitPanel @ref="_panel"
+                   Horizontal="@Stacked"
+                   Transparent="true"
+                   MinPanelSize="@MinPanelSize"
+                   ResetOnDoubleClick="false"
+                   Class="split-view-panels"
+                   ClassFirstPanel="split-view-first"
+                   ClassSecondPanel="split-view-second"
+                   ClassDivider="split-view-divider">
+        <FirstPanel>@First</FirstPanel>
+        <SecondPanel>@Second</SecondPanel>
+    </MudSplitPanel>
+</div>
+
+@code {
+    private readonly ParameterState<double> _share;
+
+    private ElementReference _root;
+    private MudSplitPanel? _panel;
+    private DotNetObjectReference<SplitView>? _self;
+    private bool _heldInPixels;
+
+    public SplitView()
+    {
+        using var registerScope = CreateRegisterScope();
+        _share = registerScope.RegisterParameter<double>(nameof(Share))
+            .WithParameter(() => Share)
+            .WithEventCallback(() => ShareChanged);
+    }
+
+    /// <summary>The part on the left, or on top when <see cref="Stacked"/>.</summary>
+    [Parameter, EditorRequired]
+    public RenderFragment? First { get; set; }
+
+    [Parameter, EditorRequired]
+    public RenderFragment? Second { get; set; }
+
+    /// <summary>One part above the other. Otherwise they are side by side.</summary>
+    [Parameter]
+    public bool Stacked { get; set; }
+
+    /// <summary>The first part's share of the room, from 0 to 1.</summary>
+    [Parameter]
+    public double Share { get; set; } = 0.5;
+
+    /// <summary>
+    /// Raised when the divider has been let go somewhere new. A caller that keeps the share
+    /// itself should have the new one in <see cref="Share"/> by the time this returns.
+    /// </summary>
+    [Parameter]
+    public EventCallback<double> ShareChanged { get; set; }
+
+    /// <summary>Where a double-click on the divider puts it.</summary>
+    [Parameter]
+    public double DefaultShare { get; set; } = 0.5;
+
+    /// <summary>
+    /// Gives the second part the whole room. The first stays on the page, with whatever it
+    /// was showing, and comes back at its share.
+    /// </summary>
+    [Parameter]
+    public bool FirstHidden { get; set; }
+
+    /// <summary>The fewest pixels a drag leaves either part.</summary>
+    [Parameter]
+    public int MinPanelSize { get; set; } = 120;
+
+    private string RootClass => new CssBuilder("split-view")
+        .AddClass("stacked", Stacked)
+        .AddClass("first-hidden", FirstHidden)
+        .AddClass(Class)
+        .Build();
+
+    private string RootStyle => new StyleBuilder()
+        .AddStyle("--split-share", _share.Value.ToString("0.######", CultureInfo.InvariantCulture))
+        .AddStyle(Style)
+        .Build();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _self = DotNetObjectReference.Create(this);
+            await Interop.AttachAsync(_root, _self);
+        }
+
+        // A drag leaves both parts at the sizes in pixels it ended on. The style now has the
+        // share those came to, so the panel is told to let go of them: the divider stays
+        // where it is and follows the window again.
+        if (_heldInPixels && _panel is not null)
+        {
+            _heldInPixels = false;
+            await _panel.ResetDividerPositionAsync();
+        }
+    }
+
+    /// <summary>Called by the script when the divider has been let go somewhere new.</summary>
+    /// <param name="share">The first part's share of the room, as the style sheet counts it.</param>
+    [JSInvokable]
+    public async Task DividerMovedAsync(double share)
+    {
+        // A part with no size, such as one inside something hidden, has no share to report.
+        if (!double.IsFinite(share))
+            return;
+
+        await TakeAsync(Math.Clamp(share, 0, 1));
+    }
+
+    /// <summary>Called by the script when the divider has been double-clicked.</summary>
+    [JSInvokable]
+    public Task DividerResetAsync() => TakeAsync(DefaultShare);
+
+    private Task TakeAsync(double share) => InvokeAsync(async () =>
+    {
+        _heldInPixels = true;
+        await _share.SetValueAsync(share);
+        StateHasChanged();
+    });
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_self is null)
+            return;
+
+        try
+        {
+            await Interop.DetachAsync(_root);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page has gone, and the divider with it.
+        }
+
+        _self.Dispose();
+        _self = null;
+    }
+}

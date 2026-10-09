@@ -1,0 +1,64 @@
+/* MudBlazor's split panel sizes its two parts in pixels while a divider is dragged. At rest
+   it gives each the whole room as its size, which is also how it starts, and they shrink
+   to fit. How much each one gives up is what places the divider, so that is where the share
+   goes: the first part gives up all but its share, and the second gives up the first's
+   share. The divider is then a share of the room from the first paint, with no script, and
+   stays one when the window changes size. */
+.split-view {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.split-view ::deep > .split-view-panels {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.split-view ::deep > .split-view-panels > .split-view-first,
+.split-view ::deep > .split-view-panels > .split-view-second {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.split-view ::deep > .split-view-panels > .split-view-first {
+    flex-shrink: calc(1 - var(--split-share));
+}
+
+.split-view ::deep > .split-view-panels > .split-view-second {
+    flex-shrink: var(--split-share);
+}
+
+/* The panel gives its divider this width from its script. Having it here too means the
+   parts do not move when the script arrives. */
+.split-view ::deep > .split-view-panels > .split-view-divider {
+    flex: none;
+    min-width: 4px;
+    border-radius: 2px;
+    transition: background-color 120ms ease;
+}
+
+.split-view.stacked ::deep > .split-view-panels > .split-view-divider {
+    min-width: 0;
+    min-height: 4px;
+}
+
+.split-view ::deep > .split-view-panels > .split-view-divider:hover,
+.split-view ::deep > .split-view-panels > .split-view-divider:active {
+    background-color: var(--mud-palette-action-default-hover);
+}
+
+/* A hidden first part is still on the page, so that it comes back as it was. */
+.split-view.first-hidden ::deep > .split-view-panels > .split-view-first,
+.split-view.first-hidden ::deep > .split-view-panels > .split-view-divider {
+    display: none;
+}
+
+.split-view.first-hidden ::deep > .split-view-panels > .split-view-second {
+    flex: 1 1 100%;
+}

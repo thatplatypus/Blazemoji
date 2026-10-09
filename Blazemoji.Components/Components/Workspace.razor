@@ -2,6 +2,7 @@
 @using Blazemoji.Shared
 @using Blazemoji.Services
 @using Blazemoji.Services.Projects
+@using Blazemoji.Shared.Models.Layout
 @using Blazemoji.Toolchain
 @using System.Text.Json
 @implements IDisposable
@@ -13,51 +14,71 @@
 @inject LocalStorageFiles _localStorageFiles
 @inject RunState _runState
 @inject ProjectState _projectState
+@inject LayoutState _layoutState
 
 
 <MudContainer Class="workspace" MaxWidth="MaxWidth.ExtraExtraLarge">
-    <MudGrid Justify="Justify.Center" Spacing="1">
-        <MudItem xs="3">
+    <SplitView Share="@_layoutState.Current.SidebarShare"
+               ShareChanged="@_layoutState.ResizeSidebarAsync"
+               DefaultShare="@WorkspaceLayout.Default.SidebarShare"
+               FirstHidden="@_layoutState.Current.SidebarHidden"
+               MinPanelSize="@NarrowestColumn"
+               data-testid="workspace-columns">
+        <First>
             <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" OnEmojicodeInsertedCallback="@InsertEmojicodeAsync" CopiedToClipboard="OnCopiedToClipboard" BeforeProjectChange="SyncOpenFileAsync" />
-        </MudItem>
-        <MudItem xs="6" Class="d-flex flex-column">
-            <MudPaper Elevation="0" Outlined="true" Class="mb-2">
-                <MudToolBar>
-                    <h4 class="text-nowrap">🍇 Emojicode Editor</h4>
-                    <MudSpacer />
-                    <Blazemoji.Components.EmojiPicker.EmojiPicker
-                        @ref="_emojiPicker"
-                        Underline="false"
-                        Class="emoji-picker mr-3"
-                        OnEmojiPicked="@InsertEmojiAsync"
-                    />
+        </First>
+        <Second>
+            <SplitView Stacked="true"
+                       Share="@_layoutState.Current.EditorShare"
+                       ShareChanged="@_layoutState.ResizeEditorAsync"
+                       DefaultShare="@WorkspaceLayout.Default.EditorShare"
+                       MinPanelSize="@ShortestRow"
+                       data-testid="workspace-rows">
+                <First>
+                    <div class="fills-height">
+                        <MudPaper Elevation="0" Outlined="true" Class="mb-2">
+                            <MudToolBar>
+                                <MudTooltip Text="@SidebarToggleLabel">
+                                    <MudIconButton Icon="@(_layoutState.Current.SidebarHidden ? BlazemojiIcons.ShowSidebar : BlazemojiIcons.HideSidebar)" Edge="Edge.Start" OnClick="@_layoutState.ToggleSidebarAsync" aria-label="@SidebarToggleLabel" data-testid="sidebar-toggle" />
+                                </MudTooltip>
+                                <h4 class="text-nowrap">🍇 Emojicode Editor</h4>
+                                <MudSpacer />
+                                <Blazemoji.Components.EmojiPicker.EmojiPicker
+                                    @ref="_emojiPicker"
+                                    Underline="false"
+                                    Class="emoji-picker mr-3"
+                                    OnEmojiPicked="@InsertEmojiAsync"
+                                />
 
-                    <MudTooltip Text="Editor Commands">
-                        <MudIconButton Icon="@BlazemojiIcons.KeyCommands" OnClick="OpenEditorCommands" />
-                    </MudTooltip>
+                                <MudTooltip Text="Editor Commands">
+                                    <MudIconButton Icon="@BlazemojiIcons.KeyCommands" OnClick="OpenEditorCommands" data-testid="key-commands" />
+                                </MudTooltip>
 
-                    <MudTooltip Text="Save Code">
-                        <MudIconButton Icon="@BlazemojiIcons.Save" OnClick="SaveEmojicode" data-testid="save-to-library" />
-                    </MudTooltip>
+                                <MudTooltip Text="Save Code">
+                                    <MudIconButton Icon="@BlazemojiIcons.Save" OnClick="SaveEmojicode" data-testid="save-to-library" />
+                                </MudTooltip>
 
-                    <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle)" Color="Color.Success" data-testid="run-button">
-                        Run Code
-                    </MudButton>
+                                <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle)" Color="Color.Success" data-testid="run-button">
+                                    Run Code
+                                </MudButton>
 
-                    <MudButton Class="text-nowrap" Variant="@Variant.Outlined" StartIcon="@BlazemojiIcons.Stop" OnClick="StopClicked" Disabled="@IsIdle" Color="Color.Error" data-testid="stop-button">
-                        Stop
-                    </MudButton>
-                </MudToolBar>
-                <div class="open-file" data-testid="open-file">@_projectState.Current.Name / @_projectState.OpenPath</div>
-            </MudPaper>
-            <EmojiCodeEditor EmojiPickerOpened="@OpenEmojiPickerAsync" Ready="OnEditorReady" ContentSettled="OnContentSettledAsync" @ref="_editor" />
-        </MudItem>
-        <MudItem xs="3">
-            <MudPaper Elevation="0" Outlined="true" Height="100%" Class="pa-2">
-                <OutputPanel ProblemSelected="@RevealProblemAsync" ShowProblemFiles="@(_projectState.Current.Files.Count > 1)" />
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
+                                <MudButton Class="text-nowrap" Variant="@Variant.Outlined" StartIcon="@BlazemojiIcons.Stop" OnClick="StopClicked" Disabled="@IsIdle" Color="Color.Error" data-testid="stop-button">
+                                    Stop
+                                </MudButton>
+                            </MudToolBar>
+                            <div class="open-file" data-testid="open-file">@_projectState.Current.Name / @_projectState.OpenPath</div>
+                        </MudPaper>
+                        <EmojiCodeEditor EmojiPickerOpened="@OpenEmojiPickerAsync" Ready="OnEditorReady" ContentSettled="OnContentSettledAsync" @ref="_editor" />
+                    </div>
+                </First>
+                <Second>
+                    <MudPaper Elevation="0" Outlined="true" Height="100%" Class="pa-2">
+                        <OutputPanel ProblemSelected="@RevealProblemAsync" ShowProblemFiles="@(_projectState.Current.Files.Count > 1)" />
+                    </MudPaper>
+                </Second>
+            </SplitView>
+        </Second>
+    </SplitView>
 </MudContainer>
 
 @code {
@@ -78,7 +99,13 @@
     // half-switched editor, so a render that arrives during a pass asks for one more.
     private OnePassAtATime _editorInLine = default!;
 
+    // The fewest pixels a drag leaves the sidebar or what is beside it, and the editor or the output.
+    private const int NarrowestColumn = 200;
+    private const int ShortestRow = 120;
+
     private bool IsIdle => _runState.Status == RunStatus.Idle;
+
+    private string SidebarToggleLabel => _layoutState.Current.SidebarHidden ? "Show sidebar" : "Hide sidebar";
 
     protected override void OnInitialized()
     {
@@ -86,6 +113,7 @@
         _runState.StateChanged += OnRunStateChanged;
         _runState.DiagnosticsChanged += OnDiagnosticsChanged;
         _projectState.StateChanged += OnProjectChanged;
+        _layoutState.StateChanged += OnLayoutChanged;
     }
 
     private void OnRunStateChanged()
@@ -109,6 +137,11 @@
         InvokeAsync(StateHasChanged);
     }
 
+    private void OnLayoutChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
     private void OnEditorReady()
     {
         _editorReady = true;
@@ -116,9 +149,14 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Saved projects live in the browser, which can only be asked once the page is there.
+        // The kept layout and the saved projects live in the browser, which can only be asked
+        // once the page is there. The layout is one small read, and comes first so that the
+        // dividers are in place before there is much to look at.
         if (firstRender)
+        {
+            await _layoutState.LoadAsync();
             await _projectState.LoadAsync();
+        }
 
         if (!_editorReady)
             return;
@@ -305,6 +343,7 @@
         _runState.StateChanged -= OnRunStateChanged;
         _runState.DiagnosticsChanged -= OnDiagnosticsChanged;
         _projectState.StateChanged -= OnProjectChanged;
+        _layoutState.StateChanged -= OnLayoutChanged;
     }
 
 }

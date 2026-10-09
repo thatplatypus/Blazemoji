@@ -30,6 +30,7 @@ Features include:
 - Code editor keybindings for common emojis like `shift`+`"` turns into `🔤`
 - Pairs that close themselves: typing `🍇`, `🤜`, `🍿`, `🐚` or `🔤` brings its closer, and the editor shows which `🍉` belongs to which `🍇`
 - Library of sample scripts with support for saving scripts of your own
+- Panels you can resize: drag the divider beside the sidebar or the one under the editor, or hide the sidebar, and it is the same next time
 - More coming soon
   - Researching syntax highlighting in monaco for ☁️ and 🔤
 
@@ -92,6 +93,10 @@ dotnet run --project Blazemoji.Desktop
 ```
 
 opens the editor in a window of its own. It has been run on macOS; the window library it uses, Hermes, also supports Windows and Linux. It needs the toolchain service for running programs, as above, and edits without it. Projects are folders under `Blazemoji` in your documents: each file as it is, with a `blazemoji.json` that names the project and its entry file. `Projects__Root` puts them somewhere else. A file or project you delete in the app, and a file another program changed that the app is about to write over, are not destroyed: they go to `.blazemoji/trash` in that folder. [docs/hosting.md](docs/hosting.md) has the details.
+
+## The window
+
+The sidebar (Files, Toolbox, Library) is beside the editor, and Output, Problems and Requests are under it. Drag either divider to give a part more room; a double-click puts a divider back where it started, and the arrow keys move one that has the focus. The button at the left of the editor's toolbar hides the sidebar and brings it back as it was. The layout is kept: in the browser for the web app, and in the projects folder for the desktop one.
 
 ## Projects
 
