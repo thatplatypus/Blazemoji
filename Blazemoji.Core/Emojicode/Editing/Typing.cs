@@ -32,7 +32,7 @@ namespace Blazemoji.Emojicode.Editing
         private static readonly string[] _endsOfACall = ["❗", "❓"];
 
         private static readonly HashSet<string> _halves =
-            [.. EmojicodePairs.Completed.SelectMany(pair => new[] { pair.Open, pair.Close })];
+            [.. EmojicodePairs.Completed.Append(EmojicodePairs.Interpolation).SelectMany(pair => new[] { pair.Open, pair.Close })];
 
         /// <summary>True for text that <see cref="For(string, TextAroundCursor)"/> may type differently from place to place.</summary>
         public static bool DependsOnWhatIsAround(string typed) => _halves.Contains(typed);
@@ -61,6 +61,9 @@ namespace Blazemoji.Emojicode.Editing
         {
             var nothingSelected = around.Selected.Length == 0;
 
+            if (typed == EmojicodePairs.Interpolation.Open && context is TextContext.String or TextContext.Interpolation)
+                return Interpolating(around, context);
+
             if (context == TextContext.String)
             {
                 var endsTheString = typed == EmojicodePairs.String.Close && !EndsEscaping(around.Before);
@@ -84,7 +87,7 @@ namespace Blazemoji.Emojicode.Editing
 
             if (opened is not null)
             {
-                return CouldFollowACloser(around.After)
+                return CouldFollowACloser(around.After) || (context == TextContext.Interpolation && StartsWith(around.After, EmojicodePairs.Interpolation.Close))
                     ? new TypingEdit(0, 0, opened.Open + opened.Close, opened.Open.Length, opened.Open.Length)
                     : For(typed);
             }
@@ -93,6 +96,32 @@ namespace Blazemoji.Emojicode.Editing
                 return linedUp;
 
             return For(typed);
+        }
+
+        /// <summary>
+        /// A 🧲 typed inside a string. In the string's own text it brings its twin, as an
+        /// opener does, or wraps what is selected. Between two of them, where the value is
+        /// written, it is the closer: stepped over when it is there and typed when it is not.
+        /// Typed a second time into a pair with nothing in it, it makes an at sign of the pair,
+        /// since that is the key it is typed with and a string may want one.
+        /// </summary>
+        private static TypingEdit Interpolating(TextAroundCursor around, TextContext context)
+        {
+            var magnet = EmojicodePairs.Interpolation.Open;
+            if (context == TextContext.String)
+            {
+                if (EndsEscaping(around.Before))
+                    return For(magnet);
+
+                return new TypingEdit(0, 0, magnet + around.Selected + magnet, magnet.Length, magnet.Length + around.Selected.Length);
+            }
+
+            if (around.Selected.Length > 0 || !StartsWith(around.After, magnet))
+                return For(magnet);
+
+            return around.Before.EndsWith(magnet, StringComparison.Ordinal)
+                ? new TypingEdit(magnet.Length, magnet.Length, EmojicodePairs.AtSign, EmojicodePairs.AtSign.Length, EmojicodePairs.AtSign.Length)
+                : StepOver(magnet);
         }
 
         // Replacing the closer with itself moves the cursor past it and leaves the text as it is.

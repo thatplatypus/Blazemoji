@@ -101,6 +101,83 @@ namespace Blazemoji.E2E
         }
 
         [Fact]
+        public async Task The_at_key_puts_a_pair_of_magnets_in_a_string_with_the_cursor_between_and_an_at_sign_anywhere_else()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await PutCursorAfterAsync(editor, "tom");
+
+            await editor.Page.Keyboard.PressAsync("Shift+Digit2");
+            (await LeftAfterAsync(editor, "tom@")).ShouldBe("tom@");
+
+            await PutCursorAfterAsync(editor, "😀 🔤Hello ");
+            await editor.Page.Keyboard.PressAsync("Shift+Digit2");
+            (await LeftAfterAsync(editor, "😀 🔤Hello 🧲🧲")).ShouldBe("😀 🔤Hello 🧲🧲");
+
+            // The cursor is between the two, where the value is written, and there a key types its emoji.
+            await editor.Page.Keyboard.TypeAsync("name");
+            await editor.Page.Keyboard.PressAsync("Shift+Digit1");
+            (await LeftAfterAsync(editor, "😀 🔤Hello 🧲name❗🧲")).ShouldBe("😀 🔤Hello 🧲name❗🧲");
+
+            // The same key steps over the magnet that is already there, back into the string.
+            await editor.Page.Keyboard.PressAsync("Shift+Digit2");
+            await editor.Page.Keyboard.PressAsync("Shift+Digit1");
+            (await LeftAfterAsync(editor, "😀 🔤Hello 🧲name❗🧲!")).ShouldBe("😀 🔤Hello 🧲name❗🧲!");
+        }
+
+        [Fact]
+        public async Task A_value_put_in_a_string_with_the_at_key_is_in_what_the_program_prints()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await editor.SetCodeAsync("🏁 🍇\n  🔤World🔤 ➡️ name\n  😀 🔤Hello \n🍉\n");
+            await editor.Page.EvaluateAsync("() => { const editor = monaco.editor.getEditors()[0]; editor.setPosition({ lineNumber: 3, column: 100 }); editor.focus(); }");
+
+            await editor.Page.Keyboard.PressAsync("Shift+Digit2");
+            await editor.Page.WaitForFunctionAsync("() => monaco.editor.getEditors()[0].getModel().getLineContent(3).endsWith('Hello 🧲🧲')");
+            await editor.Page.Keyboard.TypeAsync("name");
+            await editor.Page.Keyboard.PressAsync("Shift+Digit2");
+            await editor.Page.Keyboard.PressAsync("Shift+Quote");
+            await editor.Page.Keyboard.PressAsync("Shift+Digit1");
+            await editor.Page.WaitForFunctionAsync("() => monaco.editor.getEditors()[0].getModel().getLineContent(3).endsWith('Hello 🧲name🧲🔤❗')");
+
+            await editor.RunButton.ClickAsync();
+            await editor.WaitForStatusAsync("Exited with code 0");
+            (await editor.OutputLines.AllInnerTextsAsync()).ShouldBe(["Hello World"]);
+        }
+
+        [Fact]
+        public async Task Backspace_between_two_magnets_just_typed_takes_both_and_the_key_pressed_twice_types_an_at_sign()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await PutCursorAfterAsync(editor, "😀 🔤tom");
+
+            await editor.Page.Keyboard.PressAsync("Shift+Digit2");
+            await LeftAfterAsync(editor, "😀 🔤tom🧲🧲");
+            await editor.Page.Keyboard.PressAsync("Backspace");
+            (await LeftAfterAsync(editor, "😀 🔤tom")).ShouldBe("😀 🔤tom");
+
+            await editor.Page.Keyboard.PressAsync("Shift+Digit2");
+            await LeftAfterAsync(editor, "😀 🔤tom🧲🧲");
+            await editor.Page.Keyboard.PressAsync("Shift+Digit2");
+            (await LeftAfterAsync(editor, "😀 🔤tom@")).ShouldBe("😀 🔤tom@");
+        }
+
+        [Fact]
+        public async Task Backspace_after_the_magnet_that_ends_one_value_and_before_the_one_that_begins_the_next_takes_only_one()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await editor.Page.EvaluateAsync(
+                "() => { const editor = monaco.editor.getEditors()[0]; editor.getModel().setValue('x 😀 🔤🧲a🧲🧲b🧲🔤'); editor.setPosition({ lineNumber: 1, column: 13 }); editor.focus(); }");
+
+            await editor.Page.Keyboard.PressAsync("Backspace");
+
+            (await LeftAfterAsync(editor, "😀 🔤🧲a🧲b🧲🔤")).ShouldBe("😀 🔤🧲a🧲b🧲🔤");
+        }
+
+        [Fact]
         public async Task The_exclamation_key_is_a_plain_mark_inside_a_string_and_the_emoji_outside()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);

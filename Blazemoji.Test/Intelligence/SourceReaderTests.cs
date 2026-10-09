@@ -122,5 +122,22 @@ namespace Blazemoji.Test.Intelligence
         {
             SourceReader.ContextAtEnd(text).ShouldBe(expected);
         }
+
+        [Theory]
+        [InlineData("😀 🔤Hello 🧲", TextContext.Interpolation, "a magnet in a string begins code")]
+        [InlineData("😀 🔤Hello 🧲name🙌 other", TextContext.Interpolation, "and it is code until the next magnet")]
+        [InlineData("😀 🔤Hello 🧲name🧲", TextContext.String, "which goes back to the string")]
+        [InlineData("😀 🔤Hello 🧲name🧲 and 🧲", TextContext.Interpolation, "a second one in the same string")]
+        [InlineData("😀 🔤Hello 🧲name🧲🔤 ", TextContext.Code, "the string ends as any other")]
+        [InlineData("😀 🔤50 ❌🧲", TextContext.String, "an escaped magnet is a magnet and begins nothing")]
+        [InlineData("😀 🔤a 🧲 f 🔤x", TextContext.String, "a string inside the code is a string")]
+        [InlineData("😀 🔤a 🧲 f 🔤x🔤", TextContext.Interpolation, "and when it ends the code goes on")]
+        [InlineData("😀 🔤a 🧲 f 🔤x🔤 🧲 b🔤 ", TextContext.Code, "to the end of the outer string")]
+        [InlineData("😀 🧲", TextContext.Code, "a magnet outside any string begins nothing")]
+        [InlineData("💭 🔤a 🧲", TextContext.Comment, "nor does one in a comment")]
+        public void Inside_a_string_a_magnet_begins_code_that_lasts_to_the_next_magnet(string text, TextContext expected, string because)
+        {
+            SourceReader.ContextAtEnd(text).ShouldBe(expected, because);
+        }
     }
 }

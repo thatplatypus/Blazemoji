@@ -26,6 +26,12 @@ namespace Blazemoji.Emojicode.Intelligence
         String,
 
         Comment,
+
+        /// <summary>
+        /// Between two 🧲 inside a string, where a value is written that goes into the string.
+        /// It is code again there, until the 🧲 that goes back to the string.
+        /// </summary>
+        Interpolation,
     }
 
     /// <param name="Start">Offset of the first UTF-16 unit in the source.</param>
@@ -42,6 +48,7 @@ namespace Blazemoji.Emojicode.Intelligence
     {
         private const string StringQuote = "🔤";
         private const string Escape = "❌";
+        private const string Interpolation = "🧲";
         private const string LineComment = "💭";
         private const string BlockCommentOpen = "💭🔜";
         private const string BlockCommentClose = "🔚💭";
@@ -156,10 +163,9 @@ namespace Blazemoji.Emojicode.Intelligence
                 }
                 else if (StartsWith(source, position, StringQuote))
                 {
-                    var line = 0;
-                    var closed = SkipString(source, position + StringQuote.Length, ref line, out position);
-                    if (!closed)
-                        return TextContext.String;
+                    position += StringQuote.Length;
+                    if (EndsInsideString(source, ref position) is { } inside)
+                        return inside;
                 }
                 else
                 {
@@ -168,6 +174,68 @@ namespace Blazemoji.Emojicode.Intelligence
             }
 
             return TextContext.Code;
+        }
+
+        /// <summary>
+        /// Reads a string from just after its opening 🔤, as the compiler's lexer does: a 🧲
+        /// that is not escaped leaves the string for code, the next 🧲 comes back to it, and
+        /// the code in between may hold strings of its own.
+        /// </summary>
+        /// <returns>What the source ends inside of, or null when the string is closed before it ends.</returns>
+        private static TextContext? EndsInsideString(string source, ref int position)
+        {
+            while (position < source.Length)
+            {
+                if (StartsWith(source, position, Escape))
+                {
+                    position += Escape.Length;
+                    if (position < source.Length)
+                        position += StringInfo.GetNextTextElementLength(source, position);
+                }
+                else if (StartsWith(source, position, StringQuote))
+                {
+                    position += StringQuote.Length;
+                    return null;
+                }
+                else if (StartsWith(source, position, Interpolation))
+                {
+                    position += Interpolation.Length;
+                    if (EndsInsideInterpolation(source, ref position) is { } inside)
+                        return inside;
+                }
+                else
+                {
+                    position += StringInfo.GetNextTextElementLength(source, position);
+                }
+            }
+
+            return TextContext.String;
+        }
+
+        /// <returns>What the source ends inside of, or null when the 🧲 that ends the code comes before it ends.</returns>
+        private static TextContext? EndsInsideInterpolation(string source, ref int position)
+        {
+            while (position < source.Length)
+            {
+                if (StartsWith(source, position, Interpolation))
+                {
+                    position += Interpolation.Length;
+                    return null;
+                }
+
+                if (StartsWith(source, position, StringQuote))
+                {
+                    position += StringQuote.Length;
+                    if (EndsInsideString(source, ref position) is { } inside)
+                        return inside;
+                }
+                else
+                {
+                    position += StringInfo.GetNextTextElementLength(source, position);
+                }
+            }
+
+            return TextContext.Interpolation;
         }
 
         private static bool Closes(string source, int from, string closing, out int after)

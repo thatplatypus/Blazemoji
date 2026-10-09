@@ -22,6 +22,27 @@ namespace Blazemoji.Test.Emojicode
         }
 
         [Fact]
+        public void The_at_key_types_the_magnet_that_puts_a_value_in_a_string_and_a_plain_at_sign_anywhere_else()
+        {
+            const int at = (int)KeyMod.Shift | (int)KeyCode.Digit2;
+
+            EmojicodeKeybindings.TextFor(at, TextContext.String).ShouldBe("🧲");
+            EmojicodeKeybindings.TextFor(at, TextContext.Interpolation).ShouldBe("🧲");
+            EmojicodeKeybindings.TextFor(at, TextContext.Code).ShouldBe("@");
+            EmojicodeKeybindings.TextFor(at, TextContext.Comment).ShouldBe("@");
+            EmojicodeKeybindings.CanDependOnContext(at).ShouldBeTrue();
+            EmojicodeKeybindings.Keybindings[at].ShouldBe("🧲");
+        }
+
+        [Fact]
+        public void Between_two_magnets_in_a_string_a_key_types_its_emoji_as_it_does_in_code()
+        {
+            EmojicodeKeybindings.TextFor(Exclamation, TextContext.Interpolation).ShouldBe("❗");
+            EmojicodeKeybindings.TextFor((int)KeyCode.Equal, TextContext.Interpolation).ShouldBe("➡️");
+            EmojicodeKeybindings.TextFor(Quote, TextContext.Interpolation).ShouldBe("🔤");
+        }
+
+        [Fact]
         public void In_code_a_key_types_its_emoji()
         {
             EmojicodeKeybindings.TextFor(Exclamation, TextContext.Code).ShouldBe("❗");
