@@ -129,23 +129,32 @@ namespace Blazemoji.E2E
             (await editor.Page.Locator(".emoji-box-hover").CountAsync()).ShouldBeGreaterThan(20);
         }
 
+        /// <summary>The sidebar's part of the workspace, which its panel fills.</summary>
+        private static ILocator Sidebar(EditorPage editor) => editor.Page.Locator("[data-testid=workspace-columns] > * > .split-view-first");
+
+        /// <summary>The editor's part: its toolbar, and the editor down to the divider under it.</summary>
+        private static ILocator EditorPart(EditorPage editor) => editor.Page.Locator("[data-testid=workspace-rows] > * > .split-view-first");
+
+        /// <summary>The part under the editor, which the output's panel fills.</summary>
+        private static ILocator OutputPart(EditorPage editor) => editor.Page.Locator("[data-testid=workspace-rows] > * > .split-view-second");
+
         [Fact]
-        public async Task The_panel_on_the_left_is_as_tall_as_the_one_on_the_right()
+        public async Task The_sidebar_is_as_tall_as_the_editor_and_the_output_under_it_together()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await EditorPage.OpenAsync(browser);
-            var panels = editor.Page.Locator(".mud-grid > .mud-grid-item > .mud-paper");
 
-            var left = await panels.First.BoundingBoxAsync();
-            var right = await panels.Last.BoundingBoxAsync();
+            // The panels themselves, which are what is seen: each is a card with an outline.
+            var sidebar = await Sidebar(editor).Locator("> .mud-paper").BoundingBoxAsync();
+            var above = await EditorPart(editor).Locator(".mud-paper").First.BoundingBoxAsync();
+            var under = await OutputPart(editor).Locator("> .mud-paper").BoundingBoxAsync();
 
-            left.ShouldNotBeNull();
-            right.ShouldNotBeNull();
-            Math.Abs(left.Height - right.Height).ShouldBeLessThan(2);
-            Math.Abs(left.Y - right.Y).ShouldBeLessThan(2);
+            sidebar.ShouldNotBeNull();
+            above.ShouldNotBeNull();
+            under.ShouldNotBeNull();
+            Math.Abs(sidebar.Y - above.Y).ShouldBeLessThan(2);
+            Math.Abs(sidebar.Y + sidebar.Height - (under.Y + under.Height)).ShouldBeLessThan(2);
         }
-
-        private static ILocator Panels(EditorPage editor) => editor.Page.Locator(".mud-grid > .mud-grid-item > .mud-paper");
 
         private static Task<float> WindowHeightAsync(EditorPage editor) => editor.Page.EvaluateAsync<float>("() => innerHeight");
 
@@ -156,8 +165,8 @@ namespace Blazemoji.E2E
             await using var editor = await EditorPage.OpenAsync(browser);
 
             var bar = await editor.Page.Locator(".mud-appbar").BoundingBoxAsync();
-            var left = await Panels(editor).First.BoundingBoxAsync();
-            var right = await Panels(editor).Last.BoundingBoxAsync();
+            var left = await Sidebar(editor).BoundingBoxAsync();
+            var right = await OutputPart(editor).BoundingBoxAsync();
 
             bar.ShouldNotBeNull();
             left.ShouldNotBeNull();
@@ -171,7 +180,7 @@ namespace Blazemoji.E2E
         }
 
         [Fact]
-        public async Task The_editor_ends_where_the_panels_end_and_follows_the_window_when_it_is_resized()
+        public async Task The_editor_goes_down_to_the_divider_under_it_and_follows_the_window_when_it_is_resized()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await EditorPage.OpenAsync(browser);
@@ -182,25 +191,26 @@ namespace Blazemoji.E2E
                 // Monaco measures itself a moment after its surroundings change size.
                 for (var attempt = 0; attempt < 60; attempt++)
                 {
-                    var panel = await Panels(editor).Last.BoundingBoxAsync();
+                    var part = await EditorPart(editor).BoundingBoxAsync();
                     var text = await monaco.BoundingBoxAsync();
-                    if (panel is not null && text is not null && Math.Abs(panel.Y + panel.Height - (text.Y + text.Height)) < 2)
+                    if (part is not null && text is not null && Math.Abs(part.Y + part.Height - (text.Y + text.Height)) < 2)
                         return;
 
                     await Task.Delay(50, TestContext.Current.CancellationToken);
                 }
 
-                var panelNow = await Panels(editor).Last.BoundingBoxAsync();
+                var partNow = await EditorPart(editor).BoundingBoxAsync();
                 var textNow = await monaco.BoundingBoxAsync();
-                (textNow!.Y + textNow.Height).ShouldBe(panelNow!.Y + panelNow.Height, 2f);
+                (textNow!.Y + textNow.Height).ShouldBe(partNow!.Y + partNow.Height, 2f);
             }
 
             await ShouldEndTogetherAsync();
 
             await editor.Page.SetViewportSizeAsync(1300, 700);
             await ShouldEndTogetherAsync();
-            var after = await Panels(editor).Last.BoundingBoxAsync();
-            (after!.Y + after.Height).ShouldBeLessThan(700);
+            var under = await OutputPart(editor).BoundingBoxAsync();
+            (under!.Y + under.Height).ShouldBeLessThan(700);
+            under.Y.ShouldBeGreaterThan((await monaco.BoundingBoxAsync())!.Y);
         }
 
         [Fact]
@@ -215,7 +225,7 @@ namespace Blazemoji.E2E
             await last.ScrollIntoViewIfNeededAsync();
 
             var tile = await last.BoundingBoxAsync();
-            var panel = await Panels(editor).First.BoundingBoxAsync();
+            var panel = await Sidebar(editor).BoundingBoxAsync();
             tile.ShouldNotBeNull();
             panel.ShouldNotBeNull();
             (tile.Y + tile.Height).ShouldBeLessThanOrEqualTo(panel.Y + panel.Height);
@@ -263,10 +273,13 @@ namespace Blazemoji.E2E
                     document.querySelector('[data-testid=run-button]'),
                     document.querySelector('[data-testid=stop-button]'),
                     ...document.querySelectorAll('[role=tab]'),
-                ].map(element => `${element.textContent.trim()}: ${getComputedStyle(element).textTransform}`)
+                ].map(element => element.querySelector('[data-testid=editor-tab]') ?? element)
+                 .map(element => `${element.textContent.trim()}: ${getComputedStyle(element).textTransform}`)
                 """);
 
-            transforms.Length.ShouldBe(8);
+            // Run and Stop, the six tabs of the two panels, and the tab of the open file, whose
+            // name is in an element of its own inside a tab that MudBlazor draws.
+            transforms.Length.ShouldBe(9);
             transforms.ShouldAllBe(transform => transform.EndsWith(": none"));
         }
 

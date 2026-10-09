@@ -252,6 +252,23 @@ namespace Blazemoji.Test.Components
         }
 
         [Fact]
+        public void A_narrow_strip_that_is_hidden_is_still_the_narrow_one_when_it_is_shown_again()
+        {
+            var strip = default(ElementReference);
+            _resizeObserver.Observe(Arg.Do<ElementReference>(element => strip = element)).Returns(new BoundingClientRect { Width = 180 });
+            var cut = RenderThree(compactBelow: 300);
+            cut.WaitForAssertion(() => Names(cut).ShouldBe(["Output"]));
+
+            // Whatever it is in has been hidden, and something hidden has no width at all.
+            // That says nothing about how wide it will be when it is back.
+            _resizeObserver.OnResized += Raise.Event<SizeChanged>(new Dictionary<ElementReference, BoundingClientRect> { [strip] = new BoundingClientRect { Width = 0 } });
+            cut.Render();
+
+            Names(cut).ShouldBe(["Output"]);
+            cut.Find("[data-testid=more-tabs]").ShouldNotBeNull();
+        }
+
+        [Fact]
         public void A_strip_that_is_never_to_collapse_does_not_watch_its_width()
         {
             RenderThree(compactBelow: 0);

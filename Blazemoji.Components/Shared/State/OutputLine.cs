@@ -12,5 +12,6 @@ namespace Blazemoji.Shared.State
     }
 
     /// <param name="Number">Position in the run's whole output, starting at 1. Stable, so it can key a rendered row.</param>
-    public sealed record OutputLine(long Number, OutputStream Stream, string Text);
+    /// <param name="Typed">What was typed for the program on this line, after whatever the program had printed on it.</param>
+    public sealed record OutputLine(long Number, OutputStream Stream, string Text, string? Typed = null);
 }

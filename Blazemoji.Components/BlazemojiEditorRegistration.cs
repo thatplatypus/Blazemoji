@@ -1,5 +1,6 @@
 using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Interop;
+using Blazemoji.Services.Layout;
 using Blazemoji.Services.Library;
 using Blazemoji.Services.Projects;
 using Blazemoji.Shared.State;
@@ -49,9 +50,12 @@ namespace Blazemoji
             services.TryAddScoped<IPackageLibrary, PackageLibrary>();
             services.TryAddScoped<EmojicodeLanguageInterop>();
             services.TryAddScoped<ClipboardInterop>();
+            services.TryAddScoped<SplitViewInterop>();
+            services.TryAddScoped<ProgramInputInterop>();
             services.TryAddScoped<RunState>();
             services.TryAddScoped<ProjectState>();
             services.TryAddScoped<RequestState>();
+            services.TryAddScoped<LayoutState>();
             services.TryAddScoped<LocalStorageFiles>();
 
             return services;
@@ -75,6 +79,7 @@ namespace Blazemoji
             services.TryAddSingleton(TimeProvider.System);
             services.AddSingleton<IProjectStore, FileProjectStore>();
             services.AddSingleton<ILibraryService, FileLibraryService>();
+            services.AddSingleton<ILayoutStore, FileLayoutStore>();
 
             return services;
         }

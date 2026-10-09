@@ -46,7 +46,10 @@
 
     <div class="files-heading">
         <MudText Typo="Typo.subtitle2">Files</MudText>
-        <MudTooltip Text="New file">
+        @* To the left, over the heading. Below, it would lie over the first file's menu, and
+           it is there whenever the button has the focus, which it is given back when the
+           box that asks for a name closes. *@
+        <MudTooltip Text="New file" Placement="Placement.Left">
             <MudIconButton Icon="@BlazemojiIcons.Add" Size="Size.Small" OnClick="NewFileAsync" aria-label="New file" data-testid="new-file" />
         </MudTooltip>
     </div>

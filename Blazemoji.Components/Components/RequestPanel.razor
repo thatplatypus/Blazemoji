@@ -12,68 +12,82 @@
         </MudAlert>
     }
 
-    <div class="request-line">
-        <MudSelect T="string" @bind-Value="_method" Label="Method" Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined" Class="request-method" data-testid="request-method">
-            @foreach (var method in Methods)
-            {
-                <MudSelectItem T="string" @key="method" Value="@method">@method</MudSelectItem>
-            }
-        </MudSelect>
-        <MudTextField T="string" @bind-Value="_path" Label="Path" Margin="Margin.Dense" Variant="Variant.Outlined" Immediate="true" OnKeyDown="OnPathKeyDown" data-testid="request-path" />
-    </div>
-    <MudTextField T="string" @bind-Value="_headers" Label="Headers" HelperText="One per line, as Name: value" Lines="2" Margin="Margin.Dense" Variant="Variant.Outlined" Immediate="true" data-testid="request-headers" />
-    <MudTextField T="string" @bind-Value="_body" Label="Body" Lines="4" Margin="Margin.Dense" Variant="Variant.Outlined" Immediate="true" data-testid="request-body" />
-
-    <div class="request-actions">
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@BlazemojiIcons.Send" Disabled="@(!Run.ServerRunning || Requests.Sending)" OnClick="SendAsync" data-testid="request-send">
-            Send
-        </MudButton>
-        <span class="request-problem mud-error-text" data-testid="request-problem">@_problem</span>
-    </div>
-
-    @if (Requests.Selected is { } exchange)
-    {
-        <MudDivider />
-        <div class="response" data-testid="response">
-            <div class="response-summary">
-                <span class="response-request" data-testid="response-request">@exchange.Method @exchange.Path</span>
-                @if (exchange.Response.Outcome == ProgramResponseOutcome.Answered)
-                {
-                    <span class="@StatusClass(exchange.Response.StatusCode)" data-testid="response-status">@StatusLine(exchange.Response)</span>
-                    <span class="response-facts" data-testid="response-facts">@Facts(exchange.Response)</span>
-                }
+    <div class="request-columns">
+        <div class="request-form">
+            <div class="request-line">
+                <div class="request-method">
+                    <MudSelect T="string" @bind-Value="_method" Label="Method" Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined" data-testid="request-method">
+                        @foreach (var method in Methods)
+                        {
+                            <MudSelectItem T="string" @key="method" Value="@method">@method</MudSelectItem>
+                        }
+                    </MudSelect>
+                </div>
+                <div class="request-path">
+                    <MudTextField T="string" @bind-Value="_path" Label="Path" Margin="Margin.Dense" Variant="Variant.Outlined" Immediate="true" OnKeyDown="OnPathKeyDown" data-testid="request-path" />
+                </div>
+                <div class="request-send">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@BlazemojiIcons.Send" Disabled="@(!Run.ServerRunning || Requests.Sending)" OnClick="SendAsync" data-testid="request-send">
+                        Send
+                    </MudButton>
+                </div>
             </div>
-            @if (RequestState.Describe(exchange.Response.Outcome) is { } unanswered)
+            <span class="request-problem mud-error-text" data-testid="request-problem">@_problem</span>
+            <MudTextField T="string" @bind-Value="_headers" Label="Headers" HelperText="One per line, as Name: value" Lines="2" Margin="Margin.Dense" Variant="Variant.Outlined" Immediate="true" data-testid="request-headers" />
+            <MudTextField T="string" @bind-Value="_body" Label="Body" Lines="4" Margin="Margin.Dense" Variant="Variant.Outlined" Immediate="true" data-testid="request-body" />
+        </div>
+
+        <div class="request-answers">
+            @if (Requests.Selected is { } exchange)
             {
-                <MudAlert Severity="Severity.Warning" Dense="true" data-testid="response-problem">@unanswered</MudAlert>
+                <div class="response" data-testid="response">
+                    <div class="response-summary">
+                        <span class="response-request" data-testid="response-request">@exchange.Method @exchange.Path</span>
+                        @if (exchange.Response.Outcome == ProgramResponseOutcome.Answered)
+                        {
+                            <span class="@StatusClass(exchange.Response.StatusCode)" data-testid="response-status">@StatusLine(exchange.Response)</span>
+                            <span class="response-facts" data-testid="response-facts">@Facts(exchange.Response)</span>
+                        }
+                    </div>
+                    @if (RequestState.Describe(exchange.Response.Outcome) is { } unanswered)
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" data-testid="response-problem">@unanswered</MudAlert>
+                    }
+                    else
+                    {
+                        <div class="response-headers" data-testid="response-headers">
+                            @foreach (var (header, index) in exchange.Response.Headers.Select((header, index) => (header, index)))
+                            {
+                                <div @key="index"><span class="response-header-name">@header.Key:</span> @header.Value</div>
+                            }
+                        </div>
+                        <pre class="response-body" data-testid="response-body">@RequestState.BodyText(exchange.Response)</pre>
+                    }
+                </div>
             }
             else
             {
-                <div class="response-headers" data-testid="response-headers">
-                    @foreach (var (header, index) in exchange.Response.Headers.Select((header, index) => (header, index)))
-                    {
-                        <div @key="index"><span class="response-header-name">@header.Key:</span> @header.Value</div>
-                    }
+                <div data-testid="no-response">
+                    <HintText>What the server answers shows here.</HintText>
                 </div>
-                <pre class="response-body" data-testid="response-body">@RequestState.BodyText(exchange.Response)</pre>
+            }
+
+            @if (Requests.Exchanges.Count > 1)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Earlier requests</MudText>
+                <MudList T="int" Dense="true">
+                    @foreach (var earlier in Requests.Exchanges)
+                    {
+                        <MudListItem T="int" @key="earlier.Number" OnClick="@(() => Show(earlier))" data-testid="request-history">
+                            <span class="history-request">@earlier.Method @earlier.Path</span>
+                            <span class="history-status">@(earlier.Response.Outcome == ProgramResponseOutcome.Answered ? earlier.Response.StatusCode.ToString(CultureInfo.InvariantCulture) : "no answer")</span>
+                        </MudListItem>
+                    }
+                </MudList>
             }
         </div>
-    }
-
-    @if (Requests.Exchanges.Count > 1)
-    {
-        <MudDivider />
-        <MudText Typo="Typo.subtitle2">Earlier requests</MudText>
-        <MudList T="int" Dense="true">
-            @foreach (var earlier in Requests.Exchanges)
-            {
-                <MudListItem T="int" @key="earlier.Number" OnClick="@(() => Show(earlier))" data-testid="request-history">
-                    <span class="history-request">@earlier.Method @earlier.Path</span>
-                    <span class="history-status">@(earlier.Response.Outcome == ProgramResponseOutcome.Answered ? earlier.Response.StatusCode.ToString(CultureInfo.InvariantCulture) : "no answer")</span>
-                </MudListItem>
-            }
-        </MudList>
-    }
+    </div>
 </div>
 
 @code {

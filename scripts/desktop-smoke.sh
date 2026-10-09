@@ -2,7 +2,8 @@
 # Starts the desktop app, has it check itself from inside its own window, and says whether
 # it passed. Nothing outside the window can see into it, so this is the desktop host's test:
 # the editor loads, takes the page's colours, types emoji pairs from a key and from the
-# toolbox, offers completions, goes dark and back, and keeps its project as a folder on disk.
+# toolbox, offers completions, goes dark and back, hears a divider being dragged, and keeps
+# its project and its layout on disk.
 #
 #   scripts/desktop-smoke.sh                 the build `dotnet run` would start
 #   scripts/desktop-smoke.sh --published     publish for this machine first, and test that

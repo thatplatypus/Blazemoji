@@ -640,5 +640,192 @@ namespace Blazemoji.Test.State
                     throw new ProjectStoreException("The storage is not available.", new InvalidOperationException("quota"));
             }
         }
+
+        private const string Main = "app/main.🍇";
+        private const string Routes = "app/routes.🍇";
+        private const string Util = "shared/util.🍇";
+
+        [Fact]
+        public async Task A_project_opens_with_its_entry_file_as_its_only_tab()
+        {
+            var state = await WithApiProjectAsync();
+
+            state.OpenPaths.ShouldBe([Main]);
+            state.OpenPath.ShouldBe(Main);
+        }
+
+        [Fact]
+        public async Task Selecting_another_file_opens_it_as_a_tab_after_the_ones_already_open()
+        {
+            var state = await WithApiProjectAsync();
+
+            state.SelectFile(Util);
+            state.SelectFile(Routes);
+
+            state.OpenPaths.ShouldBe([Main, Util, Routes]);
+            state.OpenPath.ShouldBe(Routes);
+        }
+
+        [Fact]
+        public async Task Selecting_a_file_that_already_has_a_tab_shows_it_and_leaves_the_tabs_where_they_are()
+        {
+            var state = await WithApiProjectAsync();
+            state.SelectFile(Util);
+            state.SelectFile(Routes);
+
+            state.SelectFile(Main);
+
+            state.OpenPaths.ShouldBe([Main, Util, Routes]);
+            state.OpenPath.ShouldBe(Main);
+        }
+
+        [Fact]
+        public async Task Closing_the_tab_that_is_shown_shows_the_one_that_takes_its_place()
+        {
+            var state = await WithApiProjectAsync();
+            state.SelectFile(Util);
+            state.SelectFile(Routes);
+            state.SelectFile(Util);
+            var changes = 0;
+            state.StateChanged += () => changes++;
+
+            state.CloseFile(Util);
+
+            state.OpenPaths.ShouldBe([Main, Routes]);
+            state.OpenPath.ShouldBe(Routes);
+            changes.ShouldBe(1);
+        }
+
+        [Fact]
+        public async Task Closing_the_last_tab_in_the_row_when_it_is_shown_shows_the_one_before_it()
+        {
+            var state = await WithApiProjectAsync();
+            state.SelectFile(Util);
+
+            state.CloseFile(Util);
+
+            state.OpenPaths.ShouldBe([Main]);
+            state.OpenPath.ShouldBe(Main);
+        }
+
+        [Fact]
+        public async Task Closing_a_tab_that_is_not_shown_leaves_the_shown_file_shown()
+        {
+            var state = await WithApiProjectAsync();
+            state.SelectFile(Util);
+            state.SelectFile(Routes);
+
+            state.CloseFile(Main);
+
+            state.OpenPaths.ShouldBe([Util, Routes]);
+            state.OpenPath.ShouldBe(Routes);
+        }
+
+        [Fact]
+        public async Task The_only_tab_cannot_be_closed_because_the_editor_always_shows_a_file()
+        {
+            var state = await WithApiProjectAsync();
+            var changes = 0;
+            state.StateChanged += () => changes++;
+
+            state.CloseFile(Main);
+
+            state.OpenPaths.ShouldBe([Main]);
+            state.OpenPath.ShouldBe(Main);
+            changes.ShouldBe(0);
+        }
+
+        [Fact]
+        public async Task Closing_a_file_that_has_no_tab_changes_nothing()
+        {
+            var state = await WithApiProjectAsync();
+            state.SelectFile(Util);
+            var changes = 0;
+            state.StateChanged += () => changes++;
+
+            state.CloseFile(Routes);
+            state.CloseFile("nope.🍇");
+
+            state.OpenPaths.ShouldBe([Main, Util]);
+            changes.ShouldBe(0);
+        }
+
+        [Fact]
+        public async Task A_new_file_opens_as_a_tab_and_is_shown()
+        {
+            var state = await WithApiProjectAsync();
+
+            (await state.AddFileAsync("app/models.🍇")).ShouldBeNull();
+
+            state.OpenPaths.ShouldBe([Main, "app/models.🍇"]);
+            state.OpenPath.ShouldBe("app/models.🍇");
+        }
+
+        [Fact]
+        public async Task A_renamed_file_keeps_its_tab_in_its_place_under_the_new_name()
+        {
+            var state = await WithApiProjectAsync();
+            state.SelectFile(Util);
+            state.SelectFile(Routes);
+
+            (await state.RenameFileAsync(Util, "shared/helpers.🍇")).ShouldBeNull();
+
+            state.OpenPaths.ShouldBe([Main, "shared/helpers.🍇", Routes]);
+            state.OpenPath.ShouldBe(Routes);
+        }
+
+        [Fact]
+        public async Task A_deleted_file_loses_its_tab_and_the_tab_beside_it_is_shown_if_it_was_the_one_shown()
+        {
+            var state = await WithApiProjectAsync();
+            state.SelectFile(Util);
+            state.SelectFile(Routes);
+
+            (await state.DeleteFileAsync(Routes)).ShouldBeNull();
+
+            state.OpenPaths.ShouldBe([Main, Util]);
+            state.OpenPath.ShouldBe(Util);
+        }
+
+        [Fact]
+        public async Task Deleting_a_file_that_has_no_tab_leaves_the_tabs_alone()
+        {
+            var state = await WithApiProjectAsync();
+            state.SelectFile(Util);
+
+            (await state.DeleteFileAsync(Routes)).ShouldBeNull();
+
+            state.OpenPaths.ShouldBe([Main, Util]);
+            state.OpenPath.ShouldBe(Util);
+        }
+
+        [Fact]
+        public async Task Deleting_the_file_in_the_only_tab_opens_the_entry_file_in_its_place()
+        {
+            var state = await WithApiProjectAsync();
+            state.SelectFile(Util);
+            state.CloseFile(Main);
+            state.OpenPaths.ShouldBe([Util]);
+
+            (await state.DeleteFileAsync(Util)).ShouldBeNull();
+
+            state.OpenPaths.ShouldBe([Main]);
+            state.OpenPath.ShouldBe(Main);
+        }
+
+        [Fact]
+        public async Task Another_project_starts_with_only_its_own_entry_file_open()
+        {
+            var state = await WithApiProjectAsync();
+            state.SelectFile(Util);
+            var todo = state.Current.Id;
+            (await state.CreateAsync("Second", "hello-world")).ShouldBeNull();
+            state.OpenPaths.ShouldBe(["main.🍇"]);
+
+            await state.OpenAsync(todo);
+
+            state.OpenPaths.ShouldBe([Main]);
+            state.OpenPath.ShouldBe(Main);
+        }
     }
 }

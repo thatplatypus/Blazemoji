@@ -46,6 +46,7 @@ namespace Blazemoji.Interop
         private const string AroundCursorFunction = "aroundCursor";
         private const string TypeFunction = "type";
         private const string ApplyThemeFunction = "applyTheme";
+        private const string ShowModelFunction = "showModel";
 
         private static readonly LanguageSyntax _syntax = new(
             [.. EmojicodePairs.Matched.Select(pair => new[] { pair.Open, pair.Close })],
@@ -87,6 +88,16 @@ namespace Blazemoji.Interop
                 TypeFunction,
                 editorId,
                 new TypedText(edit.RemoveBefore, edit.RemoveAfter, edit.Text, edit.SelectionStart, edit.SelectionEnd, plain, stamp));
+
+        /// <summary>
+        /// Shows another file's model in the editor with this element id, with the cursor and
+        /// the scroll where they were when it was last shown.
+        /// </summary>
+        /// <param name="modelUri">The address the model was made with.</param>
+        /// <param name="takeKeys">Give the editor the keyboard as the file is shown, in the same step.</param>
+        /// <returns>False when the script found no such editor or model, and nothing was shown.</returns>
+        public async Task<bool> ShowModelAsync(string editorId, string modelUri, bool takeKeys) =>
+            await (await ModuleAsync()).InvokeAsync<bool>(ShowModelFunction, editorId, modelUri, takeKeys);
 
         /// <summary>Gives every editor the colours the page has now.</summary>
         public async Task ApplyThemeAsync() =>

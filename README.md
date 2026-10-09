@@ -25,11 +25,14 @@ Blazemoji is a modern web application designed specifically for emojicode. It's 
 
 Features include:
 - Compile and run emojicode right in the browser!
+- Programs that ask for input can be given it: a question is shown as the program waits, and a line typed under the output is sent to it
 - Light / Dark theme built in
 - Emojicode quick reference toolbox
 - Code editor keybindings for common emojis like `shift`+`"` turns into `🔤`
 - Pairs that close themselves: typing `🍇`, `🤜`, `🍿`, `🐚` or `🔤` brings its closer, and the editor shows which `🍉` belongs to which `🍇`
+- Tabs above the editor for the files that are open
 - Library of sample scripts with support for saving scripts of your own
+- Panels you can resize: drag the divider beside the sidebar or the one under the editor, or hide the sidebar, and it is the same next time
 - More coming soon
   - Researching syntax highlighting in monaco for ☁️ and 🔤
 
@@ -93,13 +96,17 @@ dotnet run --project Blazemoji.Desktop
 
 opens the editor in a window of its own. It has been run on macOS; the window library it uses, Hermes, also supports Windows and Linux. It needs the toolchain service for running programs, as above, and edits without it. Projects are folders under `Blazemoji` in your documents: each file as it is, with a `blazemoji.json` that names the project and its entry file. `Projects__Root` puts them somewhere else. A file or project you delete in the app, and a file another program changed that the app is about to write over, are not destroyed: they go to `.blazemoji/trash` in that folder. [docs/hosting.md](docs/hosting.md) has the details.
 
+## The window
+
+The sidebar (Files, Toolbox, Library) is beside the editor, and Output, Problems and Requests are under it. Drag either divider to give a part more room; a double-click puts a divider back where it started, and the arrow keys move one that has the focus. The button at the left of the editor's toolbar hides the sidebar and brings it back as it was. The layout is kept: in the browser for the web app, and in the projects folder for the desktop one.
+
 ## Projects
 
-A project is a set of files that are compiled together, a name, and one file marked as the entry: the file handed to the compiler. Other files join in when a file includes them with `📜`, by a path from the including file. The **Files** tab lists them as a tree, and each file has a menu to rename it, make it the entry, or delete it. A name with slashes puts a file in folders (`lib/greeter.🍇`).
+A project is a set of files that are compiled together, a name, and one file marked as the entry: the file handed to the compiler. Other files join in when a file includes them with `📜`, by a path from the including file. The **Files** tab lists them as a tree, and each file has a menu to rename it, make it the entry, or delete it. A file opened from the list gets a tab above the editor; a click on a tab brings its file back with the cursor where it was left, and the cross on a tab closes the tab and leaves the file in the project. A name with slashes puts a file in folders (`lib/greeter.🍇`).
 
 In the web app projects are kept in the browser's local storage, so they are still there after a reload and are not shared between browsers. In the desktop app they are folders on disk. New projects start from a template: a folder under `Blazemoji.Core/Emojicode/Templates` with a `template.json` and the files.
 
-A project runs either as a **Program**, which runs to the end and stops, or as a **Web server**, which keeps running until it is stopped or has had no request for ten minutes. A web server is told which port to listen on through the `PORT` environment variable. While it runs, the **Requests** tab sends it HTTP requests (method, path, headers, body) and shows the status, headers and body that come back.
+A project runs either as a **Program**, which runs to the end and stops, or as a **Web server**, which keeps running until it is stopped or has had no request for ten minutes. While either runs, the line under the output sends it a line of input when Enter is pressed, and **End input** tells it there is no more. A program that reads input and is given none waits, until it is stopped or reaches its time limit of thirty seconds. A web server is told which port to listen on through the `PORT` environment variable. While it runs, the **Requests** tab sends it HTTP requests (method, path, headers, body) and shows the status, headers and body that come back.
 
 ## Help while typing
 

@@ -1,7 +1,9 @@
 @using System.Globalization
 @using Blazemoji.Toolchain
-@implements IDisposable
+@using Blazemoji.Interop
+@implements IAsyncDisposable
 @inject RunState State
+@inject ProgramInputInterop InputScript
 
 <SegmentedTabs @bind-Active="_activeTab" AriaLabel="Output, problems and requests" CompactBelow="240" Class="fills-height" PanelClass="pt-2 scrolls-inside">
     <SegmentedTab Id="@OutputTab" Text="Output">
@@ -20,9 +22,29 @@
                 <div class="output-lines">
                     @foreach (var line in State.Lines)
                     {
-                        <div @key="line.Number" class="@LineClass(line)" data-testid="output-line">@line.Text</div>
+                        <div @key="line.Number" class="@LineClass(line)" data-testid="output-line">@line.Text@if (line.Typed is { } typed) {<span class="output-typed" data-testid="output-typed">@typed</span>}</div>
+                    }
+                    @if (State.UnfinishedError is { } unfinishedError)
+                    {
+                        <div class="output-line output-line-stderr" data-testid="output-unfinished-error">@unfinishedError</div>
+                    }
+                    @if (State.UnfinishedOutput is { } unfinished)
+                    {
+                        <div class="output-line" data-testid="output-unfinished">@unfinished</div>
                     }
                 </div>
+            </div>
+            @* Always here, and only usable while a program is taking input, so that a program
+               starting or ending moves nothing above it. *@
+            <div class="output-input">
+                @* The box is bound to nothing. What is typed in it stays in the browser until
+                   Enter, when the script sends the line and empties it (Scripts/programInput.ts). *@
+                <div class="output-input-line" @ref="_inputLine">
+                    <MudTextField T="string" Placeholder="@InputHint" Disabled="@(!State.AcceptsInput)" Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="RunState.MaxInputLength" aria-label="A line of input for the program" data-testid="program-input" />
+                </div>
+                <MudTooltip Text="Tell the program it has had all of its input">
+                    <MudButton Variant="Variant.Text" Disabled="@(!State.AcceptsInput)" OnClick="@State.EndInputAsync" data-testid="end-input">End input</MudButton>
+                </MudTooltip>
             </div>
         </div>
     </SegmentedTab>
@@ -40,6 +62,14 @@
 
     private string? _activeTab = OutputTab;
     private RunStatus _lastStatus = RunStatus.Idle;
+
+    private ElementReference _inputLine;
+    private string? _listeningTo;
+    private DotNetObjectReference<OutputPanel>? _self;
+
+    private string InputHint => State.AcceptsInput ? "Type a line for the program and press Enter"
+        : State.InputHasEnded ? "The program's input has ended"
+        : "A running program can be given input here";
 
     [Parameter]
     public EventCallback<Diagnostic> ProblemSelected { get; set; }
@@ -78,6 +108,22 @@
         InvokeAsync(StateHasChanged);
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // The line is only on the page while its tab is the open one, and is another element
+        // each time it comes back.
+        if (_inputLine.Id is not { } id || id == _listeningTo)
+            return;
+
+        _listeningTo = id;
+        _self ??= DotNetObjectReference.Create(this);
+        await InputScript.AttachAsync(_inputLine, _self);
+    }
+
+    /// <summary>Called by the script with the line that was in the box when Enter was pressed. The box is already empty.</summary>
+    [JSInvokable]
+    public Task SendLineAsync(string? line) => InvokeAsync(() => State.SendInputAsync(line ?? string.Empty));
+
     private void OnDiagnosticsChanged()
     {
         // A run that failed has nothing else to show. A mistake noticed while someone is still
@@ -110,9 +156,24 @@
         _ => "output-line",
     };
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         State.StateChanged -= OnStateChanged;
         State.DiagnosticsChanged -= OnDiagnosticsChanged;
+
+        if (_self is null)
+            return;
+
+        try
+        {
+            await InputScript.DetachAsync(_inputLine);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page has gone, and the box with it.
+        }
+
+        _self.Dispose();
+        _self = null;
     }
 }

@@ -37,6 +37,9 @@ namespace Blazemoji.Shared.State
             return lines ?? [];
         }
 
+        /// <summary>Text that has not been ended by a newline yet, or null when there is none. It is left where it is.</summary>
+        public string? Pending => _pending.Length == 0 ? null : _pending.ToString();
+
         /// <returns>Text that has not been ended by a newline, or null when there is none.</returns>
         public string? Flush()
         {

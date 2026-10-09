@@ -46,18 +46,19 @@ services.AddBlazemojiProjectsOnDisk(configuration);   // reads Projects:Root
 | --- | --- | --- | --- |
 | `IProjectStore` | Where projects are kept between sessions. | `LocalStorageProjectStore`: the browser's local storage. | `FileProjectStore`: a folder for each project. |
 | `ILibraryService` | What is saved from the editor as a file of its own, listed in the Library tab. | `LibraryService`: local storage. | `FileLibraryService`: a `Snippets` folder beside the projects. |
+| `ILayoutStore` (optional) | Where the workspace's layout is kept between sessions: where its two dividers are, and whether the sidebar is hidden. Without one the layout lasts as long as the page. | `LocalStorageLayoutStore`: local storage. | `FileLayoutStore`: one file beside the projects, registered by `AddBlazemojiProjectsOnDisk`. |
 | `IExternalLinks` (optional) | Opening the links in the title bar. Without one they are ordinary links that open in a new tab. | None. | `HermesExternalLinks`: the system's browser, since a link followed in the app's own window would take the editor away. |
 | `"Projects": { "Root": "..." }` in configuration (optional) | With `AddBlazemojiProjectsOnDisk`, the folder projects are kept under. Defaults to `Blazemoji` in the user's documents. A leading `~/` is the user's home. | Not used. | The default. |
 | `"ProjectTemplates": { "Path": "..." }` in configuration (optional) | The folder of project templates. Defaults to `Emojicode/Templates` beside the app. | The default. | The default. |
 | `"Samples": { "Path": "..." }` in configuration (optional) | The folder of sample programs in the Library tab. Defaults to `Emojicode/Samples` beside the app. | The default. | The default. |
 
-Both stores, and anything else a host puts behind `IProjectStore` or `ILibraryService`, report storage that cannot be used as a `ProjectStoreException`. For a project the editor then says that changes are not being saved and keeps them in memory. For a file saved to the library it says that the file could not be saved.
+The stores, and anything else a host puts behind `IProjectStore`, `ILibraryService` or `ILayoutStore`, report storage that cannot be used as a `ProjectStoreException`. For a project the editor then says that changes are not being saved and keeps them in memory. For a file saved to the library it says that the file could not be saved. A layout that cannot be kept is logged and nothing is said: the dividers still move, and are back at the default next time.
 
 The templates and samples are files of `Blazemoji.Core` (`Emojicode/Templates`, `Emojicode/Samples`). The build copies them beside any app that references the library, so every host offers the same ones without keeping copies.
 
 `AddBlazemojiEditor` keeps whatever was registered before it is called. Two uses:
 
-- **State lifetime.** It registers the state classes (`RunState`, `ProjectState`, `RequestState`, `LocalStorageFiles`) as scoped, which on a server is one set per circuit. A host with one user registers them as singletons first, as the desktop host does.
+- **State lifetime.** It registers the state classes (`RunState`, `ProjectState`, `RequestState`, `LayoutState`, `LocalStorageFiles`) as scoped, which on a server is one set per circuit. A host with one user registers them as singletons first, as the desktop host does.
 - **Templates or samples from somewhere other than a folder.** Register your own `IProjectTemplates` or `ISamples` first.
 
 The web host also raises the size of a message from the browser to 4 MiB (`AddHubOptions` in `Program.cs`), because the editor hands over a file's whole text. That limit belongs to Blazor Server; a Blazor Hybrid host has none.
@@ -80,7 +81,7 @@ The web host also raises the size of a message from the browser to 4 MiB (`AddHu
    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
    ```
 
-4. The scripts the components import themselves need nothing from the page: `_content/Blazemoji.Components/js/emojicodeLanguage.js` (the editor's help) and `_content/Blazemoji.Components/js/clipboard.js` (the Copy buttons) are loaded as modules when first used.
+4. The scripts the components import themselves need nothing from the page: `_content/Blazemoji.Components/js/emojicodeLanguage.js` (the editor's help), `_content/Blazemoji.Components/js/clipboard.js` (the Copy buttons), `_content/Blazemoji.Components/js/splitView.js` (settling a divider where it was let go) and `_content/Blazemoji.Components/js/programInput.js` (sending a line typed for a running program) are loaded as modules when first used.
 5. Blazor started from Monaco's ready callback, not automatically. Monaco defines itself a moment after its script loads, and an editor created before that silently does nothing:
 
    ```html
@@ -96,7 +97,7 @@ The web host also raises the size of a message from the browser to 4 MiB (`AddHu
 <Workspace />
 ```
 
-That is the whole editor: the Files, Toolbox and Library tabs, the editor with its help, and the Output, Problems and Requests tabs.
+That is the whole editor: the Files, Toolbox and Library tabs in a sidebar, the editor with its help beside it, and the Output, Problems and Requests tabs under the editor. The two dividers between them can be dragged, and the sidebar can be hidden (`SplitView`, around MudBlazor's split panel). Where they are left is the layout an `ILayoutStore` keeps.
 
 ## Projects on disk
 
@@ -111,6 +112,7 @@ That is the whole editor: the Files, Toolbox and Library tabs, the editor with i
   Snippets/               what was saved from the editor as a file of its own
   .blazemoji/
     state.json            which project was open last
+    layout.json           where the workspace's dividers are, and whether the sidebar is hidden
     trash/                see below
 ```
 
@@ -147,7 +149,7 @@ scripts/desktop-smoke.sh --compile      # also compile and run a program, throug
 scripts/desktop-smoke.sh --app <path>   # a copy that is already built, such as the one inside an unpacked release
 ```
 
-With `HERMES_SMOKE_TEST=1` the app runs the checks in `Blazemoji.Desktop/Scripts/smoke.ts` once its page is up (the editor loads and shows the project, the style sheets and font arrive, the editor has the page's colours, a key and the toolbox each type an emoji pair, completion answers, dark mode reaches the editor). It adds what only its own side can see (the project is a folder on disk, and the samples, the templates and the window's icon came with the app), prints the outcome and closes.
+With `HERMES_SMOKE_TEST=1` the app runs the checks in `Blazemoji.Desktop/Scripts/smoke.ts` once its page is up (the editor loads and shows the project, the style sheets and font arrive, the editor has the page's colours, a key and the toolbox each type an emoji pair, completion answers, dark mode reaches the editor, a dragged divider is heard and the sidebar settles where it was let go). It adds what only its own side can see (the project is a folder on disk, the samples, the templates and the window's icon came with the app, and the layout the drag left is in the projects folder), prints the outcome and closes.
 
 A smoke run types into the editor and what is typed is saved, so it never uses the folder the app is otherwise set to keep projects in, whatever `Projects__Root` says. It makes a temporary folder and removes it, or uses the one named by `BLAZEMOJI_SMOKE_PROJECTS` and leaves it.
 

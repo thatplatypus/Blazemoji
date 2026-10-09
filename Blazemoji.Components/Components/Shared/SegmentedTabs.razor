@@ -188,7 +188,12 @@
     /// <returns>True when the strip has just become too narrow for its tabs, or wide enough again.</returns>
     private bool Measured(double width)
     {
-        var compact = width > 0 && width < CompactBelow;
+        // No width at all is a strip that is hidden, or not laid out yet. That says nothing
+        // about how wide it is when it shows, so what was known before stands.
+        if (width <= 0)
+            return false;
+
+        var compact = width < CompactBelow;
         if (compact == _compact)
             return false;
 

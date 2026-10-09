@@ -75,6 +75,7 @@ public static class Program
         builder.Services.AddSingleton<RunState>();
         builder.Services.AddSingleton<ProjectState>();
         builder.Services.AddSingleton<RequestState>();
+        builder.Services.AddSingleton<LayoutState>();
         builder.Services.AddSingleton<LocalStorageFiles>();
         builder.Services.AddBlazemojiEditor(builder.Configuration);
 

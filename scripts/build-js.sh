@@ -9,9 +9,11 @@ npx --yes --package typescript@5.9.3 tsc \
   --target ES2020 --module ES2020 --strict --newLine lf \
   --outDir Blazemoji.Components/wwwroot/js \
   Blazemoji.Components/Scripts/emojicodeLanguage.ts \
-  Blazemoji.Components/Scripts/clipboard.ts
+  Blazemoji.Components/Scripts/clipboard.ts \
+  Blazemoji.Components/Scripts/splitView.ts \
+  Blazemoji.Components/Scripts/programInput.ts
 
-echo "wrote Blazemoji.Components/wwwroot/js/emojicodeLanguage.js and clipboard.js"
+echo "wrote Blazemoji.Components/wwwroot/js/emojicodeLanguage.js, clipboard.js, splitView.js and programInput.js"
 
 npx --yes --package typescript@5.9.3 tsc \
   --target ES2020 --module ES2020 --strict --newLine lf --lib ES2020,DOM,DOM.Iterable \

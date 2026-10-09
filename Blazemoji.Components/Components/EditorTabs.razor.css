@@ -1,0 +1,6 @@
+/* MudBlazor writes a tab's text in capitals. A file's name is not a heading, and its
+   letters are its own. */
+.editor-tab-name {
+    text-transform: none;
+    white-space: nowrap;
+}

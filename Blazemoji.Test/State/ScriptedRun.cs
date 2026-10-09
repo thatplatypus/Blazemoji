@@ -37,16 +37,28 @@ namespace Blazemoji.Test.State
             Ended = true;
         }
 
+        /// <summary>Ends the events with a failure, as when the toolchain goes away in the middle of a run.</summary>
+        public void Fail(Exception failure)
+        {
+            _events.Writer.Complete(failure);
+            Ended = true;
+        }
+
         public IAsyncEnumerable<RunEvent> ReadEventsAsync(CancellationToken cancellationToken = default) =>
             _events.Reader.ReadAllAsync(cancellationToken);
 
-        public Task WriteInputAsync(string text, bool endOfInput = false, CancellationToken cancellationToken = default)
+        /// <summary>What a write of input waits for, or fails with, before it is taken. Without it input is taken at once.</summary>
+        public Func<string, Task>? BeforeInput { get; set; }
+
+        public async Task WriteInputAsync(string text, bool endOfInput = false, CancellationToken cancellationToken = default)
         {
             if (Ended)
                 throw new InvalidOperationException("The run has ended.");
 
+            if (BeforeInput is { } before)
+                await before(text);
+
             Input.Add((text, endOfInput));
-            return Task.CompletedTask;
         }
 
         public Task<ProgramResponse> SendHttpAsync(ProgramRequest request, CancellationToken cancellationToken = default)

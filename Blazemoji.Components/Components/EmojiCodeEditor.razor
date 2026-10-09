@@ -77,6 +77,11 @@
         {
             // The editor is as big as the room the workspace gives it, which changes with the window.
             AutomaticLayout = true,
+
+            // Its lists and hints may reach past its own edges. The workspace clips the editor
+            // to its part, and with the output under it Monaco opens a list downwards from the
+            // last lines, where most of it would otherwise be cut off.
+            FixedOverflowWidgets = true,
             Language = LanguageId,
             Value = string.Empty,
 
@@ -169,7 +174,8 @@
     /// Shows a file. The first time a key is seen a model is made for it with
     /// <paramref name="content"/>; after that the model already holds what was typed.
     /// </summary>
-    public async Task OpenFileAsync(string key, string content)
+    /// <param name="takeKeys">Give the editor the keyboard as the file is shown.</param>
+    public async Task OpenFileAsync(string key, string content, bool takeKeys = false)
     {
         if (_initializing)
             return;
@@ -180,7 +186,26 @@
             _models[key] = model;
         }
 
-        await _editor.SetModel(model);
+        // The script shows it with the cursor and the scroll where they were left in this
+        // file. Where it cannot, the editor's own way shows it from the top. A page that
+        // has been open since before the script could do this still holds the older copy.
+        bool shown;
+        try
+        {
+            shown = await _language.ShowModelAsync(EditorId, model.Uri, takeKeys);
+        }
+        catch (JSException)
+        {
+            shown = false;
+        }
+
+        if (!shown)
+        {
+            await _editor.SetModel(model);
+            if (takeKeys)
+                await _editor.Focus();
+        }
+
         _shown = model;
     }
 

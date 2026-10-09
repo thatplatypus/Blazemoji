@@ -1,0 +1,13 @@
+@* One of a SplitView's two parts. The split view draws its parts through these, and not as
+   its own content, so that new content from its caller can be drawn without drawing the
+   panel around it again. *@
+@Of()
+
+@code {
+    /// <summary>Hands over what the part holds now. Asked each time the part is drawn.</summary>
+    [Parameter, EditorRequired]
+    public Func<RenderFragment?> Of { get; set; } = default!;
+
+    /// <summary>Draws the part again, with whatever <see cref="Of"/> hands over now.</summary>
+    public void Refresh() => StateHasChanged();
+}
