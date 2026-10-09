@@ -1,7 +1,7 @@
 # Settings core
 
 - **Date:** 2026-10-09
-- **Branch:** `settings-core`, from `editor-tabs` as it stood on 2026-10-09. It was to wait for that branch to be merged; Tom said the same day that it was only waiting to be pushed and to branch from it
+- **Branch:** `settings-core`, from `editor-tabs` as it stood on 2026-10-09. It was to wait for that branch to be merged; Tom said the same day that it was only waiting to be pushed and to branch from it. Once it was merged the branch was rebased onto `main` (`9ed1888`), whose files were the same
 - **Status:** read by Tom on 2026-10-09 ("Seems good"). Being built from `docs/superpowers/plans/2026-10-09-settings-core.md`
 - **Part 1 of 3.** Part 2 is the desktop app's update check over GitHub Releases. Part 3 is the rest of Monaco's options. Each has a spec of its own
 

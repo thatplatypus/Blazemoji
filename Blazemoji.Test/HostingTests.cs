@@ -264,6 +264,21 @@ namespace Blazemoji.Test
         }
 
         [Fact]
+        public void The_document_says_what_a_host_does_for_settings_and_uses_the_word_in_one_sense()
+        {
+            var document = Document();
+
+            document.ShouldContain("`ISettingsStore`");
+            document.ShouldContain("`LocalStorageSettingsStore`");
+            document.ShouldContain("`FileSettingsStore`");
+            document.ShouldContain("settings.json");
+            document.ShouldContain("SettingHosts.Desktop");
+            document.ShouldContain("`SettingsState`");
+            document.ShouldContain("## Adding a setting");
+            document.ShouldNotContain("## The one setting");
+        }
+
+        [Fact]
         public void The_library_styles_what_it_draws_without_bootstrap()
         {
             var markup = Directory.EnumerateFiles(Path.Combine(RepositoryRoot(), "Blazemoji.Components"), "*.razor", SearchOption.AllDirectories)

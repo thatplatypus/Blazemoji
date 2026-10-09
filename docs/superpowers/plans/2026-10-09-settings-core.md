@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- The branch is `settings-core`, made from `editor-tabs` as it stood on 2026-10-09 (`9d795d7`), on Tom's word that it was only waiting to be pushed. This plan was written against those files.
+- The branch is `settings-core`, made from `editor-tabs` as it stood on 2026-10-09 (`9d795d7`), on Tom's word that it was only waiting to be pushed. This plan was written against those files. After Task 10, once `editor-tabs` had been merged, the branch was rebased onto `main` (`9ed1888`), whose files were the same.
 - No reference to Mythetech.Framework and no message bus. Every project stays on `net10.0`.
 - Only `SettingsState` changes a setting. A setting's setter is `private`, and settings are declared on the section class itself, not on a base class of it.
 - A setting is a `bool`, an `int`, a `double` or a `string`. Nothing else.
