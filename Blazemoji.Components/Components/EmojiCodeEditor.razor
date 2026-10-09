@@ -185,7 +185,11 @@
             _models[key] = model;
         }
 
-        await _editor.SetModel(model);
+        // The script shows it with the cursor and the scroll where they were left in this
+        // file. Where it cannot, the editor's own way shows it from the top.
+        if (!await _language.ShowModelAsync(EditorId, model.Uri))
+            await _editor.SetModel(model);
+
         _shown = model;
     }
 

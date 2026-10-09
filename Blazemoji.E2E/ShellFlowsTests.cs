@@ -273,10 +273,13 @@ namespace Blazemoji.E2E
                     document.querySelector('[data-testid=run-button]'),
                     document.querySelector('[data-testid=stop-button]'),
                     ...document.querySelectorAll('[role=tab]'),
-                ].map(element => `${element.textContent.trim()}: ${getComputedStyle(element).textTransform}`)
+                ].map(element => element.querySelector('[data-testid=editor-tab]') ?? element)
+                 .map(element => `${element.textContent.trim()}: ${getComputedStyle(element).textTransform}`)
                 """);
 
-            transforms.Length.ShouldBe(8);
+            // Run and Stop, the six tabs of the two panels, and the tab of the open file, whose
+            // name is in an element of its own inside a tab that MudBlazor draws.
+            transforms.Length.ShouldBe(9);
             transforms.ShouldAllBe(transform => transform.EndsWith(": none"));
         }
 

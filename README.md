@@ -30,6 +30,7 @@ Features include:
 - Emojicode quick reference toolbox
 - Code editor keybindings for common emojis like `shift`+`"` turns into `🔤`
 - Pairs that close themselves: typing `🍇`, `🤜`, `🍿`, `🐚` or `🔤` brings its closer, and the editor shows which `🍉` belongs to which `🍇`
+- Tabs above the editor for the files that are open
 - Library of sample scripts with support for saving scripts of your own
 - Panels you can resize: drag the divider beside the sidebar or the one under the editor, or hide the sidebar, and it is the same next time
 - More coming soon
@@ -101,7 +102,7 @@ The sidebar (Files, Toolbox, Library) is beside the editor, and Output, Problems
 
 ## Projects
 
-A project is a set of files that are compiled together, a name, and one file marked as the entry: the file handed to the compiler. Other files join in when a file includes them with `📜`, by a path from the including file. The **Files** tab lists them as a tree, and each file has a menu to rename it, make it the entry, or delete it. A name with slashes puts a file in folders (`lib/greeter.🍇`).
+A project is a set of files that are compiled together, a name, and one file marked as the entry: the file handed to the compiler. Other files join in when a file includes them with `📜`, by a path from the including file. The **Files** tab lists them as a tree, and each file has a menu to rename it, make it the entry, or delete it. A file opened from the list gets a tab above the editor; a click on a tab brings its file back with the cursor where it was left, and the cross on a tab closes the tab and leaves the file in the project. A name with slashes puts a file in folders (`lib/greeter.🍇`).
 
 In the web app projects are kept in the browser's local storage, so they are still there after a reload and are not shared between browsers. In the desktop app they are folders on disk. New projects start from a template: a folder under `Blazemoji.Core/Emojicode/Templates` with a `template.json` and the files.
 

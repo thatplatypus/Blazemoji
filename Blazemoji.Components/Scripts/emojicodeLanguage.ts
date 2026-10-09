@@ -99,6 +99,44 @@ function editorWithId(editorId: string): any | undefined {
     return monaco.editor.getEditors().find((candidate: any) => candidate.getContainerDomNode()?.id === editorId);
 }
 
+// Where the cursor and the scroll were in each file, by the address of its model. Monaco keeps
+// these with the editor and not with the model, so showing another model forgets them.
+const whereItWasLeft = new Map<string, unknown>();
+
+// Shows another file's model in the editor with this element id, and puts the cursor and the
+// scroll back where they were when that file was last shown. All in one call, so that
+// switching files is one round trip. False when there is no such editor or no such model.
+export function showModel(editorId: string, modelUri: string): boolean {
+    const editor = editorWithId(editorId);
+    const model = monaco.editor.getModels().find((candidate: any) => candidate.uri.toString() === modelUri);
+    if (!editor || !model) {
+        return false;
+    }
+
+    const leaving = editor.getModel();
+    if (leaving !== model) {
+        if (leaving) {
+            whereItWasLeft.set(leaving.uri.toString(), editor.saveViewState());
+        }
+
+        editor.setModel(model);
+        const left = whereItWasLeft.get(modelUri);
+        if (left) {
+            editor.restoreViewState(left);
+        }
+    }
+
+    // A file that has gone takes its place in the list with it.
+    const open = new Set<string>(monaco.editor.getModels().map((candidate: any) => candidate.uri.toString()));
+    for (const uri of [...whereItWasLeft.keys()]) {
+        if (!open.has(uri)) {
+            whereItWasLeft.delete(uri);
+        }
+    }
+
+    return true;
+}
+
 // Names the text and the selection as they are now, so that an edit worked out from them can
 // tell whether they are still the same when it arrives.
 function stampOf(editor: any): string {

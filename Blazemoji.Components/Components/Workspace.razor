@@ -261,17 +261,20 @@
     }
 
     // What was typed in the file on show reaches the project when typing pauses. A tab can
-    // be clicked sooner than that, so it is taken first.
+    // be clicked sooner than that, so it is taken first. The editor is given the keyboard
+    // afterwards: someone who has just chosen a file means to type in it.
     private async Task ShowTabAsync(string path)
     {
         await SyncOpenFileAsync();
         _projectState.SelectFile(path);
+        await _editor.Editor.Focus();
     }
 
     private async Task CloseTabAsync(string path)
     {
         await SyncOpenFileAsync();
         _projectState.CloseFile(path);
+        await _editor.Editor.Focus();
     }
 
     private async Task StopClicked()
