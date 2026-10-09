@@ -32,6 +32,23 @@ function put(value, line, column) {
     editor().setPosition({ lineNumber: line, column });
     editor().focus();
 }
+const windowSize = () => `The window is ${window.innerWidth} by ${window.innerHeight}.`;
+// In a wide window the Toolbox has a tab of its own. In a narrow one, which is what a build
+// machine's small screen gives, the strip shows only the open tab and a menu of them all.
+async function openTheToolbox() {
+    const named = (candidates) => [...candidates].find(candidate => candidate.textContent?.includes("Toolbox"));
+    const tab = named(document.querySelectorAll("[role=tab]"));
+    if (tab) {
+        tab.click();
+        return;
+    }
+    const menu = document.querySelector("[data-testid=more-tabs] button");
+    must(menu, `There is no Toolbox tab, and no menu of tabs to find it in. ${windowSize()}`);
+    menu.click();
+    const item = await until(() => named(document.querySelectorAll(".mud-popover-open .mud-menu-item")), 5000);
+    must(item, `The menu of tabs has no Toolbox in it. ${windowSize()}`);
+    item.click();
+}
 const checks = [
     ["editor-shows-the-project", async () => {
             must(await until(() => typeof monaco !== "undefined" && editor(), 30000), "Monaco did not load, or no editor was made.");
@@ -61,9 +78,9 @@ const checks = [
         }],
     ["toolbox-types-an-emoji", async () => {
             put("🏁 ", 1, 4);
-            [...document.querySelectorAll("[role=tab]")].find(tab => tab.textContent?.includes("Toolbox"))?.click();
+            await openTheToolbox();
             const tile = await until(() => [...document.querySelectorAll(".emoji-tile-insert")].find(button => button.textContent?.includes("🍇")), 10000);
-            must(tile, "The toolbox has no 🍇 to press.");
+            must(tile, `The toolbox is open and has no 🍇 to press. ${windowSize()}`);
             tile.click();
             must(await until(() => text() === "🏁 🍇🍉", 5000), `Pressing 🍇 in the toolbox left ${JSON.stringify(text())}.`);
         }],
@@ -106,6 +123,12 @@ export async function run(alsoCompile) {
         }
         catch (thrown) {
             error = thrown instanceof Error ? thrown.message : String(thrown);
+            if (document.hidden) {
+                // A web view whose window is covered, minimized or behind a locked screen
+                // stops drawing and slows its timers, and several checks wait for something
+                // to be drawn.
+                error += " The window was not in view at the time, and a page that is not in view does not draw: run it again with the window showing.";
+            }
         }
         outcomes.push({ name, passed: error === null, durationMs: Math.round(performance.now() - started), error });
     }

@@ -1,0 +1,492 @@
+# Builds the desktop app for Windows, macOS and Linux, packs each with Velopack, checks that
+# each packed copy starts and passes its own smoke run, and drafts a GitHub release with the
+# installers. Run by hand from the Actions tab.
+#
+# Signing is off unless asked for, and cannot work until this repository has the secrets the
+# signing steps name: a Trusted Signing account for Windows, and Developer ID certificates and
+# a notary login for macOS. Unsigned builds run, but Windows and macOS will warn whoever
+# downloads them.
+name: Publish Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, such as 0.2.0. Left empty it is 0.1.<run number>."
+        required: false
+        type: string
+        default: ""
+      enable_signing:
+        description: "Sign and notarize. Needs the signing secrets."
+        required: false
+        type: boolean
+        default: false
+      create_release:
+        description: "Draft a GitHub release with the installers."
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  APP_NAME: Blazemoji
+  PROJECT_PATH: Blazemoji.Desktop/Blazemoji.Desktop.csproj
+  ENTITLEMENTS_PATH: Blazemoji.Desktop/Blazemoji.entitlements
+  # An icon is used where the file is there. Without one Velopack uses its own.
+  ICON_WINDOWS: Blazemoji.Desktop/wwwroot/logo.ico
+  ICON_LINUX: Blazemoji.Desktop/wwwroot/logo.png
+  ICON_MACOS: Blazemoji.Desktop/wwwroot/logo.icns
+
+jobs:
+  test:
+    name: Version and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+    - name: Get Version
+      id: get_version
+      shell: bash
+      env:
+        ASKED_FOR: ${{ inputs.version }}
+      run: |
+        version="${ASKED_FOR:-0.1.${{ github.run_number }}}"
+        if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+          echo "::error::\"$version\" is not a version such as 0.2.0 or 0.2.0-beta.1"
+          exit 1
+        fi
+        echo "VERSION=$version" >> "$GITHUB_OUTPUT"
+
+    - name: Run the tests with the real compiler
+      run: scripts/test-in-docker.sh
+
+  publish:
+    name: Publish and pack (${{ matrix.platform }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            platform: Windows
+          - os: ubuntu-24.04
+            rid: linux-x64
+            platform: Linux
+          - os: macos-latest
+            rid: osx-arm64
+            platform: macOS
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+    - name: Setup .NET (from global.json)
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      with:
+        global-json-file: global.json
+
+    - name: Install Velopack CLI
+      run: dotnet tool update -g vpk
+
+    - name: Cache NuGet packages
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json') }}
+        restore-keys: |
+          nuget-${{ runner.os }}-
+
+    - name: Select icon
+      id: icon
+      shell: bash
+      run: |
+        case "${{ matrix.platform }}" in
+          Windows) icon="$ICON_WINDOWS" ;;
+          Linux) icon="$ICON_LINUX" ;;
+          macOS) icon="$ICON_MACOS" ;;
+        esac
+        if [ -f "$icon" ]; then
+          echo "path=$icon" >> "$GITHUB_OUTPUT"
+        else
+          echo "No icon at $icon, so the packed app has Velopack's own."
+        fi
+
+    # ====================
+    # WINDOWS SIGNING SETUP
+    # ====================
+    - name: Create Azure Trusted Signing Metadata
+      if: matrix.os == 'windows-latest' && inputs.enable_signing
+      run: |
+        $metadata = @{
+          Endpoint = "${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}"
+          CodeSigningAccountName = "${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}"
+          CertificateProfileName = "${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME }}"
+        }
+        $metadata | ConvertTo-Json | Out-File -FilePath azure-signing-metadata.json -Encoding utf8
+      shell: pwsh
+
+    - name: Azure login
+      if: matrix.os == 'windows-latest' && inputs.enable_signing
+      uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        allow-no-subscriptions: true
+
+    # ====================
+    # MACOS SIGNING SETUP
+    # ====================
+    - name: Install Apple certificates and notary profile
+      if: matrix.os == 'macos-latest' && inputs.enable_signing
+      env:
+        BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+        INSTALLER_CERTIFICATE_BASE64: ${{ secrets.INSTALLER_CERTIFICATE_BASE64 }}
+        P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+        APPLE_ID: ${{ secrets.APPLE_USERNAME_ID }}
+        APPLE_PASSWORD: ${{ secrets.APPLE_APP_ID_PASSWORD }}
+        APPLE_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      run: |
+        CERT_BUILD_PATH="$RUNNER_TEMP/build_certificate.p12"
+        CERT_INSTALLER_PATH="$RUNNER_TEMP/installer_certificate.p12"
+        KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+        echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_BUILD_PATH"
+        echo -n "$INSTALLER_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_INSTALLER_PATH"
+
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+        security import "$CERT_BUILD_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+        security import "$CERT_INSTALLER_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+        security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+        xcrun notarytool store-credentials --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM" --password "$APPLE_PASSWORD" --keychain "$KEYCHAIN_PATH" velopack-profile
+
+    # ====================
+    # BUILD AND PACKAGE
+    # ====================
+    - name: Publish
+      shell: bash
+      run: dotnet publish "$PROJECT_PATH" -c Release -r ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -p:PublishTrimmed=false -p:Version=${{ needs.test.outputs.version }} -o publish/${{ matrix.rid }}
+
+    - name: Create Velopack Release (Windows signed)
+      if: matrix.os == 'windows-latest' && inputs.enable_signing
+      shell: bash
+      run: vpk pack -u "$APP_NAME" -v ${{ needs.test.outputs.version }} -o "releases/${{ matrix.platform }}" -p "publish/${{ matrix.rid }}" --azureTrustedSignFile azure-signing-metadata.json ${ICON:+--icon "$ICON"}
+      env:
+        ICON: ${{ steps.icon.outputs.path }}
+
+    - name: Create Velopack Release (Windows unsigned)
+      if: matrix.os == 'windows-latest' && !inputs.enable_signing
+      shell: bash
+      run: vpk pack -u "$APP_NAME" -v ${{ needs.test.outputs.version }} -o "releases/${{ matrix.platform }}" -p "publish/${{ matrix.rid }}" ${ICON:+--icon "$ICON"}
+      env:
+        ICON: ${{ steps.icon.outputs.path }}
+
+    - name: Create Velopack Release (Linux)
+      if: matrix.platform == 'Linux'
+      shell: bash
+      run: vpk pack -u "$APP_NAME" -v ${{ needs.test.outputs.version }} -o "releases/${{ matrix.platform }}" -p "publish/${{ matrix.rid }}" ${ICON:+--icon "$ICON"}
+      env:
+        ICON: ${{ steps.icon.outputs.path }}
+
+    - name: Create Velopack Release (macOS unsigned)
+      if: matrix.os == 'macos-latest' && !inputs.enable_signing
+      shell: bash
+      run: vpk pack -u "$APP_NAME" -v ${{ needs.test.outputs.version }} -o "releases/${{ matrix.platform }}" -p "publish/${{ matrix.rid }}" ${ICON:+--icon "$ICON"}
+      env:
+        ICON: ${{ steps.icon.outputs.path }}
+
+    # ====================
+    # MACOS BUNDLE, SIGN, NOTARIZE
+    # ====================
+    # Signing has to happen BEFORE `vpk pack`, because pack is what produces the .nupkg an
+    # updater would download. Signing the packed output afterwards only reaches the .pkg and the
+    # portable .zip, so an in-app update would overwrite the Developer ID signature with the
+    # ad-hoc one dotnet publish leaves behind: no notarization, no hardened runtime, no entitlements,
+    # and a new code identity each build.
+    - name: Bundle macOS app
+      if: matrix.os == 'macos-latest' && inputs.enable_signing
+      shell: bash
+      run: vpk bundle -u "$APP_NAME" -v ${{ needs.test.outputs.version }} -o bundle -p "publish/${{ matrix.rid }}" ${ICON:+--icon "$ICON"}
+      env:
+        ICON: ${{ steps.icon.outputs.path }}
+
+    - name: Restructure and pre-sign macOS binaries
+      if: matrix.os == 'macos-latest' && inputs.enable_signing
+      shell: bash
+      env:
+        SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_APP_IDENTITY }}
+        KEYCHAIN_PATH: ${{ runner.temp }}/app-signing.keychain-db
+      run: |
+        set -euo pipefail
+        APP_PATH="bundle/$APP_NAME.app"
+        ENTITLEMENTS="$ENTITLEMENTS_PATH"
+
+        # codesign seals a plain file in Contents/MacOS with an extended attribute, and xattrs do not
+        # survive the .nupkg round trip an updater uses. Move everything that is not a Mach-O image
+        # into Contents/Resources and symlink it back; symlinks need no signature of their own.
+        # The updater (UpdateMac) only creates directories that hold a file; empty directory entries
+        # in the .nupkg are skipped. A symlink to a directory that ends up empty therefore dangles
+        # after an update, and Gatekeeper rejects the whole app as damaged. Drop what `vpk pack`
+        # would exclude anyway (its default --exclude is .pdb, plus createdump, .vshost., .nupkg)
+        # so emptiness is visible now, then drop the empty directories.
+        echo "Removing files vpk excludes and empty directories..."
+        find "$APP_PATH/Contents/MacOS" -type f \( -name "*.pdb" -o -name "createdump*" -o -name "*.vshost.*" -o -name "*.nupkg" \) -print -delete
+        find "$APP_PATH/Contents/MacOS" -mindepth 1 -type d -empty -print -delete
+
+        echo "Moving non-code files out of Contents/MacOS..."
+        mkdir -p "$APP_PATH/Contents/Resources"
+
+        while IFS= read -r -d '' dir; do
+          name=$(basename "$dir")
+          echo "  directory: $name"
+          mv "$dir" "$APP_PATH/Contents/Resources/"
+          ln -s "../Resources/$name" "$APP_PATH/Contents/MacOS/$name"
+        done < <(find "$APP_PATH/Contents/MacOS" -mindepth 1 -maxdepth 1 -type d -print0)
+
+        while IFS= read -r -d '' file; do
+          if ! file "$file" | grep -q "Mach-O"; then
+            name=$(basename "$file")
+            echo "  file: $name"
+            mv "$file" "$APP_PATH/Contents/Resources/"
+            ln -s "../Resources/$name" "$APP_PATH/Contents/MacOS/$name"
+          fi
+        done < <(find "$APP_PATH/Contents/MacOS" -maxdepth 1 -type f -print0)
+
+        # Collect every Mach-O image left in the bundle, wherever it now lives.
+        MACHO_LIST=$(mktemp)
+        while IFS= read -r -d '' file; do
+          if file "$file" | grep -q "Mach-O"; then
+            printf '%s\n' "$file" >> "$MACHO_LIST"
+          fi
+        done < <(find "$APP_PATH" -type f -print0)
+
+        echo "Removing dotnet's ad-hoc signatures..."
+        while IFS= read -r file; do
+          codesign --remove-signature "$file" 2>/dev/null || true
+        done < "$MACHO_LIST"
+
+        # Pre-sign every nested binary so `vpk pack --signDisableDeep` only has to sign the binaries
+        # it adds itself plus the final bundle. Deep signing is Velopack's default but it is
+        # documented there as unreliable, and the main executable is signed last so the bundle
+        # signature seals binaries that are already valid.
+        echo "Signing nested binaries with entitlements..."
+        while IFS= read -r file; do
+          if [ "$file" != "$APP_PATH/Contents/MacOS/$APP_NAME" ]; then
+            echo "  $file"
+            codesign -s "$SIGN_IDENTITY" -f --timestamp --options runtime \
+              --entitlements "$ENTITLEMENTS" --keychain "$KEYCHAIN_PATH" "$file"
+          fi
+        done < "$MACHO_LIST"
+
+        echo "Signing main executable..."
+        codesign -s "$SIGN_IDENTITY" -f --timestamp --options runtime \
+          --entitlements "$ENTITLEMENTS" --keychain "$KEYCHAIN_PATH" \
+          "$APP_PATH/Contents/MacOS/$APP_NAME"
+
+        rm -f "$MACHO_LIST"
+
+        echo "Checking every symlink resolves..."
+        broken=0
+        while IFS= read -r -d '' link; do
+          if [ ! -e "$link" ]; then
+            echo "::error::Dangling symlink in bundle: $link -> $(readlink "$link")"
+            broken=1
+          fi
+        done < <(find "$APP_PATH" -type l -print0)
+        [ "$broken" -eq 0 ]
+
+    - name: Create Velopack Release (macOS signed)
+      if: matrix.os == 'macos-latest' && inputs.enable_signing
+      shell: bash
+      run: |
+        vpk pack -u "$APP_NAME" -v ${{ needs.test.outputs.version }} \
+          -o "releases/${{ matrix.platform }}" -p "bundle/$APP_NAME.app" \
+          --signAppIdentity "${{ secrets.MACOS_SIGN_APP_IDENTITY }}" \
+          --signInstallIdentity "${{ secrets.MACOS_SIGN_INSTALL_IDENTITY }}" \
+          --signEntitlements "$ENTITLEMENTS_PATH" \
+          --signDisableDeep \
+          --notaryProfile velopack-profile \
+          --keychain "${{ runner.temp }}/app-signing.keychain-db"
+
+    # Install the full update package the way UpdateMac does (directory entries skipped, .__symlink
+    # entries turned into symlinks after the files) and make Gatekeeper assess the result. A bundle
+    # that only breaks after an in-app update is otherwise invisible until a user hits it.
+    - name: Verify macOS update package installs as a valid app
+      if: matrix.os == 'macos-latest' && inputs.enable_signing
+      shell: bash
+      env:
+        RELEASE_DIR: releases/${{ matrix.platform }}
+      run: |
+        set -euo pipefail
+        NUPKG=$(find "$RELEASE_DIR" -name "*-full.nupkg" -type f | head -n 1)
+        if [ -z "$NUPKG" ]; then
+          echo "::error::No full .nupkg found in $RELEASE_DIR"
+          exit 1
+        fi
+        TARGET="$RUNNER_TEMP/update-check/$APP_NAME.app"
+        rm -rf "$RUNNER_TEMP/update-check"
+        mkdir -p "$TARGET"
+
+        python3 - "$NUPKG" "$TARGET" <<'PY'
+        import os, re, sys, zipfile
+        nupkg, target = sys.argv[1], sys.argv[2]
+        prefix = re.compile(r"lib[\\/][^\\/]*[\\/]")
+        symlinks = []
+        with zipfile.ZipFile(nupkg) as z:
+            for info in z.infolist():
+                name = info.filename
+                if not prefix.match(name) or name.endswith("/"):
+                    continue
+                rel = prefix.sub("", name, count=1)
+                if rel.endswith(".__symlink"):
+                    symlinks.append((rel[: -len(".__symlink")], z.read(info).decode().rstrip("/")))
+                    continue
+                dest = os.path.join(target, rel)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "wb") as f:
+                    f.write(z.read(info))
+                os.chmod(dest, 0o755)
+        for rel, link_target in symlinks:
+            dest = os.path.join(target, rel)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            os.symlink(link_target, dest)
+        print(f"Installed {nupkg} to {target} ({len(symlinks)} symlinks)")
+        PY
+
+        codesign --verify --deep --strict --verbose=2 "$TARGET"
+        spctl --assess --type exec -vv "$TARGET"
+
+    - name: Clean up keychain
+      if: matrix.os == 'macos-latest' && inputs.enable_signing && always()
+      run: security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db"
+
+    - name: Upload Release Artifacts
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: ${{ env.APP_NAME }}-${{ matrix.platform }}-${{ needs.test.outputs.version }}
+        path: releases/${{ matrix.platform }}
+        retention-days: 3
+
+  # ====================
+  # SMOKE TESTS
+  # ====================
+  # Each packed copy is unpacked the way someone who downloaded it would have it, started, and
+  # asked to check itself. The app reports in the words of Hermes's smoke protocol and the
+  # repository's own script judges it.
+  smoke-test:
+    name: Smoke test (${{ matrix.platform }})
+    needs: [test, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: Windows
+          - os: macos-latest
+            platform: macOS
+          # Named, not "latest": the display and web view below are installed by package
+          # name, and the names change between Ubuntu releases.
+          - os: ubuntu-24.04
+            platform: Linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+    - name: Download Build Artifacts
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      with:
+        name: ${{ env.APP_NAME }}-${{ matrix.platform }}-${{ needs.test.outputs.version }}
+        path: releases/
+
+    - name: Install a display and a web view (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0 libwebkit2gtk-4.1-0 libnotify4 libfuse2
+
+    - name: Unpack the app and have it check itself
+      shell: bash
+      run: |
+        ls -la releases/
+        case "${{ matrix.platform }}" in
+          macOS)
+            unzip -q "$(find releases -name '*Portable*.zip' | head -n 1)" -d unpacked
+            xattr -cr "unpacked/$APP_NAME.app"
+            scripts/desktop-smoke.sh --app "unpacked/$APP_NAME.app/Contents/MacOS/$APP_NAME"
+            ;;
+          Linux)
+            image="$(find releases -name '*.AppImage' | head -n 1)"
+            chmod +x "$image"
+            xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" scripts/desktop-smoke.sh --app "$image"
+            ;;
+          Windows)
+            unzip -q "$(find releases -name '*Portable*.zip' | head -n 1)" -d unpacked
+            scripts/desktop-smoke.sh --app "$(find unpacked -name "$APP_NAME.exe" -path '*current*' | head -n 1)"
+            ;;
+        esac
+      env:
+        SMOKE_OUTPUT: ${{ github.workspace }}/smoke-output
+
+    - name: Keep what the app said
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: smoke-output-${{ matrix.platform }}
+        path: smoke-output
+        retention-days: 14
+        if-no-files-found: ignore
+
+  # ====================
+  # RELEASE
+  # ====================
+  # Only after every platform's packed copy passed its smoke test. The release is a draft:
+  # nothing is public until someone publishes it from the Releases page.
+  release:
+    name: Draft the release
+    needs: [test, publish, smoke-test]
+    if: inputs.create_release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download every platform's build
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      with:
+        pattern: ${{ env.APP_NAME }}-*-${{ needs.test.outputs.version }}
+        path: releases
+
+    - name: Draft the release with the installers
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        VERSION: ${{ needs.test.outputs.version }}
+        SIGNED: ${{ inputs.enable_signing }}
+      run: |
+        files="$(find releases -type f \( -name '*Setup.exe' -o -name '*Portable.zip' -o -name '*.pkg' -o -name '*.AppImage' \))"
+        echo "$files"
+        notes="Built from ${{ github.sha }}."
+        [ "$SIGNED" = "true" ] || notes="$notes These builds are not signed, so Windows and macOS will warn before running them."
+        # shellcheck disable=SC2086
+        gh release create "v$VERSION" --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+          --draft --title "$APP_NAME $VERSION" --notes "$notes" $files

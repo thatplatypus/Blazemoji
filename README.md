@@ -145,6 +145,8 @@ Each run gets its own working directory and limits on wall-clock time, processor
 
 ## Running Tests
 
+Every pull request runs the three scripts below on GitHub: the tests with the real compiler, the browser tests, and the desktop app's own check on macOS, Linux and Windows (`.github/workflows/ci.yml`). They are the same scripts that run at a desk.
+
 ```bash
 dotnet test --solution Blazemoji.sln
 ```

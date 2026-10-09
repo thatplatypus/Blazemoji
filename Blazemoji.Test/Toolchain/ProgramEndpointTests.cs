@@ -171,7 +171,7 @@ namespace Blazemoji.Test.Toolchain
         [Fact]
         public async Task Nothing_listening_on_the_port_is_reported_as_not_listening()
         {
-            using var endpoint = new ProgramEndpoint(FreePort(), Generous, 1024 * 1024);
+            using var endpoint = new ProgramEndpoint(PortNothingListensOn, Generous, 1024 * 1024);
 
             var response = await endpoint.SendAsync(Get("/"), TestContext.Current.CancellationToken);
 
@@ -247,12 +247,10 @@ namespace Blazemoji.Test.Toolchain
 
         private static ProgramRequest Get(string path) => new("GET", path, [], []);
 
-        private static int FreePort()
-        {
-            using var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            return ((IPEndPoint)listener.LocalEndpoint).Port;
-        }
+        // Below the ports a system hands out to whoever asks for any, so no other test can be
+        // given it. Asking for a free port and letting it go left it for whichever test bound
+        // next, and now and then something was listening after all.
+        private const int PortNothingListensOn = 1;
 
         /// <summary>
         /// The HTTP client tries again on a fresh connection when one is closed on it, so the

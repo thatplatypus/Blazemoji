@@ -26,7 +26,8 @@ namespace Blazemoji.Test.Service
 
         public ToolchainClientOverTheWireTests()
         {
-            _factory.UseKestrel(0);
+            // No port is asked for here. The factory's own address is a free port on this machine alone.
+            _factory.UseKestrel();
             _factory.StartServer();
             _serviceAddress = new Uri(_factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First());
             _factory.Toolchain.StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>()).Returns<IToolchainRun>(_run);
@@ -52,6 +53,32 @@ namespace Blazemoji.Test.Service
             new(ProgramResponseOutcome.Answered, status, null, [new(headerName, headerValue)], Encoding.UTF8.GetBytes("from the program"), TimeSpan.Zero);
 
         private static ProgramRequest Get(string path) => new("GET", path, [], []);
+
+        [Fact]
+        public void The_service_listens_on_a_port_of_its_own_whatever_the_machine_tells_web_apps_to_listen_on()
+        {
+            // The .NET container images set this for the apps they run. A test that took it
+            // would have every test in this class open the same port, one straight after
+            // another, and now and then the last one had not let go of it yet.
+            const string portsForWebApps = "ASPNETCORE_HTTP_PORTS";
+            var before = Environment.GetEnvironmentVariable(portsForWebApps);
+            Environment.SetEnvironmentVariable(portsForWebApps, "8080");
+            try
+            {
+                using var factory = new ToolchainServiceFactory();
+                factory.UseKestrel();
+                factory.StartServer();
+
+                var address = new Uri(factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.ShouldHaveSingleItem());
+
+                address.Host.ShouldBe("127.0.0.1");
+                address.Port.ShouldNotBe(8080);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(portsForWebApps, before);
+            }
+        }
 
         [Theory]
         [InlineData(301)]
