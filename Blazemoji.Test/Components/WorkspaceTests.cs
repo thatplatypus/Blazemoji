@@ -291,12 +291,14 @@ namespace Blazemoji.Test.Components
         {
             var cut = RenderShowingTheFirstFile();
             cut.Find(SidebarToggle).GetAttribute("aria-label").ShouldBe("Hide sidebar");
+            cut.Find(SidebarToggle).GetAttribute("aria-expanded").ShouldBe("true");
 
             await cut.Find(SidebarToggle).ClickAsync(new());
 
             cut.Find(Columns).ClassList.ShouldContain("first-hidden");
             cut.FindComponents<Sidebar>().Count.ShouldBe(1);
             cut.Find(SidebarToggle).GetAttribute("aria-label").ShouldBe("Show sidebar");
+            cut.Find(SidebarToggle).GetAttribute("aria-expanded").ShouldBe("false");
             Layout.Current.SidebarHidden.ShouldBeTrue();
 
             await cut.Find(SidebarToggle).ClickAsync(new());

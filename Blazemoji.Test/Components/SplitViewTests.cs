@@ -29,12 +29,16 @@ namespace Blazemoji.Test.Components
             bool stacked = false,
             bool firstHidden = false,
             double defaultShare = 0.5,
-            Action<double>? shareChanged = null)
+            Action<double>? shareChanged = null,
+            string? dividerLabel = null,
+            int minPanelSize = 120)
         {
             return Render<SplitView>(parameters =>
             {
                 parameters.Add(view => view.Share, share);
                 parameters.Add(view => view.DefaultShare, defaultShare);
+                parameters.Add(view => view.DividerLabel, dividerLabel);
+                parameters.Add(view => view.MinPanelSize, minPanelSize);
                 parameters.Add(view => view.Stacked, stacked);
                 parameters.Add(view => view.FirstHidden, firstHidden);
                 parameters.Add(view => view.First, "<p id=\"one\">the files</p>");
@@ -125,6 +129,93 @@ namespace Blazemoji.Test.Components
             cut.Render();
 
             _script.Invocations.Count(call => call.Identifier == "attach").ShouldBe(1);
+        }
+
+        [Fact]
+        public void The_script_is_given_where_a_double_click_goes_and_what_the_divider_is_called()
+        {
+            RenderSplit(defaultShare: 0.3, dividerLabel: "Resize the sidebar");
+
+            var attach = _script.Invocations.Single(call => call.Identifier == "attach");
+            attach.Arguments[2].ShouldBe(0.3);
+            attach.Arguments[3].ShouldBe("Resize the sidebar");
+        }
+
+        [Fact]
+        public void The_smallest_a_part_may_be_reaches_the_style_sheet_as_well_as_the_panel()
+        {
+            var cut = RenderSplit(minPanelSize: 200);
+
+            cut.Find(".split-view").GetAttribute("style").ShouldContain("--split-min:200px");
+            cut.FindComponent<MudSplitPanel>().Instance.MinPanelSize.ShouldBe(200);
+        }
+
+        [Fact]
+        public void New_content_from_the_caller_is_drawn_without_handing_the_panel_anything_new()
+        {
+            var cut = RenderSplit();
+            var panel = cut.FindComponent<MudSplitPanel>().Instance;
+            var handed = (panel.FirstPanel, panel.SecondPanel);
+
+            cut.Render(parameters => parameters
+                .Add(view => view.First, "<p id=\"one\">other files</p>")
+                .Add(view => view.Second, "<p id=\"two\">another editor</p>"));
+
+            cut.Find(".split-view-first #one").TextContent.ShouldBe("other files");
+            cut.Find(".split-view-second #two").TextContent.ShouldBe("another editor");
+
+            // The panel asks the page a question every time it is given parameters, and a
+            // caller's content changes all the time. It is given new ones only when this
+            // component's own element has to change.
+            panel.FirstPanel.ShouldBeSameAs(handed.FirstPanel);
+            panel.SecondPanel.ShouldBeSameAs(handed.SecondPanel);
+        }
+
+        [Fact]
+        public void Hiding_and_showing_the_first_part_after_it_is_drawn_still_reaches_the_page()
+        {
+            var cut = RenderSplit();
+
+            cut.Render(parameters => parameters.Add(view => view.FirstHidden, true));
+            cut.Find(".split-view").ClassList.ShouldContain("first-hidden");
+
+            cut.Render(parameters => parameters.Add(view => view.FirstHidden, false));
+            cut.Find(".split-view").ClassList.ShouldNotContain("first-hidden");
+        }
+
+        [Fact]
+        public async Task A_caller_handing_back_the_share_it_was_told_asks_nothing_more_of_the_script()
+        {
+            var cut = RenderSplit(share: 0.25);
+            await cut.InvokeAsync(() => cut.Instance.DividerMovedAsync(0.4));
+
+            cut.Render(parameters => parameters.Add(view => view.Share, 0.4));
+
+            // The script has already put the divider there. Letting go of it now could undo a later drag.
+            _script.Invocations.Count(call => call.Identifier == "release").ShouldBe(0);
+        }
+
+        [Fact]
+        public async Task A_share_from_the_caller_that_the_script_did_not_report_takes_the_divider_back_from_the_script()
+        {
+            var cut = RenderSplit(share: 0.25);
+            await cut.InvokeAsync(() => cut.Instance.DividerMovedAsync(0.99));
+
+            // The caller keeps shares inside limits of its own, and hands back another number.
+            cut.Render(parameters => parameters.Add(view => view.Share, 0.95));
+
+            _script.Invocations.Count(call => call.Identifier == "release").ShouldBe(1);
+            ShareInStyle(cut).ShouldBe("0.95");
+        }
+
+        [Fact]
+        public void A_share_from_the_caller_when_nothing_was_dragged_takes_the_divider_too()
+        {
+            var cut = RenderSplit(share: 0.25);
+
+            cut.Render(parameters => parameters.Add(view => view.Share, 0.4));
+
+            _script.Invocations.Count(call => call.Identifier == "release").ShouldBe(1);
         }
 
         [Fact]

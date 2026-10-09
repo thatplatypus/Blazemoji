@@ -79,7 +79,7 @@ namespace Blazemoji.Test.State
         }
 
         [Fact]
-        public async Task A_kept_layout_that_arrives_after_a_divider_was_moved_does_not_undo_the_move()
+        public async Task A_kept_layout_that_arrives_after_a_divider_was_moved_keeps_the_move_and_the_rest_of_what_was_kept()
         {
             var answer = new TaskCompletionSource<WorkspaceLayout?>();
             _store.LoadAsync().Returns(answer.Task);
@@ -90,7 +90,73 @@ namespace Blazemoji.Test.State
             answer.SetResult(Kept);
             await loading;
 
-            state.Current.ShouldBe(WorkspaceLayout.Default with { SidebarShare = 0.4 });
+            // The move is newer than what was kept. The editor's share and the hidden sidebar
+            // were not touched, so they are still what was kept.
+            var joined = Kept with { SidebarShare = 0.4 };
+            state.Current.ShouldBe(joined);
+            await _store.Received(1).SaveAsync(joined);
+        }
+
+        [Fact]
+        public async Task Nothing_is_kept_while_the_kept_layout_is_still_on_its_way_so_it_cannot_be_written_over_half_known()
+        {
+            var answer = new TaskCompletionSource<WorkspaceLayout?>();
+            _store.LoadAsync().Returns(answer.Task);
+            var state = CreateState();
+            var loading = state.LoadAsync();
+
+            await state.ToggleSidebarAsync();
+
+            state.Current.SidebarHidden.ShouldBeTrue();
+            await _store.DidNotReceive().SaveAsync(Arg.Any<WorkspaceLayout>());
+            answer.SetResult(null);
+            await loading;
+            await _store.Received(1).SaveAsync(WorkspaceLayout.Default with { SidebarHidden = true });
+        }
+
+        [Fact]
+        public async Task Changes_made_while_a_store_fails_to_load_are_kept_once_it_has_failed()
+        {
+            var answer = new TaskCompletionSource<WorkspaceLayout?>();
+            _store.LoadAsync().Returns(answer.Task);
+            var state = CreateState();
+            var loading = state.LoadAsync();
+
+            await state.ResizeEditorAsync(0.5);
+            answer.SetException(new ProjectStoreException("The browser's storage could not be used.", DiskFull()));
+            await loading;
+
+            state.Current.ShouldBe(WorkspaceLayout.Default with { EditorShare = 0.5 });
+            await _store.Received(1).SaveAsync(WorkspaceLayout.Default with { EditorShare = 0.5 });
+        }
+
+        [Fact]
+        public async Task A_change_after_the_kept_layout_has_arrived_is_kept_straight_away()
+        {
+            _store.LoadAsync().Returns(Kept);
+            var state = CreateState();
+            await state.LoadAsync();
+
+            await state.ResizeSidebarAsync(0.4);
+
+            await _store.Received(1).SaveAsync(Kept with { SidebarShare = 0.4 });
+        }
+
+        [Fact]
+        public async Task Asking_for_the_kept_layout_again_while_it_is_on_its_way_reads_the_store_once()
+        {
+            var answer = new TaskCompletionSource<WorkspaceLayout?>();
+            _store.LoadAsync().Returns(answer.Task);
+            var state = CreateState();
+
+            var first = state.LoadAsync();
+            var second = state.LoadAsync();
+            answer.SetResult(Kept);
+            await first;
+            await second;
+
+            await _store.Received(1).LoadAsync();
+            state.Current.ShouldBe(Kept);
         }
 
         [Fact]

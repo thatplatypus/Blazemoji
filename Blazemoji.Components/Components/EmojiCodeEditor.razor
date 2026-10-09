@@ -77,6 +77,11 @@
         {
             // The editor is as big as the room the workspace gives it, which changes with the window.
             AutomaticLayout = true,
+
+            // Its lists and hints may reach past its own edges. The workspace clips the editor
+            // to its part, and with the output under it Monaco opens a list downwards from the
+            // last lines, where most of it would otherwise be cut off.
+            FixedOverflowWidgets = true,
             Language = LanguageId,
             Value = string.Empty,
 

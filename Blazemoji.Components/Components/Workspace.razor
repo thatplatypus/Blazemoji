@@ -23,6 +23,7 @@
                DefaultShare="@WorkspaceLayout.Default.SidebarShare"
                FirstHidden="@_layoutState.Current.SidebarHidden"
                MinPanelSize="@NarrowestColumn"
+               DividerLabel="Resize the sidebar"
                data-testid="workspace-columns">
         <First>
             <Sidebar @ref="_sidebar" OnEmojicFileSelected="@LoadEmojicFile" OnEmojicodeInsertedCallback="@InsertEmojicodeAsync" CopiedToClipboard="OnCopiedToClipboard" BeforeProjectChange="SyncOpenFileAsync" />
@@ -33,13 +34,14 @@
                        ShareChanged="@_layoutState.ResizeEditorAsync"
                        DefaultShare="@WorkspaceLayout.Default.EditorShare"
                        MinPanelSize="@ShortestRow"
+                       DividerLabel="Resize the output"
                        data-testid="workspace-rows">
                 <First>
                     <div class="fills-height">
                         <MudPaper Elevation="0" Outlined="true" Class="mb-2">
                             <MudToolBar>
                                 <MudTooltip Text="@SidebarToggleLabel">
-                                    <MudIconButton Icon="@(_layoutState.Current.SidebarHidden ? BlazemojiIcons.ShowSidebar : BlazemojiIcons.HideSidebar)" Edge="Edge.Start" OnClick="@_layoutState.ToggleSidebarAsync" aria-label="@SidebarToggleLabel" data-testid="sidebar-toggle" />
+                                    <MudIconButton Icon="@(_layoutState.Current.SidebarHidden ? BlazemojiIcons.ShowSidebar : BlazemojiIcons.HideSidebar)" Edge="Edge.Start" OnClick="@_layoutState.ToggleSidebarAsync" aria-label="@SidebarToggleLabel" aria-expanded="@(_layoutState.Current.SidebarHidden ? "false" : "true")" data-testid="sidebar-toggle" />
                                 </MudTooltip>
                                 <h4 class="text-nowrap">🍇 Emojicode Editor</h4>
                                 <MudSpacer />
@@ -99,7 +101,7 @@
     // half-switched editor, so a render that arrives during a pass asks for one more.
     private OnePassAtATime _editorInLine = default!;
 
-    // The fewest pixels a drag leaves the sidebar or what is beside it, and the editor or the output.
+    // The fewest pixels the sidebar or what is beside it is left, and the editor or the output.
     private const int NarrowestColumn = 200;
     private const int ShortestRow = 120;
 

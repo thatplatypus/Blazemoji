@@ -52,6 +52,7 @@
    the panel is. */
 .request-line {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
 }
@@ -60,9 +61,10 @@
     flex: 0 0 7.5rem;
 }
 
+/* Narrower than this the path keeps its room and Send goes to a line of its own. */
 .request-path {
-    flex: 1 1 0;
-    min-width: 0;
+    flex: 1 1 8rem;
+    min-width: 8rem;
 }
 
 .request-send {

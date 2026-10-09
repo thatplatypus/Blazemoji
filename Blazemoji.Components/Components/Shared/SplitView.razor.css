@@ -3,8 +3,14 @@
    to fit. How much each one gives up is what places the divider, so that is where the share
    goes: the first part gives up all but its share, and the second gives up the first's
    share. The divider is then a share of the room from the first paint, with no script, and
-   stays one when the window changes size. */
+   stays one when the window changes size.
+
+   The share is --split-share, which .NET renders on this element. When a divider is let go
+   the script puts the new share in --split-live on the panel inside, where it is read first
+   (Scripts/splitView.ts says why). A split view inside another must not read the outer
+   one's, so each starts with none. */
 .split-view {
+    --split-live: initial;
     width: 100%;
     height: 100%;
     min-width: 0;
@@ -26,12 +32,29 @@
     min-height: 0;
 }
 
+/* Only the ratio between the two matters, and they are a thousand times the share for the
+   sake of the smallest sizes below. When one part stops at its smallest, the other has to
+   give up the rest alone, and a part whose number is under one gives up only that fraction
+   of what is asked of it. */
 .split-view ::deep > .split-view-panels > .split-view-first {
-    flex-shrink: calc(1 - var(--split-share));
+    flex-shrink: calc((1 - var(--split-live, var(--split-share))) * 1000);
 }
 
 .split-view ::deep > .split-view-panels > .split-view-second {
-    flex-shrink: var(--split-share);
+    flex-shrink: calc(var(--split-live, var(--split-share)) * 1000);
+}
+
+/* Neither part is left less than a drag could leave it, however small the window. The panel
+   refuses a move that would end below that, so a part already below it could not be moved
+   at all. */
+.split-view:not(.stacked) ::deep > .split-view-panels > .split-view-first,
+.split-view:not(.stacked) ::deep > .split-view-panels > .split-view-second {
+    min-width: var(--split-min);
+}
+
+.split-view.stacked ::deep > .split-view-panels > .split-view-first,
+.split-view.stacked ::deep > .split-view-panels > .split-view-second {
+    min-height: var(--split-min);
 }
 
 /* The panel gives its divider this width from its script. Having it here too means the
@@ -39,7 +62,7 @@
 .split-view ::deep > .split-view-panels > .split-view-divider {
     flex: none;
     min-width: 4px;
-    border-radius: 2px;
+    border-radius: calc(var(--mud-default-borderradius) / 2);
     transition: background-color 120ms ease;
 }
 
@@ -51,6 +74,23 @@
 .split-view ::deep > .split-view-panels > .split-view-divider:hover,
 .split-view ::deep > .split-view-panels > .split-view-divider:active {
     background-color: var(--mud-palette-action-default-hover);
+}
+
+/* The panel lets its divider be caught twelve pixels to either side of it. Here that would
+   take the edge of whatever is beside it: the editor's last line and the scroll bar along
+   its bottom, the sidebar's own scroll bar. Two is enough to make four easier to catch. */
+.split-view ::deep > .split-view-panels > .split-view-divider::before {
+    top: 0;
+    bottom: 0;
+    left: -2px;
+    right: -2px;
+}
+
+.split-view.stacked ::deep > .split-view-panels > .split-view-divider::before {
+    top: -2px;
+    bottom: -2px;
+    left: 0;
+    right: 0;
 }
 
 /* A hidden first part is still on the page, so that it comes back as it was. */

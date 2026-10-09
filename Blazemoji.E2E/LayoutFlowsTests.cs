@@ -92,6 +92,7 @@ namespace Blazemoji.E2E
             await using var editor = await EditorPage.OpenAsync(browser);
             var sidebar = await BoxAsync(editor.Page, First(Columns));
             var monaco = await BoxAsync(editor.Page, Monaco);
+            var output = await BoxAsync(editor.Page, Second(Rows));
             var share = await ShareAsync(editor.Page, Columns);
 
             await DragAsync(editor.Page, Divider(Columns), right: 120);
@@ -99,6 +100,9 @@ namespace Blazemoji.E2E
 
             ((double)(await BoxAsync(editor.Page, First(Columns))).Width).ShouldBe(sidebar.Width + 120, Rounding);
             ((double)(await BoxAsync(editor.Page, Monaco)).Width).ShouldBe(monaco.Width - 120, Rounding);
+
+            // The divider under the editor is another split's, and stays where it was.
+            ((double)(await BoxAsync(editor.Page, Second(Rows))).Height).ShouldBe(output.Height, Rounding);
             await ThePageDoesNotScrollAsync(editor.Page);
             editor.ConsoleErrors.ShouldBeEmpty();
         }
@@ -188,21 +192,156 @@ namespace Blazemoji.E2E
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await EditorPage.OpenAsync(browser);
             var sidebar = await BoxAsync(editor.Page, First(Columns));
+            var monaco = await BoxAsync(editor.Page, Monaco);
             var share = await ShareAsync(editor.Page, Columns);
             var divider = editor.Page.Locator(Divider(Columns));
 
             await divider.FocusAsync();
-            for (var press = 0; press < 3; press++)
-                await editor.Page.Keyboard.PressAsync("ArrowRight");
+            await editor.Page.Keyboard.PressAsync("ArrowRight");
             await ShareAfterAsync(editor.Page, Columns, share);
 
             var moved = await BoxAsync(editor.Page, First(Columns));
-            ((double)moved.Width).ShouldBe(sidebar.Width + 30, Rounding);
+            moved.Width.ShouldBeGreaterThan(sidebar.Width);
+            ((double)(await BoxAsync(editor.Page, Monaco)).Width).ShouldBe(monaco.Width - (moved.Width - sidebar.Width), Rounding);
 
             // What a screen reader is read is the sidebar's part of the width, in hundredths.
             var room = await BoxAsync(editor.Page, Columns);
             var said = double.Parse((await divider.GetAttributeAsync("aria-valuenow"))!, System.Globalization.CultureInfo.InvariantCulture);
             said.ShouldBe(moved.Width / room.Width * 100, 0.5);
+            (await divider.GetAttributeAsync("aria-label")).ShouldBe("Resize the sidebar");
+        }
+
+        [Fact]
+        public async Task Arrow_presses_one_after_another_each_count_and_none_is_taken_back()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            var divider = editor.Page.Locator(Divider(Columns));
+            await divider.FocusAsync();
+            var widths = new List<float> { (await BoxAsync(editor.Page, First(Columns))).Width };
+
+            // As fast as a finger goes, which is faster than the server answers each one.
+            for (var press = 0; press < 6; press++)
+            {
+                await editor.Page.Keyboard.PressAsync("ArrowRight");
+                widths.Add((await BoxAsync(editor.Page, First(Columns))).Width);
+            }
+
+            widths.ShouldBe(widths.Order().Distinct().ToList(), "every press moves it on from where the last one left it");
+            var step = widths[1] - widths[0];
+            ((double)(widths[^1] - widths[0])).ShouldBe(step * 6, Rounding);
+
+            // And once the server has caught up with all six, it is still there.
+            await editor.Page.WaitForTimeoutAsync(1500);
+            ((double)(await BoxAsync(editor.Page, First(Columns))).Width).ShouldBe(widths[^1], Rounding);
+        }
+
+        [Fact]
+        public async Task A_drag_that_starts_straight_after_a_click_on_the_divider_is_a_drag_and_not_a_double_click()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            var sidebar = await BoxAsync(editor.Page, First(Columns));
+            var share = await ShareAsync(editor.Page, Columns);
+            var box = await BoxAsync(editor.Page, Divider(Columns));
+            var x = box.X + box.Width / 2;
+            var y = box.Y + box.Height / 2;
+
+            // A click, then at once a press that the browser counts as the second of a pair,
+            // held and dragged. Let go on the divider, that ends as a double-click too.
+            await editor.Page.Mouse.ClickAsync(x, y);
+            await editor.Page.Mouse.DownAsync(new MouseDownOptions { ClickCount = 2 });
+            await editor.Page.Mouse.MoveAsync(x + 75, y, new MouseMoveOptions { Steps = 4 });
+            await editor.Page.Mouse.MoveAsync(x + 150, y, new MouseMoveOptions { Steps = 4 });
+            await editor.Page.Mouse.UpAsync(new MouseUpOptions { ClickCount = 2 });
+            await ShareAfterAsync(editor.Page, Columns, share);
+
+            await editor.Page.WaitForTimeoutAsync(500);
+            ((double)(await BoxAsync(editor.Page, First(Columns))).Width).ShouldBe(sidebar.Width + 150, Rounding);
+        }
+
+        [Fact]
+        public async Task A_part_dragged_to_its_smallest_in_a_big_window_can_still_be_moved_when_the_window_is_small()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await editor.Page.SetViewportSizeAsync(1600, 1300);
+            var share = await ShareAsync(editor.Page, Rows);
+            await DragAsync(editor.Page, Divider(Rows), down: 2000);
+            await editor.Page.Keyboard.PressAsync("Escape");
+            var divider = editor.Page.Locator(Divider(Rows));
+            await divider.FocusAsync();
+            await editor.Page.Keyboard.PressAsync("End");
+            share = await ShareAfterAsync(editor.Page, Rows, share);
+            var smallest = (await BoxAsync(editor.Page, Second(Rows))).Height;
+
+            await editor.Page.SetViewportSizeAsync(1600, 620);
+
+            // It is no smaller in the small window than a drag could have made it ...
+            var output = await BoxAsync(editor.Page, Second(Rows));
+            ((double)output.Height).ShouldBeGreaterThanOrEqualTo(smallest - Rounding);
+
+            // ... and the divider still answers.
+            await divider.FocusAsync();
+            await editor.Page.Keyboard.PressAsync("ArrowUp");
+            await ShareAfterAsync(editor.Page, Rows, share);
+            (await BoxAsync(editor.Page, Second(Rows))).Height.ShouldBeGreaterThan(output.Height);
+            await ThePageDoesNotScrollAsync(editor.Page);
+        }
+
+        [Fact]
+        public async Task The_edges_of_the_editor_and_the_panels_beside_a_divider_are_still_theirs()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+
+            // A divider is easier to catch than it is wide, but not so much that it takes the
+            // editor's last line, its scroll bar along the bottom, or the edge of the sidebar.
+            var owners = await editor.Page.EvaluateAsync<bool[]>(@"([monaco, sidebar]) => {
+                const editor = document.querySelector(monaco).getBoundingClientRect();
+                const side = document.querySelector(sidebar).getBoundingClientRect();
+                const inside = (selector, x, y) => document.querySelector(selector).contains(document.elementFromPoint(x, y));
+                return [
+                    inside(monaco, editor.left + editor.width / 2, editor.bottom - 5),
+                    inside(monaco, editor.left + 5, editor.top + editor.height / 2),
+                    inside(sidebar, side.right - 5, side.top + side.height / 2),
+                ];
+            }", new[] { Monaco, First(Columns) });
+
+            owners.ShouldBe([true, true, true]);
+        }
+
+        [Fact]
+        public async Task The_list_of_completions_is_whole_when_the_cursor_is_on_the_editors_last_line()
+        {
+            Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            await using var editor = await EditorPage.OpenAsync(browser);
+            await editor.SetCodeAsync("🏁 🍇\n" + new string('\n', 60) + "🍉\n");
+
+            // The output is under the editor now, so there is window below the last line and
+            // Monaco opens the list downwards. It must not be cut off where the editor ends.
+            var rows = await editor.Page.EvaluateAsync<int[]>(@"async () => {
+                const editor = monaco.editor.getEditors()[0];
+                editor.setPosition({ lineNumber: editor.getVisibleRanges()[0].endLineNumber - 1, column: 1 });
+                editor.focus();
+                editor.trigger('keyboard', 'type', { text: 'in' });
+                editor.trigger('test', 'editor.action.triggerSuggest', {});
+                const shown = () => document.querySelector('.suggest-widget.visible .monaco-list-row');
+                for (let waited = 0; waited < 100 && !shown(); waited++) await new Promise(done => setTimeout(done, 100));
+                await new Promise(done => setTimeout(done, 400));
+                const list = document.querySelector('.suggest-widget.visible');
+                if (!list) return [0, 0];
+                const rows = [...list.querySelectorAll('.monaco-list-row')];
+                const reachable = rows.filter(row => {
+                    const box = row.getBoundingClientRect();
+                    const there = document.elementFromPoint(box.left + 20, box.top + box.height / 2);
+                    return there !== null && list.contains(there) && box.bottom <= innerHeight;
+                });
+                return [rows.length, reachable.length];
+            }");
+
+            rows[0].ShouldBeGreaterThan(5, "the list should have had plenty to offer");
+            rows[1].ShouldBe(rows[0], "every row of the list can be seen and clicked");
         }
 
         [Fact]

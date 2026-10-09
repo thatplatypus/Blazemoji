@@ -13,63 +13,110 @@ namespace Blazemoji.Shared.State
     /// </summary>
     public sealed class LayoutState(ILogger<LayoutState> logger, ILayoutStore? store = null)
     {
-        // Counts the changes made here, so that a kept layout that arrives late can tell.
-        private int _changes;
+        // What was changed while the kept layout was still on its way, to be made again on
+        // top of it once it is here.
+        private readonly List<Func<WorkspaceLayout, WorkspaceLayout>> _whileLoading = [];
+        private Task? _loading;
 
         public event Action? StateChanged;
 
         public WorkspaceLayout Current { get; private set; } = WorkspaceLayout.Default;
 
         /// <summary>Takes up the layout that was kept, if there is one.</summary>
-        public async Task LoadAsync()
+        public Task LoadAsync()
         {
             if (store is null)
-                return;
+                return Task.CompletedTask;
 
-            var before = _changes;
-            WorkspaceLayout? kept;
+            if (_loading is not null)
+                return _loading;
+
+            // A store that answers at once has finished before there is a task to remember,
+            // and one that has finished must not be remembered as still on its way.
+            var loading = LoadFromAsync(store);
+            if (!loading.IsCompleted)
+                _loading = loading;
+
+            return loading;
+        }
+
+        private async Task LoadFromAsync(ILayoutStore from)
+        {
+            WorkspaceLayout? kept = null;
             try
             {
-                kept = (await store.LoadAsync())?.Mended();
+                kept = (await from.LoadAsync())?.Mended();
             }
             catch (ProjectStoreException exception)
             {
                 logger.LogWarning(exception, "The kept layout could not be read, so the default is used");
-                return;
+            }
+            catch
+            {
+                // Not a failure a store is meant to have. Whoever asked hears of it, and what
+                // is changed from here on is kept as it would be had nothing been asked.
+                _whileLoading.Clear();
+                _loading = null;
+                throw;
             }
 
-            // A divider moved while the store was answering is newer than what it kept.
-            if (kept is null || before != _changes || kept == Current)
-                return;
+            // A divider moved while the store was answering is newer than what it kept, and
+            // only that is: the rest of what was kept still stands.
+            var changed = _whileLoading.Count > 0;
+            var layout = _whileLoading.Aggregate(kept ?? Current, (joined, change) => change(joined)).Mended();
+            _whileLoading.Clear();
+            _loading = null;
 
-            Current = kept;
-            StateChanged?.Invoke();
+            if (layout != Current)
+            {
+                Current = layout;
+                StateChanged?.Invoke();
+            }
+
+            if (changed)
+                await KeepAsync();
         }
 
         /// <param name="share">The sidebar's part of the workspace's width, from 0 to 1.</param>
-        public Task ResizeSidebarAsync(double share) => ChangeAsync(Current with { SidebarShare = share });
+        public Task ResizeSidebarAsync(double share) => ChangeAsync(layout => layout with { SidebarShare = share });
 
         /// <param name="share">The editor's part of the height it shares with the output, from 0 to 1.</param>
-        public Task ResizeEditorAsync(double share) => ChangeAsync(Current with { EditorShare = share });
+        public Task ResizeEditorAsync(double share) => ChangeAsync(layout => layout with { EditorShare = share });
 
-        public Task ToggleSidebarAsync() => ChangeAsync(Current with { SidebarHidden = !Current.SidebarHidden });
-
-        private async Task ChangeAsync(WorkspaceLayout wanted)
+        public Task ToggleSidebarAsync()
         {
-            var layout = wanted.Mended();
+            // Whoever asked was looking at the sidebar as it is now, and wants the other.
+            var hidden = !Current.SidebarHidden;
+            return ChangeAsync(layout => layout with { SidebarHidden = hidden });
+        }
+
+        private async Task ChangeAsync(Func<WorkspaceLayout, WorkspaceLayout> change)
+        {
+            var layout = change(Current).Mended();
             if (layout == Current)
                 return;
 
             Current = layout;
-            _changes++;
             StateChanged?.Invoke();
 
+            // Kept now, it would be written over what the store has not finished handing back.
+            if (_loading is not null)
+            {
+                _whileLoading.Add(change);
+                return;
+            }
+
+            await KeepAsync();
+        }
+
+        private async Task KeepAsync()
+        {
             if (store is null)
                 return;
 
             try
             {
-                await store.SaveAsync(layout);
+                await store.SaveAsync(Current);
             }
             catch (ProjectStoreException exception)
             {

@@ -144,9 +144,10 @@ namespace Blazemoji.E2E
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await EditorPage.OpenAsync(browser);
 
-            var sidebar = await Sidebar(editor).BoundingBoxAsync();
-            var above = await EditorPart(editor).BoundingBoxAsync();
-            var under = await OutputPart(editor).BoundingBoxAsync();
+            // The panels themselves, which are what is seen: each is a card with an outline.
+            var sidebar = await Sidebar(editor).Locator("> .mud-paper").BoundingBoxAsync();
+            var above = await EditorPart(editor).Locator(".mud-paper").First.BoundingBoxAsync();
+            var under = await OutputPart(editor).Locator("> .mud-paper").BoundingBoxAsync();
 
             sidebar.ShouldNotBeNull();
             above.ShouldNotBeNull();
