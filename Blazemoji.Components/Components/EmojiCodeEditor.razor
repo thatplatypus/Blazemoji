@@ -7,6 +7,9 @@
 @implements IDisposable
 @inject IJSRuntime _jsRuntime
 @inject EmojicodeLanguageInterop _language
+@using Blazemoji.Settings
+@inject SettingsState _settings
+@inject TimeProvider _clock
 
 <div class="@("text-align-center " + (_initializing ? "d-block" : "d-none"))">
     <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
@@ -52,6 +55,12 @@
     private bool _dark;
     private bool _coloursAreDue;
 
+    // How long the editor waits for kept settings before it shows itself with the defaults.
+    private static readonly TimeSpan LongestWaitForSettings = TimeSpan.FromSeconds(2);
+
+    // What Monaco was last told. Null until it has been told anything.
+    private EditorOptionValues? _applied;
+
     /// <summary>
     /// Whether the page is dark. The editor reads its colours from the page; this only tells
     /// it when to read them again. A host that never changes its colours need not supply it.
@@ -73,7 +82,7 @@
     private StandaloneEditorConstructionOptions EditorConstructionOptions(StandaloneCodeEditor editor)
     {
 
-        return new StandaloneEditorConstructionOptions
+        var options = new StandaloneEditorConstructionOptions
         {
             // The editor is as big as the room the workspace gives it, which changes with the window.
             AutomaticLayout = true,
@@ -98,6 +107,10 @@
                 NonBasicASCII = false,
             },
         }; 
+
+        _applied = EditorOptionValues.From(_settings.Get<EditorSettings>());
+        _applied.ApplyTo(options);
+        return options;
     }
 
     public StandaloneCodeEditor Editor
@@ -120,8 +133,53 @@
         _coloursAreDue = false;
         await _language.ApplyThemeAsync();
 
+        await WaitForSettingsAsync();
+        await BringOptionsInLineAsync();
+
         _initializing = false;
         await Ready.InvokeAsync();
+    }
+
+    protected override void OnInitialized()
+    {
+        _settings.SettingsChanged += OnSettingsChanged;
+    }
+
+    private void OnSettingsChanged(SettingsBase section)
+    {
+        if (section is EditorSettings)
+            InvokeAsync(StateHasChanged);
+    }
+
+    // Kept settings are worth a short wait, so that the editor first appears as it was left.
+    // A store that is slow or broken must not keep it hidden: what arrives late is applied
+    // after the redraw its arrival asks for.
+    private async Task WaitForSettingsAsync()
+    {
+        var loading = _settings.LoadAsync();
+        if (!loading.IsCompleted)
+        {
+            using var givingUp = new CancellationTokenSource();
+            var waited = Task.Delay(LongestWaitForSettings, _clock, givingUp.Token);
+            if (await Task.WhenAny(loading, waited) != loading)
+                return;
+
+            await givingUp.CancelAsync();
+        }
+
+        await loading;
+    }
+
+    private async Task BringOptionsInLineAsync()
+    {
+        var wanted = EditorOptionValues.From(_settings.Get<EditorSettings>());
+        if (_applied is null || wanted == _applied)
+            return;
+
+        // Remembered before the call, not after: a redraw while Monaco is still answering
+        // would otherwise send the same options again.
+        _applied = wanted;
+        await _editor.UpdateOptions(wanted.ToUpdateOptions());
     }
 
     protected override void OnParametersSet()
@@ -141,10 +199,14 @@
             _coloursAreDue = false;
             await _language.ApplyThemeAsync();
         }
+
+        if (!_initializing)
+            await BringOptionsInLineAsync();
     }
 
     public void Dispose()
     {
+        _settings.SettingsChanged -= OnSettingsChanged;
         _settling?.Cancel();
         _settling?.Dispose();
     }

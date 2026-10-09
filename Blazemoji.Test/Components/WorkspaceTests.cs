@@ -5,6 +5,8 @@ using Blazemoji.Components.Shared;
 using Blazemoji.Services.Layout;
 using Blazemoji.Services.Library;
 using Blazemoji.Services.Projects;
+using Blazemoji.Services.Settings;
+using Blazemoji.Settings;
 using Blazemoji.Shared.Models.Layout;
 using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
@@ -66,6 +68,8 @@ namespace Blazemoji.Test.Components
             Services.AddScoped<EmojicodeLanguageInterop>();
             Services.AddSingleton(_layoutStore);
             Services.AddScoped<LayoutState>();
+            Services.Configure<SettingsOptions>(settings => settings.Add<EditorSettings>());
+            Services.AddScoped<SettingsState>();
             Services.AddScoped<SplitViewInterop>();
             Services.AddScoped<ProgramInputInterop>();
         }

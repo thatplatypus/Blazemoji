@@ -1,16 +1,21 @@
+using System.Text.Json;
 using Blazemoji.Components;
 using Blazemoji.Emojicode;
 using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Interop;
 using Blazemoji.Services.Projects;
+using Blazemoji.Services.Settings;
+using Blazemoji.Settings;
 using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
+using Blazemoji.Test.Settings;
 using BlazorMonaco;
 using BlazorMonaco.Editor;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using MudBlazor.Services;
 using NSubstitute;
 
@@ -22,11 +27,14 @@ namespace Blazemoji.Test.Components
         private const string AroundCursor = "aroundCursor";
         private const string TypeFunction = "type";
         private const string ApplyTheme = "applyTheme";
+        private const string UpdateOptions = "blazorMonaco.editor.updateOptions";
         private const int ExclamationKey = (int)KeyMod.Shift | (int)KeyCode.Digit1;
         private const int GrapesKey = (int)KeyMod.Shift | (int)KeyCode.BracketLeft;
         private const int WatermelonKey = (int)KeyMod.Shift | (int)KeyCode.BracketRight;
 
         private readonly BunitJSModuleInterop _module;
+        private readonly ISettingsStore _settingsStore = Substitute.For<ISettingsStore>();
+        private readonly FakeTimeProvider _clock = new();
 
         public EmojiCodeEditorTests()
         {
@@ -44,6 +52,11 @@ namespace Blazemoji.Test.Components
             Services.AddSingleton(Substitute.For<IPackageLibrary>());
             Services.AddScoped<ProjectState>();
             Services.AddScoped<EmojicodeLanguageInterop>();
+            _settingsStore.LoadAsync().Returns(Task.FromResult<string?>(null));
+            Services.Configure<SettingsOptions>(settings => settings.Add<EditorSettings>().Add<SampleSettings>());
+            Services.AddSingleton(_settingsStore);
+            Services.AddSingleton<TimeProvider>(_clock);
+            Services.AddScoped<SettingsState>();
         }
 
         private void ModelsAreMadeAtOnce()
@@ -336,6 +349,122 @@ namespace Blazemoji.Test.Components
             firstColours.SetVoidResult();
 
             await EventuallyAsync(() => _module.Invocations[ApplyTheme].Count.ShouldBe(2));
+        }
+
+        private SettingsState Settings => Services.GetRequiredService<SettingsState>();
+
+        private int FontSizesSent(int size) =>
+            JSInterop.Invocations[UpdateOptions].Count(sent => ((JsonElement)sent.Arguments[1]!).GetProperty("fontSize").GetInt32() == size);
+
+        [Fact]
+        public void The_editor_is_made_with_the_settings_as_they_stand()
+        {
+            var cut = Render<EmojiCodeEditor>();
+
+            var options = cut.Instance.Editor.ConstructionOptions!(cut.Instance.Editor);
+            options.FontSize.ShouldBe(14);
+            options.WordWrap.ShouldBe("off");
+            options.Minimap.Enabled.ShouldBe(true);
+            options.LineNumbers.ShouldBe("on");
+            options.RenderWhitespace.ShouldBe("selection");
+            options.TabSize.ShouldBe(2);
+        }
+
+        [Fact]
+        public void With_nothing_kept_the_editor_is_not_told_to_change_anything()
+        {
+            Render<EmojiCodeEditor>();
+
+            JSInterop.Invocations[UpdateOptions].ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_change_to_an_editor_setting_reaches_the_editor_once()
+        {
+            var cut = Render<EmojiCodeEditor>();
+
+            await cut.InvokeAsync(() => Settings.SetAsync(Settings.Get<EditorSettings>(), nameof(EditorSettings.FontSize), 18));
+
+            cut.WaitForAssertion(() => FontSizesSent(18).ShouldBe(1));
+            JSInterop.Invocations[UpdateOptions].Count.ShouldBe(1);
+        }
+
+        [Fact]
+        public async Task A_change_to_another_section_leaves_the_editor_alone()
+        {
+            var cut = Render<EmojiCodeEditor>();
+            var renders = cut.RenderCount;
+
+            await cut.InvokeAsync(() => Settings.SetAsync(Settings.Get<SampleSettings>(), nameof(SampleSettings.Size), 20));
+
+            cut.RenderCount.ShouldBe(renders);
+            JSInterop.Invocations[UpdateOptions].ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_redraw_while_the_editor_is_still_taking_its_options_does_not_send_them_again()
+        {
+            // The browser has not answered the first change yet.
+            var taking = JSInterop.SetupVoid(UpdateOptions, _ => true);
+            var cut = Render<EmojiCodeEditor>();
+            await cut.InvokeAsync(() => Settings.SetAsync(Settings.Get<EditorSettings>(), nameof(EditorSettings.FontSize), 18));
+            cut.WaitForAssertion(() => JSInterop.Invocations[UpdateOptions].Count.ShouldBe(1));
+
+            cut.Render();
+            cut.Render();
+
+            JSInterop.Invocations[UpdateOptions].Count.ShouldBe(1);
+            taking.SetVoidResult();
+        }
+
+        [Fact]
+        public void Kept_settings_are_in_place_before_the_editor_says_it_is_ready()
+        {
+            _settingsStore.LoadAsync().Returns(Task.FromResult<string?>("{ \"editor\": { \"fontSize\": 20 } }"));
+            int? sentWhenReady = null;
+
+            Render<EmojiCodeEditor>(parameters => parameters.Add(editor => editor.Ready, () => sentWhenReady = FontSizesSent(20)));
+
+            sentWhenReady.ShouldBe(1);
+        }
+
+        [Fact]
+        public async Task A_setting_changed_before_the_editor_has_started_is_in_place_when_it_is_ready()
+        {
+            // The colours are still being read, so the editor has not finished starting.
+            var colours = _module.SetupVoid(ApplyTheme, _ => true);
+            int? sentWhenReady = null;
+            var cut = Render<EmojiCodeEditor>(parameters => parameters.Add(editor => editor.Ready, () => sentWhenReady = FontSizesSent(22)));
+            sentWhenReady.ShouldBeNull();
+
+            await cut.InvokeAsync(() => Settings.SetAsync(Settings.Get<EditorSettings>(), nameof(EditorSettings.FontSize), 22));
+            colours.SetVoidResult();
+
+            await EventuallyAsync(() => sentWhenReady.ShouldBe(1));
+        }
+
+        [Fact]
+        public async Task A_store_that_does_not_answer_holds_the_editor_back_for_two_seconds_and_no_longer()
+        {
+            var answering = new TaskCompletionSource<string?>();
+            _settingsStore.LoadAsync().Returns(answering.Task);
+            var ready = false;
+            var cut = Render<EmojiCodeEditor>(parameters => parameters.Add(editor => editor.Ready, () => ready = true));
+            ready.ShouldBeFalse();
+
+            _clock.Advance(TimeSpan.FromSeconds(1));
+            ready.ShouldBeFalse();
+
+            // The wait starts on whichever thread the editor's start-up reached it, so the clock
+            // is moved until the editor has seen it.
+            await EventuallyAsync(() =>
+            {
+                _clock.Advance(TimeSpan.FromSeconds(1));
+                ready.ShouldBeTrue();
+            });
+
+            await cut.InvokeAsync(() => answering.SetResult("{ \"editor\": { \"fontSize\": 20 } }"));
+            cut.WaitForAssertion(() => FontSizesSent(20).ShouldBe(1));
         }
 
         /// <summary>A page that tells what is inside it whether it is dark, as the web host's layout does.</summary>
