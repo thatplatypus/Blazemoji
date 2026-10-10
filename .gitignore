@@ -138,6 +138,10 @@ $RECYCLE.BIN/
 
 _NCrunch*
 
+# Specs, plans and run notes written while working with the superpowers skills. They are
+# working documents: kept beside the code on the machine that wrote them, never committed.
+.superpowers/
+
 # Grapevine is built from a local checkout by scripts/build-grapevine.sh and is not committed
 # here: it has its own repository, and this one is public. Delete these three lines to commit it.
 Blazemoji.Toolchain.Local/packages/grapevine/
