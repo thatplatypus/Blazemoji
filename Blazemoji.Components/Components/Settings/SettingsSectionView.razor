@@ -1,0 +1,22 @@
+@inject SettingsState State
+
+@foreach (var group in SettingProperties.Grouped(State.ShownIn(Section)))
+{
+    <div class="mb-4" @key="group.Name">
+        @if (group.Name.Length > 0)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary" data-testid="settings-group-name">@group.Name</MudText>
+        }
+        @foreach (var setting in group.Settings)
+        {
+            <SettingRow @key="setting.Name" Section="@Section" Setting="@setting" />
+        }
+    </div>
+}
+
+<MudButton Variant="Variant.Text" Disabled="@State.IsAtDefaults(Section)" OnClick="@(() => State.RestoreDefaultsAsync(Section))" data-testid="restore-defaults">Restore defaults</MudButton>
+
+@code {
+    [Parameter, EditorRequired]
+    public SettingsBase Section { get; set; } = default!;
+}

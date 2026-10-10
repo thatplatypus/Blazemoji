@@ -1,0 +1,18 @@
+@inject SettingsState State
+@inject IDialogService Dialogs
+
+@* A dialog gives focus back to the button that opened it, and a tooltip that shows on focus
+   would then sit over the title bar. *@
+<MudTooltip Text="Settings" ShowOnFocus="false">
+    <MudIconButton Icon="@BlazemojiIcons.Settings" Color="Color.Inherit" OnClick="OpenAsync" aria-label="Settings" data-testid="settings-button" />
+</MudTooltip>
+
+@code {
+    private static DialogOptions Options => new() { CloseOnEscapeKey = true, CloseButton = true, FullWidth = true, MaxWidth = MaxWidth.Small };
+
+    private async Task OpenAsync()
+    {
+        await State.LoadAsync();
+        await Dialogs.ShowAsync<SettingsDialog>("Settings", Options);
+    }
+}

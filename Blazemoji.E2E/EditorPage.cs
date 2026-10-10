@@ -54,11 +54,32 @@ namespace Blazemoji.E2E
 
         public ILocator Dialog => Page.Locator(".mud-dialog");
 
-        public ILocator ThemeToggle => Page.Locator("header button.mud-icon-button").First;
+        public ILocator ThemeToggle => Page.GetByTestId("dark-mode-toggle");
 
         public ILocator KeyCommandsButton => Page.GetByTestId("key-commands");
 
         public ILocator SaveButton => Page.GetByTestId("save-to-library");
+
+        public ILocator SettingsButton => Page.GetByTestId("settings-button");
+
+        /// <summary>The row of one setting in the open Settings dialog, by its property's name.</summary>
+        public ILocator Setting(string name) => Page.Locator($"[data-testid=setting][data-setting={name}]");
+
+        public async Task OpenSettingsAsync()
+        {
+            await SettingsButton.ClickAsync();
+            await Page.GetByTestId("setting").First.WaitForAsync();
+        }
+
+        public async Task CloseSettingsAsync()
+        {
+            await Dialog.Locator(".mud-button-close").ClickAsync();
+            await Dialog.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Detached });
+        }
+
+        /// <summary>The size the editor's text is drawn at, as the browser has it.</summary>
+        public Task<string> FontSizeAsync() =>
+            Page.EvaluateAsync<string>("() => getComputedStyle(document.querySelector('.monaco-editor .view-lines')).fontSize");
 
         /// <param name="beforeNavigation">Runs on the new page before it loads, for example to slow a request down.</param>
         public static async Task<EditorPage> OpenAsync(

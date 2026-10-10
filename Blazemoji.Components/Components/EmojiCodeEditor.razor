@@ -4,9 +4,12 @@
 @using Blazemoji.Emojicode.Editing
 @using Blazemoji.Emojicode.Intelligence
 @using Blazemoji.Interop
+@using Blazemoji.Settings
 @implements IDisposable
 @inject IJSRuntime _jsRuntime
 @inject EmojicodeLanguageInterop _language
+@inject SettingsState _settings
+@inject TimeProvider _clock
 
 <div class="@("text-align-center " + (_initializing ? "d-block" : "d-none"))">
     <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
@@ -36,6 +39,9 @@
     // How long typing has to pause before the text is handed on to be kept.
     private static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(400);
 
+    // How long the editor waits for kept settings before it shows itself with the defaults.
+    private static readonly TimeSpan LongestWaitForSettings = TimeSpan.FromSeconds(2);
+
     // One Monaco model per open file, so each keeps its own text, undo history and markers.
     private readonly Dictionary<string, TextModel> _models = [];
     private TextModel? _shown;
@@ -51,6 +57,12 @@
 
     private bool _dark;
     private bool _coloursAreDue;
+
+    // What Monaco was last told. Null until it has been told anything.
+    private EditorOptionValues? _applied;
+
+    // Cancelled when the editor goes away, so that what it was waiting for does not carry on without it.
+    private readonly CancellationTokenSource _leaving = new();
 
     /// <summary>
     /// Whether the page is dark. The editor reads its colours from the page; this only tells
@@ -73,7 +85,7 @@
     private StandaloneEditorConstructionOptions EditorConstructionOptions(StandaloneCodeEditor editor)
     {
 
-        return new StandaloneEditorConstructionOptions
+        var options = new StandaloneEditorConstructionOptions
         {
             // The editor is as big as the room the workspace gives it, which changes with the window.
             AutomaticLayout = true,
@@ -98,6 +110,10 @@
                 NonBasicASCII = false,
             },
         }; 
+
+        _applied = EditorOptionValues.From(_settings.Get<EditorSettings>());
+        _applied.ApplyTo(options);
+        return options;
     }
 
     public StandaloneCodeEditor Editor
@@ -120,8 +136,59 @@
         _coloursAreDue = false;
         await _language.ApplyThemeAsync();
 
+        if (!await WaitForSettingsAsync())
+            return;
+
+        await BringOptionsInLineAsync();
+
         _initializing = false;
         await Ready.InvokeAsync();
+    }
+
+    protected override void OnInitialized()
+    {
+        _settings.SettingsChanged += OnSettingsChanged;
+    }
+
+    private void OnSettingsChanged(SettingsBase section)
+    {
+        if (section is EditorSettings)
+            InvokeAsync(StateHasChanged);
+    }
+
+    // Kept settings are worth a short wait, so that the editor first appears as it was left.
+    // A store that is slow or broken must not keep it hidden: what arrives late is applied
+    // after the redraw its arrival asks for. False when the editor went away meanwhile.
+    private async Task<bool> WaitForSettingsAsync()
+    {
+        if (_leaving.IsCancellationRequested)
+            return false;
+
+        var loading = _settings.LoadAsync();
+        if (!loading.IsCompleted)
+        {
+            using var givingUp = CancellationTokenSource.CreateLinkedTokenSource(_leaving.Token);
+            var waited = Task.Delay(LongestWaitForSettings, _clock, givingUp.Token);
+            if (await Task.WhenAny(loading, waited) != loading)
+                return !_leaving.IsCancellationRequested;
+
+            await givingUp.CancelAsync();
+        }
+
+        await loading;
+        return !_leaving.IsCancellationRequested;
+    }
+
+    private async Task BringOptionsInLineAsync()
+    {
+        var wanted = EditorOptionValues.From(_settings.Get<EditorSettings>());
+        if (_applied is null || wanted == _applied)
+            return;
+
+        // Remembered before the call, not after: a redraw while Monaco is still answering
+        // would otherwise send the same options again.
+        _applied = wanted;
+        await _editor.UpdateOptions(wanted.ToUpdateOptions());
     }
 
     protected override void OnParametersSet()
@@ -141,10 +208,16 @@
             _coloursAreDue = false;
             await _language.ApplyThemeAsync();
         }
+
+        if (!_initializing)
+            await BringOptionsInLineAsync();
     }
 
     public void Dispose()
     {
+        _settings.SettingsChanged -= OnSettingsChanged;
+        _leaving.Cancel();
+        _leaving.Dispose();
         _settling?.Cancel();
         _settling?.Dispose();
     }

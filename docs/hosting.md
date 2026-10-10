@@ -11,9 +11,9 @@ The editor is two libraries, and a host puts it on screen. There are two hosts.
 
 A host references `Blazemoji.Components` and does what the two hosts do in their `Program.cs` and page shell (`Blazemoji/Components/App.razor`, `Blazemoji.Desktop/wwwroot/index.html`). This page lists it, and then says what is particular to the desktop host.
 
-## The one setting: where the toolchain service is
+## The one piece of configuration: where the toolchain service is
 
-The editor never compiles or runs anything itself. It talks to the toolchain service over HTTP, and the address is one setting:
+The editor never compiles or runs anything itself. It talks to the toolchain service over HTTP, and the address is one piece of configuration:
 
 ```json
 { "ToolchainClient": { "BaseUrl": "http://localhost:5290" } }
@@ -47,18 +47,20 @@ services.AddBlazemojiProjectsOnDisk(configuration);   // reads Projects:Root
 | `IProjectStore` | Where projects are kept between sessions. | `LocalStorageProjectStore`: the browser's local storage. | `FileProjectStore`: a folder for each project. |
 | `ILibraryService` | What is saved from the editor as a file of its own, listed in the Library tab. | `LibraryService`: local storage. | `FileLibraryService`: a `Snippets` folder beside the projects. |
 | `ILayoutStore` (optional) | Where the workspace's layout is kept between sessions: where its two dividers are, and whether the sidebar is hidden. Without one the layout lasts as long as the page. | `LocalStorageLayoutStore`: local storage. | `FileLayoutStore`: one file beside the projects, registered by `AddBlazemojiProjectsOnDisk`. |
+| `ISettingsStore` (optional) | Where a person's settings are kept between sessions, as one piece of text. Without one they last as long as the page. | `LocalStorageSettingsStore`: local storage, under `blazemoji.settings`. | `FileSettingsStore`: one file beside the projects, registered by `AddBlazemojiProjectsOnDisk`. |
+| `SettingsOptions.Host` (optional) | Which host this is, so that a setting marked for one host is not shown, read or kept on the other. A host that says nothing is taken for the website. | The default. | `services.Configure<SettingsOptions>(settings => settings.Host = SettingHosts.Desktop)`. |
 | `IExternalLinks` (optional) | Opening the links in the title bar. Without one they are ordinary links that open in a new tab. | None. | `HermesExternalLinks`: the system's browser, since a link followed in the app's own window would take the editor away. |
 | `"Projects": { "Root": "..." }` in configuration (optional) | With `AddBlazemojiProjectsOnDisk`, the folder projects are kept under. Defaults to `Blazemoji` in the user's documents. A leading `~/` is the user's home. | Not used. | The default. |
 | `"ProjectTemplates": { "Path": "..." }` in configuration (optional) | The folder of project templates. Defaults to `Emojicode/Templates` beside the app. | The default. | The default. |
 | `"Samples": { "Path": "..." }` in configuration (optional) | The folder of sample programs in the Library tab. Defaults to `Emojicode/Samples` beside the app. | The default. | The default. |
 
-The stores, and anything else a host puts behind `IProjectStore`, `ILibraryService` or `ILayoutStore`, report storage that cannot be used as a `ProjectStoreException`. For a project the editor then says that changes are not being saved and keeps them in memory. For a file saved to the library it says that the file could not be saved. A layout that cannot be kept is logged and nothing is said: the dividers still move, and are back at the default next time.
+The stores, and anything else a host puts behind `IProjectStore`, `ILibraryService`, `ILayoutStore` or `ISettingsStore`, report storage that cannot be used as a `ProjectStoreException`. For a project the editor then says that changes are not being saved and keeps them in memory. For a file saved to the library it says that the file could not be saved. A layout that cannot be kept is logged and nothing is said: the dividers still move, and are back at the default next time. Settings that cannot be kept are logged and the Settings panel says so; a change still holds until the page or the app is closed.
 
 The templates and samples are files of `Blazemoji.Core` (`Emojicode/Templates`, `Emojicode/Samples`). The build copies them beside any app that references the library, so every host offers the same ones without keeping copies.
 
 `AddBlazemojiEditor` keeps whatever was registered before it is called. Two uses:
 
-- **State lifetime.** It registers the state classes (`RunState`, `ProjectState`, `RequestState`, `LayoutState`, `LocalStorageFiles`) as scoped, which on a server is one set per circuit. A host with one user registers them as singletons first, as the desktop host does.
+- **State lifetime.** It registers the state classes (`RunState`, `ProjectState`, `RequestState`, `LayoutState`, `SettingsState`, `LocalStorageFiles`) as scoped, which on a server is one set per circuit. A host with one user registers them as singletons first, as the desktop host does.
 - **Templates or samples from somewhere other than a folder.** Register your own `IProjectTemplates` or `ISamples` first.
 
 The web host also raises the size of a message from the browser to 4 MiB (`AddHubOptions` in `Program.cs`), because the editor hands over a file's whole text. That limit belongs to Blazor Server; a Blazor Hybrid host has none.
@@ -67,7 +69,9 @@ The web host also raises the size of a message from the browser to 4 MiB (`AddHu
 
 1. MudBlazor's style sheet and script, and around the editor either `AppShell` or a shell of the host's own.
 
-   `AppShell` (`Blazemoji.Layout`, in the components library) is what both hosts use: the title bar, Blazemoji's theme (`Blazemoji.Layout.Theme`), MudBlazor's four providers, and the dark mode button. A host's layout is `<AppShell>@Body</AppShell>`.
+   `AppShell` (`Blazemoji.Layout`, in the components library) is what both hosts use: the title bar, Blazemoji's theme (`Blazemoji.Layout.Theme`), MudBlazor's four providers, the Settings button and the dark mode button. A host's layout is `<AppShell>@Body</AppShell>`.
+
+   A host that draws its own shell places `<SettingsButton />` (`Blazemoji.Components.Settings`) wherever it wants the panel opened from.
 
    A host that draws its own shell renders `MudThemeProvider`, `MudPopoverProvider`, `MudDialogProvider` and `MudSnackbarProvider` itself, with whatever theme it likes. The editor has no colours of its own. It reads the palette MudBlazor writes into the page (surface, text, primary and so on) and makes its Monaco theme from that, so it matches whatever theme the host has. To have it read them again when the page goes dark or light, cascade a `bool` named `DarkMode` around the editor, as `AppShell` does; a host whose colours never change needs nothing.
 2. The style sheets `_content/Blazemoji.Components/blazemoji.css` and the host's own `<HostAssembly>.styles.css`, which pulls in the components' scoped styles. `blazemoji.css` makes the workspace fill the window below the host's title bar, with a gap above and below it (`--workspace-gap` on `.workspace`), and the editor and both side panels take their height from that. It works the bar's height out from MudBlazor's own `--mud-appbar-height`; a host whose bar is another height, or that has none, sets `--blazemoji-chrome-height` to what it does have above the workspace.
@@ -99,6 +103,27 @@ The web host also raises the size of a message from the browser to 4 MiB (`AddHu
 
 That is the whole editor: the Files, Toolbox and Library tabs in a sidebar, the editor with its help beside it, and the Output, Problems and Requests tabs under the editor. The two dividers between them can be dragged, and the sidebar can be hidden (`SplitView`, around MudBlazor's split panel). Where they are left is the layout an `ILayoutStore` keeps.
 
+## Adding a setting
+
+Settings are what a person chooses in the app, as opposed to configuration, which whoever runs the app sets. A section of settings is a class, and a setting is a property of it:
+
+```csharp
+[Setting(Label = "Font size", Description = "How large the editor's text is, in pixels.", Group = "Text", Order = 1, Min = 8, Max = 32)]
+public int FontSize { get; private set; } = 14;
+```
+
+That is all it takes for the setting to be shown in the Settings panel, kept between sessions and read by whatever acts on it (`SettingsState.Get<EditorSettings>().FontSize`). The rules:
+
+- A setting is a `bool`, an `int`, a `double` or a `string`. A string with `Options = "a,b,c"` is a choice between those.
+- The value a new section has is the default. Only what differs from its default is kept, so a default changed in a later version reaches everyone who left it alone.
+- A setting is kept under its property's name and a section under its `SettingsId`, so renaming either loses what people had set.
+- A string setting holds at most 1,000 characters.
+- The setter is private. Only `SettingsState` changes a setting (`SetAsync`), and it raises `SettingsChanged` with the section when it has.
+- `Hosts = SettingHosts.Desktop` on a setting, or `Hosts` overridden on the section, keeps it to one host.
+- `Hide = true` keeps a setting without showing it in the panel.
+- A new section is a class deriving from `SettingsBase`, added with `services.Configure<SettingsOptions>(settings => settings.Add<YourSettings>())`.
+- A component that acts on a setting subscribes to `SettingsChanged`, asks for a redraw, and does its work after the redraw, as `EmojiCodeEditor` does for the editor's options.
+
 ## Projects on disk
 
 `FileProjectStore` keeps each project as a folder under one root, named after the project:
@@ -113,6 +138,7 @@ That is the whole editor: the Files, Toolbox and Library tabs in a sidebar, the 
   .blazemoji/
     state.json            which project was open last
     layout.json           where the workspace's dividers are, and whether the sidebar is hidden
+    settings.json         what was changed in the Settings panel, and nothing that is still at its default
     trash/                see below
 ```
 
@@ -134,7 +160,7 @@ scripts/dev-toolchain.sh                    # the compiler, in its container, on
 dotnet run --project Blazemoji.Desktop
 ```
 
-Settings are read from environment variables and the command line, in .NET's usual spelling: `ToolchainClient__BaseUrl=http://somewhere:5290`, `Projects__Root=~/Code/emoji`, or `--Projects:Root=...`. `DOTNET_ENVIRONMENT=Development`, which `dotnet run` sets from the launch profile, turns on the web view's developer tools.
+Configuration is read from environment variables and the command line, in .NET's usual spelling: `ToolchainClient__BaseUrl=http://somewhere:5290`, `Projects__Root=~/Code/emoji`, or `--Projects:Root=...`. `DOTNET_ENVIRONMENT=Development`, which `dotnet run` sets from the launch profile, turns on the web view's developer tools.
 
 Without a toolchain service the app still opens and edits. Running a program then reports "The toolchain service could not be reached." in the Problems tab.
 
@@ -149,7 +175,7 @@ scripts/desktop-smoke.sh --compile      # also compile and run a program, throug
 scripts/desktop-smoke.sh --app <path>   # a copy that is already built, such as the one inside an unpacked release
 ```
 
-With `HERMES_SMOKE_TEST=1` the app runs the checks in `Blazemoji.Desktop/Scripts/smoke.ts` once its page is up (the editor loads and shows the project, the style sheets and font arrive, the editor has the page's colours, a key and the toolbox each type an emoji pair, completion answers, dark mode reaches the editor, a dragged divider is heard and the sidebar settles where it was let go). It adds what only its own side can see (the project is a folder on disk, the samples, the templates and the window's icon came with the app, and the layout the drag left is in the projects folder), prints the outcome and closes.
+With `HERMES_SMOKE_TEST=1` the app runs the checks in `Blazemoji.Desktop/Scripts/smoke.ts` once its page is up (the editor loads and shows the project, the style sheets and font arrive, the editor has the page's colours, a key and the toolbox each type an emoji pair, completion answers, dark mode reaches the editor, a setting turned off in the panel reaches the editor, a dragged divider is heard and the sidebar settles where it was let go). It adds what only its own side can see (the project is a folder on disk, the samples, the templates and the window's icon came with the app, the layout the drag left is in the projects folder, and so is the setting that was changed), prints the outcome and closes.
 
 A smoke run types into the editor and what is typed is saved, so it never uses the folder the app is otherwise set to keep projects in, whatever `Projects__Root` says. It makes a temporary folder and removes it, or uses the one named by `BLAZEMOJI_SMOKE_PROJECTS` and leaves it.
 
@@ -173,3 +199,6 @@ It reports in the words of Hermes's smoke protocol: one `HERMES_SMOKE_CHECK_PASS
 - The desktop app's packed builds are not signed. The **Publish Desktop** workflow, run by hand, packs it for Windows, macOS and Linux with Velopack and drafts a GitHub release; signing is in the workflow and waits for the keys. The app calls Velopack at start-up so that an installed copy works, but nothing checks for updates.
 - Copying uses the browser's clipboard API from inside a click. It is accepted in the desktop web view on macOS; Windows and Linux have not been tried.
 - The libraries are referenced as projects, not published as packages.
+- Two tabs of the website share one browser's storage and each holds its own copy of the settings. The tab that changes a setting last writes its whole set, so a change made in the other tab since it loaded is lost. Two copies of the desktop app on one projects folder do the same to each other.
+- A setting kept by a newer version is dropped when an older version next saves.
+- Dark mode is not a setting and is not kept.

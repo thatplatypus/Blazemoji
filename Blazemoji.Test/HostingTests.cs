@@ -4,6 +4,7 @@ using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Interop;
 using Blazemoji.Services.Library;
 using Blazemoji.Services.Projects;
+using Blazemoji.Services.Settings;
 using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
 using Blazemoji.Toolchain;
@@ -50,6 +51,7 @@ namespace Blazemoji.Test
             Services.GetRequiredService<LocalStorageFiles>().ShouldNotBeNull();
             Services.GetRequiredService<EmojicodeLanguageInterop>().ShouldNotBeNull();
             Services.GetRequiredService<ICodeIntelligence>().ShouldNotBeNull();
+            Services.GetRequiredService<SettingsState>().ShouldNotBeNull();
             Services.GetRequiredService<IPackageLibrary>().ShouldNotBeNull();
             Services.GetRequiredService<IProjectTemplates>().All.ShouldNotBeEmpty();
             Services.GetRequiredService<ISamples>().ShouldBeOfType<FileSamples>();
@@ -75,6 +77,7 @@ namespace Blazemoji.Test
             one.ServiceProvider.GetRequiredService<ProjectState>().ShouldNotBeSameAs(two.ServiceProvider.GetRequiredService<ProjectState>());
             one.ServiceProvider.GetRequiredService<RunState>().ShouldNotBeSameAs(two.ServiceProvider.GetRequiredService<RunState>());
             one.ServiceProvider.GetRequiredService<LocalStorageFiles>().ShouldNotBeSameAs(two.ServiceProvider.GetRequiredService<LocalStorageFiles>());
+            one.ServiceProvider.GetRequiredService<SettingsState>().ShouldNotBeSameAs(two.ServiceProvider.GetRequiredService<SettingsState>());
             one.ServiceProvider.GetRequiredService<ICodeIntelligence>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<ICodeIntelligence>());
         }
 
@@ -237,6 +240,8 @@ namespace Blazemoji.Test
             one.ServiceProvider.GetRequiredService<ILibraryService>().ShouldBeOfType<FileLibraryService>();
             one.ServiceProvider.GetRequiredService<IProjectStore>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<IProjectStore>());
             one.ServiceProvider.GetRequiredService<ProjectState>().ShouldNotBeNull();
+            one.ServiceProvider.GetRequiredService<ISettingsStore>().ShouldBeOfType<FileSettingsStore>();
+            one.ServiceProvider.GetRequiredService<ISettingsStore>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<ISettingsStore>());
         }
 
         [Fact]
@@ -256,6 +261,21 @@ namespace Blazemoji.Test
             provider.GetRequiredService<IProjectTemplates>().ShouldBeSameAs(templates);
             one.ServiceProvider.GetRequiredService<ProjectState>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<ProjectState>());
             provider.GetServices<EmojicodeKeyword>().Count().ShouldBeGreaterThan(30);
+        }
+
+        [Fact]
+        public void The_document_says_what_a_host_does_for_settings_and_uses_the_word_in_one_sense()
+        {
+            var document = Document();
+
+            document.ShouldContain("`ISettingsStore`");
+            document.ShouldContain("`LocalStorageSettingsStore`");
+            document.ShouldContain("`FileSettingsStore`");
+            document.ShouldContain("settings.json");
+            document.ShouldContain("SettingHosts.Desktop");
+            document.ShouldContain("`SettingsState`");
+            document.ShouldContain("## Adding a setting");
+            document.ShouldNotContain("## The one setting");
         }
 
         [Fact]

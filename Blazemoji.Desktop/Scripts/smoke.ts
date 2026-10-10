@@ -134,6 +134,19 @@ const checks: Check[] = [
         const moved = sidebar.getBoundingClientRect().width - before.width;
         must(Math.abs(moved - 80) < 3, `The sidebar is ${moved.toFixed(1)} pixels wider after a drag of 80. ${windowSize()}`);
     }],
+    ["a-setting-reaches-the-editor", async () => {
+        const minimap = (): boolean => editor().getOption(monaco.editor.EditorOption.minimap).enabled;
+        must(minimap(), "The minimap is off before any setting was changed.");
+        const button = testId("settings-button");
+        must(button, "There is no Settings button.");
+        button.click();
+        const toggle = await until(() => document.querySelector<HTMLInputElement>("[data-testid=setting][data-setting=Minimap] input"), 10000);
+        must(toggle, `The Settings dialog did not show a Minimap setting. ${windowSize()}`);
+        toggle.click();
+        must(await until(() => !minimap(), 5000), "Turning the minimap off in Settings did not reach the editor.");
+        document.querySelector<HTMLElement>(".mud-dialog .mud-button-close")?.click();
+        must(await until(() => !document.querySelector(".mud-dialog"), 5000), "The Settings dialog did not close.");
+    }],
 ];
 
 const compiles: Check = ["compiles-and-runs", async () => {

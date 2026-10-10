@@ -1,0 +1,53 @@
+@implements IDisposable
+@inject SettingsState State
+
+<MudDialog>
+    <DialogContent>
+        @if (State.Sections.Count > 1)
+        {
+            <SegmentedTabs AriaLabel="Sections of settings" @bind-Active="_section">
+                @foreach (var part in State.Sections)
+                {
+                    <SegmentedTab @key="part.SettingsId" Id="@part.SettingsId" Text="@part.DisplayName" Icon="@part.Icon">
+                        <SettingsSectionView Section="@part" />
+                    </SegmentedTab>
+                }
+            </SegmentedTabs>
+        }
+        else if (State.Sections.Count == 1)
+        {
+            <SettingsSectionView Section="@State.Sections[0]" />
+        }
+        @* After the settings, so that it arriving moves nothing above it. *@
+        @if (State.SaveFailed)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3" data-testid="settings-not-saved">Your settings could not be saved, so changes last only until Blazemoji is closed.</MudAlert>
+        }
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private string? _section;
+
+    protected override void OnInitialized()
+    {
+        State.SettingsChanged += OnSettingsChanged;
+        State.SaveFailedChanged += OnSaveFailedChanged;
+    }
+
+    private void OnSettingsChanged(SettingsBase section)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSaveFailedChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        State.SettingsChanged -= OnSettingsChanged;
+        State.SaveFailedChanged -= OnSaveFailedChanged;
+    }
+}
