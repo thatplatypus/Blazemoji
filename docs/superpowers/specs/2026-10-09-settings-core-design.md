@@ -298,3 +298,6 @@ Taken while it was being built, each for Tom to overturn:
 13. A load that ends badly, a handler that throws while a load is announced, or a load that is cancelled never leaves the state unable to change a setting for the rest of the session.
 14. The editor stops waiting for settings when it is disposed.
 15. In the browser, the two tests that drive the panel's controls (the font size, and the minimap with "Restore defaults") run at 1920 by 1080 and at 1024 by 768. The four about storage, a second visitor and focus run at the size the other browser tests use, 1600 by 900: at 1024 wide the sidebar's tabs fold into a menu, and nothing those four prove depends on the window's size.
+16. A number field that is emptied and left changes nothing: the setting stays as it was and the field shows it again. As first built it went to the setting's minimum, so emptying the font size left the text at 8.
+17. A value in the kept text that cannot be read at all, such as half of an emoji, is passed over like any other value that would be refused, and a setting whose `Min` is above its `Max` is refused when its section is first read, not when a value first reaches it.
+18. The warning that settings could not be saved is drawn below the settings, where its arrival moves nothing a person is about to press.

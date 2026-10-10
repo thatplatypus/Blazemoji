@@ -1,10 +1,12 @@
 @* The field is given the limits so that it shows the number it was brought to. The state
-   brings it within them whatever the field does. *@
+   brings it within them whatever the field does. A field that is emptied hands nothing on,
+   and is drawn again as a new one so that it shows the number the setting still has. *@
 @if (Setting.Type == typeof(int))
 {
-    <MudNumericField T="int"
-                     Value="@((int)Value)"
-                     ValueChanged="@((int value) => ValueChanged.InvokeAsync(value))"
+    <MudNumericField T="int?"
+                     @key="_redrawn"
+                     Value="@((int?)(int)Value)"
+                     ValueChanged="@((int? value) => ChangeAsync(value))"
                      Min="@(Setting.Attribute.HasRange ? (int)Setting.Attribute.Min : int.MinValue)"
                      Max="@(Setting.Attribute.HasRange ? (int)Setting.Attribute.Max : int.MaxValue)"
                      Step="@((int)Math.Max(1, Setting.Attribute.Step))"
@@ -14,9 +16,10 @@
 }
 else
 {
-    <MudNumericField T="double"
-                     Value="@((double)Value)"
-                     ValueChanged="@((double value) => ValueChanged.InvokeAsync(value))"
+    <MudNumericField T="double?"
+                     @key="_redrawn"
+                     Value="@((double?)(double)Value)"
+                     ValueChanged="@((double? value) => ChangeAsync(value))"
                      Min="@(Setting.Attribute.HasRange ? Setting.Attribute.Min : double.MinValue)"
                      Max="@(Setting.Attribute.HasRange ? Setting.Attribute.Max : double.MaxValue)"
                      Step="@Setting.Attribute.Step"
@@ -34,4 +37,15 @@ else
 
     [Parameter]
     public EventCallback<object?> ValueChanged { get; set; }
+
+    private int _redrawn;
+
+    private Task ChangeAsync(object? value)
+    {
+        if (value is not null)
+            return ValueChanged.InvokeAsync(value);
+
+        _redrawn++;
+        return Task.CompletedTask;
+    }
 }

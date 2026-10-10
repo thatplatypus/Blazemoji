@@ -11,8 +11,8 @@ namespace Blazemoji.Services.Settings
     /// <summary>
     /// Settings as the text a store keeps, the same wherever it is kept: one object for each
     /// section, holding only what is not at its default. Reading forgives. Text that is not
-    /// such an object is no settings, and a value that could not have come from the panel is
-    /// passed over.
+    /// such an object, or cannot be parsed at all, is no settings, and a value that could not
+    /// have come from the panel, or cannot be read, is passed over.
     /// </summary>
     public static class SettingsJson
     {
@@ -77,20 +77,36 @@ namespace Blazemoji.Services.Settings
 
                     foreach (var setting in SettingProperties.Of(section).Where(setting => setting.IsFor(host)))
                     {
-                        if (values.TryGetProperty(KeyOf(setting), out var value) && setting.TryAccept(Plain(value), out var accepted))
+                        if (values.TryGetProperty(KeyOf(setting), out var value) && TryRead(value, out var plain) && setting.TryAccept(plain, out var accepted))
                             kept.Add(new KeptSetting(section, setting, accepted));
                     }
                 }
 
                 return kept;
             }
-            catch (JsonException)
+            catch (Exception exception) when (exception is JsonException or ArgumentException)
             {
                 return [];
             }
         }
 
         private static string KeyOf(SettingProperty setting) => JsonNamingPolicy.CamelCase.ConvertName(setting.Name);
+
+        // A string that holds half of an emoji as an escape parses, but cannot be read back as text.
+        // Only that one value is lost; the rest of the text is still good.
+        private static bool TryRead(JsonElement value, out object? plain)
+        {
+            try
+            {
+                plain = Plain(value);
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                plain = null;
+                return false;
+            }
+        }
 
         // A number too large to be one comes out as infinity or not at all, and either way is refused.
         private static object? Plain(JsonElement value) => value.ValueKind switch

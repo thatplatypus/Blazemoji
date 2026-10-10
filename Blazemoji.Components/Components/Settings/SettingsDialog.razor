@@ -3,10 +3,6 @@
 
 <MudDialog>
     <DialogContent>
-        @if (State.SaveFailed)
-        {
-            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3" data-testid="settings-not-saved">Your settings could not be saved, so changes last only until Blazemoji is closed.</MudAlert>
-        }
         @if (State.Sections.Count > 1)
         {
             <SegmentedTabs AriaLabel="Sections of settings" @bind-Active="_section">
@@ -21,6 +17,11 @@
         else if (State.Sections.Count == 1)
         {
             <SettingsSectionView Section="@State.Sections[0]" />
+        }
+        @* After the settings, so that it arriving moves nothing above it. *@
+        @if (State.SaveFailed)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3" data-testid="settings-not-saved">Your settings could not be saved, so changes last only until Blazemoji is closed.</MudAlert>
         }
     </DialogContent>
 </MudDialog>

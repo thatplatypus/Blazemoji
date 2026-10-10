@@ -78,35 +78,36 @@ namespace Blazemoji.Shared.State
 
         private async Task LoadFromAsync(ISettingsStore from)
         {
-            string? text = null;
+            var changed = new List<SettingsBase>();
             try
             {
-                text = await from.LoadAsync();
+                string? text = null;
+                try
+                {
+                    text = await from.LoadAsync();
+                }
+                catch (ProjectStoreException exception)
+                {
+                    _logger.LogWarning(exception, "The kept settings could not be read, so the defaults are used");
+                }
+
+                foreach (var kept in SettingsJson.Read(text, _all, _host))
+                {
+                    if (Equals(kept.Setting.Read(kept.Section), kept.Value))
+                        continue;
+
+                    kept.Setting.Assign(kept.Section, kept.Value);
+                    if (!changed.Contains(kept.Section))
+                        changed.Add(kept.Section);
+                }
             }
-            catch (ProjectStoreException exception)
+            finally
             {
-                _logger.LogWarning(exception, "The kept settings could not be read, so the defaults are used");
-            }
-            catch
-            {
+                // The load is over before anyone hears of it, however it ended. A failed load must
+                // not stay remembered for every later change to rethrow, and a handler that asks
+                // for the settings must not start another.
                 _loading = Task.CompletedTask;
-                throw;
             }
-
-            var changed = new List<SettingsBase>();
-            foreach (var kept in SettingsJson.Read(text, _all, _host))
-            {
-                if (Equals(kept.Setting.Read(kept.Section), kept.Value))
-                    continue;
-
-                kept.Setting.Assign(kept.Section, kept.Value);
-                if (!changed.Contains(kept.Section))
-                    changed.Add(kept.Section);
-            }
-
-            // The load is over before anyone hears of it. A handler that throws must not leave
-            // a failed load remembered, and one that asks for the settings must not start another.
-            _loading = Task.CompletedTask;
 
             foreach (var section in changed)
                 SettingsChanged?.Invoke(section);

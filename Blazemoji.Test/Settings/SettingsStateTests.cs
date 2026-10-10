@@ -63,6 +63,33 @@ namespace Blazemoji.Test.Settings
         }
 
         [Fact]
+        public async Task Kept_text_that_holds_half_of_an_emoji_does_not_stop_the_state_from_loading_or_changing()
+        {
+            _kept = "{ \"sample\": { \"name\": \"a\\uD83Cb\" } }";
+            var state = CreateState();
+
+            await state.LoadAsync();
+            await state.SetAsync(state.Get<SampleSettings>(), "Size", 20);
+
+            state.Get<SampleSettings>().Size.ShouldBe(20);
+        }
+
+        [Fact]
+        public async Task A_load_that_throws_is_not_remembered_so_the_next_one_completes()
+        {
+            _kept = "{ \"backwards\": { \"size\": 20 } }";
+            var options = new SettingsOptions { Host = SettingHosts.Web };
+            options.Add<BackwardsSettings>();
+            var state = new SettingsState(Options.Create(options), _logger, _store);
+
+            await Should.ThrowAsync<NotSupportedException>(() => state.LoadAsync());
+
+            var second = state.LoadAsync();
+            second.IsCompleted.ShouldBeTrue();
+            second.IsCompletedSuccessfully.ShouldBeTrue();
+        }
+
+        [Fact]
         public async Task Loading_with_nothing_kept_announces_nothing_and_does_not_read_twice()
         {
             var state = CreateState();

@@ -116,6 +116,8 @@ That is all it takes for the setting to be shown in the Settings panel, kept bet
 
 - A setting is a `bool`, an `int`, a `double` or a `string`. A string with `Options = "a,b,c"` is a choice between those.
 - The value a new section has is the default. Only what differs from its default is kept, so a default changed in a later version reaches everyone who left it alone.
+- A setting is kept under its property's name and a section under its `SettingsId`, so renaming either loses what people had set.
+- A string setting holds at most 1,000 characters.
 - The setter is private. Only `SettingsState` changes a setting (`SetAsync`), and it raises `SettingsChanged` with the section when it has.
 - `Hosts = SettingHosts.Desktop` on a setting, or `Hosts` overridden on the section, keeps it to one host.
 - `Hide = true` keeps a setting without showing it in the panel.
@@ -197,6 +199,6 @@ It reports in the words of Hermes's smoke protocol: one `HERMES_SMOKE_CHECK_PASS
 - The desktop app's packed builds are not signed. The **Publish Desktop** workflow, run by hand, packs it for Windows, macOS and Linux with Velopack and drafts a GitHub release; signing is in the workflow and waits for the keys. The app calls Velopack at start-up so that an installed copy works, but nothing checks for updates.
 - Copying uses the browser's clipboard API from inside a click. It is accepted in the desktop web view on macOS; Windows and Linux have not been tried.
 - The libraries are referenced as projects, not published as packages.
-- Two tabs of the website share one browser's storage and each holds its own copy of the settings. The tab that changes a setting last writes its whole set, so a change made in the other tab since it loaded is lost.
+- Two tabs of the website share one browser's storage and each holds its own copy of the settings. The tab that changes a setting last writes its whole set, so a change made in the other tab since it loaded is lost. Two copies of the desktop app on one projects folder do the same to each other.
 - A setting kept by a newer version is dropped when an older version next saves.
 - Dark mode is not a setting and is not kept.

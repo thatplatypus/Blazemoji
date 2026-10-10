@@ -79,8 +79,8 @@ namespace Blazemoji.Test.Settings
             var cut = RenderSection(state);
 
             await cut.InvokeAsync(() => Row(cut, "Wrap").FindComponent<MudSwitch<bool>>().Instance.ValueChanged.InvokeAsync(true));
-            await cut.InvokeAsync(() => Row(cut, "Size").FindComponent<MudNumericField<int>>().Instance.ValueChanged.InvokeAsync(20));
-            await cut.InvokeAsync(() => Row(cut, "Ratio").FindComponent<MudNumericField<double>>().Instance.ValueChanged.InvokeAsync(2.5));
+            await cut.InvokeAsync(() => Row(cut, "Size").FindComponent<MudNumericField<int?>>().Instance.ValueChanged.InvokeAsync(20));
+            await cut.InvokeAsync(() => Row(cut, "Ratio").FindComponent<MudNumericField<double?>>().Instance.ValueChanged.InvokeAsync(2.5));
             await cut.InvokeAsync(() => Row(cut, "Whitespace").FindComponent<MudSelect<string>>().Instance.ValueChanged.InvokeAsync("all"));
             await cut.InvokeAsync(() => Row(cut, "Name").FindComponent<MudTextField<string>>().Instance.ValueChanged.InvokeAsync("other"));
 
@@ -103,14 +103,15 @@ namespace Blazemoji.Test.Settings
         }
 
         [Fact]
-        public async Task A_number_field_that_is_emptied_leaves_the_setting_within_its_limits()
+        public async Task A_number_field_that_is_emptied_leaves_the_setting_as_it_was()
         {
             var state = UseState();
             var cut = RenderSection(state);
 
             await Row(cut, "Size").Find("input").ChangeAsync(new ChangeEventArgs { Value = "" });
 
-            state.Get<SampleSettings>().Size.ShouldBeInRange(8, 32);
+            state.Get<SampleSettings>().Size.ShouldBe(14);
+            Row(cut, "Size").Find("input").GetAttribute("value").ShouldBe("14");
         }
 
         [Fact]
@@ -178,6 +179,9 @@ namespace Blazemoji.Test.Settings
             dialog.WaitForAssertion(() => dialog.Find("[data-testid=settings-not-saved]").TextContent
                 .ShouldContain("Your settings could not be saved, so changes last only until Blazemoji is closed."));
             dialog.Markup.ShouldNotContain("QuotaExceededError");
+            var restore = dialog.Markup.IndexOf("data-testid=\"restore-defaults\"", StringComparison.Ordinal);
+            restore.ShouldBeGreaterThan(0);
+            dialog.Markup.IndexOf("data-testid=\"settings-not-saved\"", StringComparison.Ordinal).ShouldBeGreaterThan(restore);
         }
     }
 }

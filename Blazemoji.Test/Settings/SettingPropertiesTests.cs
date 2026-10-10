@@ -110,6 +110,14 @@ namespace Blazemoji.Test.Settings
             Should.Throw<NotSupportedException>(() => SettingProperties.Of(typeof(HasADate)));
         }
 
+        [Fact]
+        public void A_setting_whose_minimum_is_above_its_maximum_is_refused_when_the_section_is_first_read()
+        {
+            var exception = Should.Throw<NotSupportedException>(() => SettingProperties.Of(typeof(BackwardsSettings)));
+
+            exception.Message.ShouldContain("BackwardsSettings.Size");
+        }
+
         private sealed class HasADate : SettingsBase
         {
             public override string SettingsId => "dated";

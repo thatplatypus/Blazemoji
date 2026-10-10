@@ -51,4 +51,17 @@ namespace Blazemoji.Test.Settings
         [Setting(Label = "Check at start")]
         public bool CheckAtStart { get; private set; } = true;
     }
+
+    /// <summary>A section whose limits are the wrong way round, which no change to it could be brought within.</summary>
+    internal sealed class BackwardsSettings : SettingsBase
+    {
+        public override string SettingsId => "backwards";
+
+        public override string DisplayName => "Backwards";
+
+        public override string Icon => string.Empty;
+
+        [Setting(Label = "Size", Min = 32, Max = 8)]
+        public int Size { get; private set; } = 14;
+    }
 }

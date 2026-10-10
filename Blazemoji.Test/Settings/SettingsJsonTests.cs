@@ -142,6 +142,16 @@ namespace Blazemoji.Test.Settings
         }
 
         [Fact]
+        public void Text_that_holds_half_of_an_emoji_is_read_without_throwing()
+        {
+            var escaped = Read("{ \"sample\": { \"name\": \"a\\uD83Cb\", \"size\": 20 } }");
+            var raw = Read("{ \"sample\": { \"name\": \"a\uD83Cb\", \"size\": 20 } }");
+
+            escaped.ShouldHaveSingleItem().Setting.Name.ShouldBe("Size");
+            raw.ShouldBeEmpty();
+        }
+
+        [Fact]
         public void A_hidden_setting_is_kept_like_any_other()
         {
             Set(_sample, "Remembered", 7);

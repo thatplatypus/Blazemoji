@@ -21,6 +21,9 @@ namespace Blazemoji.Services.Settings
             if (property.SetMethod is null)
                 throw new NotSupportedException($"{property.DeclaringType?.Name}.{property.Name} has no setter. A setting needs one, and it may be private.");
 
+            if (attribute.HasRange && attribute.Min > attribute.Max)
+                throw new NotSupportedException($"{property.DeclaringType?.Name}.{property.Name} has a minimum of {attribute.Min} above its maximum of {attribute.Max}. No value could be within both.");
+
             _property = property;
             Attribute = attribute;
             Default = defaultValue;
