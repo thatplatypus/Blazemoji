@@ -62,9 +62,11 @@ namespace Blazemoji.E2E
             await Assertions.Expect(TabOf(editor, Main)).ToHaveAttributeAsync("aria-selected", "true");
 
             // The editor has the keys after a click on a tab, as it has after a click in the list.
-            await editor.Page.Keyboard.PressAsync("Control+End");
+            // No key moves the cursor first: the one for the end of a file differs between macOS
+            // and Linux, and a comment that ends a file with no newline after it does not compile.
             await editor.Page.Keyboard.TypeAsync("💭 typed after the click");
-            (await editor.GetCodeAsync()).ShouldContain("💭 typed after the click");
+            await editor.Page.Keyboard.PressAsync("Enter");
+            (await editor.GetCodeAsync()).Split('\n')[0].ShouldBe("💭 typed after the click");
 
             await ClickTabAsync(editor, Greeter);
             (await editor.GetCodeAsync()).ShouldContain("Howdy");
@@ -237,7 +239,6 @@ namespace Blazemoji.E2E
 
             await TabOf(editor, Greeter).ClickAsync();
             await editor.Page.WaitForFunctionAsync("() => document.activeElement?.closest('.monaco-editor') !== null");
-            await editor.Page.Keyboard.PressAsync("Control+End");
             await editor.Page.Keyboard.TypeAsync("💭 typed after the click");
 
             (await editor.GetCodeAsync()).ShouldContain("💭 typed after the click");
