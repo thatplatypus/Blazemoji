@@ -10,11 +10,24 @@
 # with the toolchain shut off from the network. "all-in-one", the last stage and so the
 # default, holds both, for running on your own machine from an IDE or with one command.
 
-# The .NET SDK plus what the Emojicode compiler needs. scripts/test-in-docker.sh runs the
-# tests in a container made from this stage alone.
-FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0 AS sdk-toolchain
+# The .NET SDK plus what the Emojicode compiler needs.
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0 AS sdk-deps
 COPY docker/install-toolchain-deps.sh /tmp/install-toolchain-deps.sh
 RUN /tmp/install-toolchain-deps.sh
+
+# pmj, Packmoji's command, which builds the packages a project locks. It is built from the
+# commit in packmoji.pin: see docker/build-pmj.sh.
+FROM sdk-deps AS pmj
+COPY packmoji.pin /tmp/packmoji.pin
+COPY docker/build-pmj.sh /tmp/build-pmj.sh
+RUN /tmp/build-pmj.sh /tmp/packmoji.pin /pmj
+
+# What the tests need: the SDK, the compiler's needs, and pmj. scripts/test-in-docker.sh runs
+# the tests in a container made from this stage alone. The variable is the one the toolchain
+# service is configured by, so the service started there finds pmj as the tests do.
+FROM sdk-deps AS sdk-toolchain
+COPY --from=pmj /pmj /opt/pmj
+ENV Packmoji__Path=/opt/pmj/pmj
 
 FROM sdk-toolchain AS build
 ARG BUILD_CONFIGURATION=Release
@@ -70,6 +83,8 @@ COPY docker/install-toolchain-deps.sh /tmp/install-toolchain-deps.sh
 RUN /tmp/install-toolchain-deps.sh
 WORKDIR /app
 COPY --from=publish-toolchain /app/publish .
+# Beside the service, which is where it looks for pmj unless it is told otherwise.
+COPY --from=pmj /pmj ./pmj
 # Programs are compiled and run under the temp directory, so the app user needs no write
 # access to the application itself.
 USER $APP_UID
