@@ -26,7 +26,7 @@ namespace Blazemoji.Test.Intelligence
             _project = new ProjectState(Substitute.For<IProjectStore>(), templates, NullLogger<ProjectState>.Instance);
 
             _intelligence.Imports(Arg.Any<string>()).Returns(call => new CodeIntelligence([], new EmojiNames()).Imports(call.Arg<string>()));
-            _library.GetAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>()).Returns([TestPackages.Web]);
+            _library.GetAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([TestPackages.Web]);
         }
 
         private EmojicodeLanguageInterop Create() =>
@@ -59,6 +59,7 @@ namespace Blazemoji.Test.Intelligence
             answers.ShouldHaveSingleItem().ShouldBe(new CompletionAnswer("📥 path handler", "Method", "📥 app ", 0, 4, "🍷", "docs", 0));
             await _library.Received(1).GetAsync(
                 Arg.Is<IEnumerable<string>>(names => names.SequenceEqual(new[] { "s", "grapevine", "json" })),
+                Arg.Any<string?>(),
                 Arg.Any<CancellationToken>());
             _intelligence.Received(1).Complete("app.", 4, Arg.Is<IReadOnlyList<PackageDocumentation>>(packages => packages.Single() == TestPackages.Web));
         }
@@ -70,7 +71,7 @@ namespace Blazemoji.Test.Intelligence
 
             await interop.HoverAsync("📦 sockets 🏠", 0);
 
-            await _library.Received(1).GetAsync(Arg.Is<IEnumerable<string>>(names => names.Contains("sockets")), Arg.Any<CancellationToken>());
+            await _library.Received(1).GetAsync(Arg.Is<IEnumerable<string>>(names => names.Contains("sockets")), Arg.Any<string?>(), Arg.Any<CancellationToken>());
         }
 
         [Fact]
@@ -102,7 +103,7 @@ namespace Blazemoji.Test.Intelligence
         [Fact]
         public async Task A_failure_never_reaches_the_editor()
         {
-            _library.GetAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("boom"));
+            _library.GetAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("boom"));
             await using var interop = Create();
 
             (await interop.CompleteAsync("app.", 4)).ShouldBeEmpty();
