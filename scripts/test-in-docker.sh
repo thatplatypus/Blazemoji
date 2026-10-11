@@ -73,8 +73,10 @@ docker run --rm --platform linux/amd64 \
     run_tests Blazemoji.Test/Blazemoji.Test.csproj --filter-not-namespace Blazemoji.Test.Toolchain $without
 
     # The contract tests are black-box: they are pointed at a running toolchain service and
-    # know nothing else about it. The service was built with the tests above.
-    dotnet Blazemoji.Toolchain.Service/bin/Release/net10.0/Blazemoji.Toolchain.Service.dll --urls http://127.0.0.1:5290 > /tmp/toolchain-service.log 2>&1 &
+    # know nothing else about it. The service was built with the tests above. It is told the
+    # scopes the website is, since with none said it builds no package, and the packages the
+    # tests hand it are thatplatypus ones.
+    Packmoji__Scopes=thatplatypus,emojicode dotnet Blazemoji.Toolchain.Service/bin/Release/net10.0/Blazemoji.Toolchain.Service.dll --urls http://127.0.0.1:5290 > /tmp/toolchain-service.log 2>&1 &
     waited=0
     until curl -fs http://127.0.0.1:5290/health > /dev/null; do
       waited=$((waited + 1))

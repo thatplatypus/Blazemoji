@@ -59,7 +59,7 @@ namespace Blazemoji.Toolchain.Local
         private const string CompilerTooOldCode = "compiler.too-old";
 
         private readonly ToolchainOptions _options = toolchainOptions.Value;
-        private readonly PackageScopes _scopes = PackageScopes.Parse(packmojiOptions.Value.Scopes, PackageScopes.Any);
+        private readonly PackageScopes _scopes = PackageScopes.Parse(packmojiOptions.Value.Scopes);
         private readonly string _home = packmojiOptions.Value.Home is { Length: > 0 } home
             ? home
             : Path.Combine(toolchainOptions.Value.WorkRoot, "packmoji");
@@ -533,8 +533,10 @@ namespace Blazemoji.Toolchain.Local
             PackageProblem.Error,
             PackageProblemCodes.Scope,
             $"The package \"{package.Name}\" is not one this toolchain builds.",
-            $"it builds packages of these scopes: {_scopes}",
-            "depend on a package of one of those scopes, or use a toolchain of your own");
+            _scopes.AllowsNothing ? "it has been told no scopes to build packages of" : $"it builds packages of these scopes: {_scopes}",
+            _scopes.AllowsNothing
+                ? "whoever runs the toolchain names the scopes it builds in Packmoji__Scopes, or * for anyone's"
+                : "depend on a package of one of those scopes, or use a toolchain of your own");
 
         private static DependencyAnswer Failed(string code, string message, string reason, string fix) =>
             new DependencyAnswer.Failed([new PackageProblem(PackageProblem.Error, code, message, reason, fix)]);
