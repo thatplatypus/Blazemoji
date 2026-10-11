@@ -566,6 +566,237 @@ namespace Blazemoji.Test.State
         }
 
         [Fact]
+        public async Task Going_back_to_text_that_was_ready_after_other_text_failed_for_the_moment_is_ready_again()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            _manager.RestoreAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(new PackageRestore.Restored([Words]));
+            _manager.RestoreAsync("b", Lockfile, Arg.Any<CancellationToken>()).Returns(new PackageRestore.Failed([Problem(PackageProblemCodes.Busy)]));
+            Builds("set-A");
+
+            await state.EnsureRestoredAsync(projects.Current);
+            state.Status.ShouldBe(PackagesStatus.Ready);
+            await projects.WriteFileAsync("p1", PackagesState.ManifestPath, "b");
+            await state.EnsureRestoredAsync(projects.Current);
+            state.Status.ShouldBe(PackagesStatus.Failed);
+            await projects.WriteFileAsync("p1", PackagesState.ManifestPath, Manifest);
+            await state.EnsureRestoredAsync(projects.Current);
+            await state.EnsureRestoredAsync(projects.Current);
+
+            state.Status.ShouldBe(PackagesStatus.Ready, "the project's text is the pair that was ready");
+            state.Dependencies.ShouldBe("set-A");
+        }
+
+        [Fact]
+        public async Task Going_back_to_text_that_was_ready_while_other_text_is_still_restoring_ends_ready()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            _manager.RestoreAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(new PackageRestore.Restored([Words]));
+            var other = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.RestoreAsync("b", Lockfile, Arg.Any<CancellationToken>()).Returns(other.Task);
+            Builds("set-A");
+
+            await state.EnsureRestoredAsync(projects.Current);
+            await projects.WriteFileAsync("p1", PackagesState.ManifestPath, "b");
+            var restoringB = state.EnsureRestoredAsync(projects.Current);
+            await projects.WriteFileAsync("p1", PackagesState.ManifestPath, Manifest);
+            var backToA = state.EnsureRestoredAsync(projects.Current);
+            other.SetResult(new PackageRestore.Failed([Problem("json.syntax")]));
+            await restoringB.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            await backToA.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            state.Status.ShouldBe(PackagesStatus.Ready, "the project's text is the pair that was ready");
+            state.Problems.ShouldBeEmpty();
+            state.Dependencies.ShouldBe("set-A");
+        }
+
+        [Fact]
+        public async Task A_run_waiting_on_an_older_restore_does_not_resolve_the_old_text_when_newer_text_is_out_of_date()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            var restoringA = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.RestoreAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(restoringA.Task);
+            _manager.RestoreAsync("b", Lockfile, Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            _manager.ResolveAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(new PackageResolve.Resolved(Lockfile, [Words]));
+            _manager.ResolveAsync("b", Lockfile, Arg.Any<CancellationToken>()).Returns(new PackageResolve.Resolved("lock for b", [Words]));
+            _manager.RestoreAsync("b", "lock for b", Arg.Any<CancellationToken>()).Returns(new PackageRestore.Restored([Words]));
+            Builds("set-B");
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            await projects.WriteFileAsync("p1", PackagesState.ManifestPath, "b");
+            await state.EnsureRestoredAsync(projects.Current);
+            state.Status.ShouldBe(PackagesStatus.OutOfDate);
+            restoringA.SetResult(new PackageRestore.Restored([Words]));
+            var firstRun = await preparing.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            var statusAfterFirstRun = state.Status;
+            var secondRun = await state.PrepareForRunAsync(projects.Current).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            await state.EnsureRestoredAsync(projects.Current);
+
+            var resolvedTheOldText = _manager.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IPackageManager.ResolveAsync) && (string)call.GetArguments()[0]! == Manifest);
+            var summary = $"first run {firstRun}, status after it {statusAfterFirstRun}, second run {secondRun}, status now {state.Status}, resolves of the old manifest {resolvedTheOldText}";
+            statusAfterFirstRun.ShouldNotBe(PackagesStatus.Restoring, summary);
+            secondRun.ShouldBeTrue(summary);
+            resolvedTheOldText.ShouldBe(0, summary);
+        }
+
+        [Fact]
+        public async Task A_run_waiting_on_a_restore_does_not_resolve_a_project_that_was_left_for_another_out_of_date_one()
+        {
+            var first = Stored("p1");
+            var second = Stored("p2", manifest: "manifest of p2", lockfile: null);
+            var projects = await ProjectsAsync(first, second);
+            var state = State(projects);
+            var restoringFirst = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.RestoreAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(restoringFirst.Task);
+            _manager.RestoreAsync("manifest of p2", null, Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            _manager.ResolveAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(new PackageResolve.Resolved("a lock for p1", [Words]));
+            _manager.ResolveAsync("manifest of p2", null, Arg.Any<CancellationToken>()).Returns(new PackageResolve.Resolved("a lock for p2", [Words]));
+            _manager.RestoreAsync("manifest of p2", "a lock for p2", Arg.Any<CancellationToken>()).Returns(new PackageRestore.Restored([Words]));
+            Builds("set-p2");
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            await projects.OpenAsync("p2");
+            await state.EnsureRestoredAsync(projects.Current);
+            state.Status.ShouldBe(PackagesStatus.OutOfDate);
+            restoringFirst.SetResult(new PackageRestore.Restored([Words]));
+            var firstRun = await preparing.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            var statusAfterFirstRun = state.Status;
+            await state.EnsureRestoredAsync(projects.Current);
+            var statusAfterAPause = state.Status;
+            var secondRun = await state.PrepareForRunAsync(projects.Current).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            var resolvedTheProjectLeft = _manager.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IPackageManager.ResolveAsync) && (string)call.GetArguments()[0]! == Manifest);
+            var summary = $"first run {firstRun}, status after it {statusAfterFirstRun}, after a typing pause {statusAfterAPause}, run of p2 {secondRun}, status now {state.Status}, resolves of p1 after it was left {resolvedTheProjectLeft}";
+            firstRun.ShouldBeFalse(summary);
+            projects.Current.Find(PackagesState.LockfilePath).ShouldNotBeNull(summary).Content.ShouldBe("a lock for p2", summary);
+            statusAfterFirstRun.ShouldBe(PackagesStatus.OutOfDate, summary);
+            secondRun.ShouldBeTrue(summary);
+            resolvedTheProjectLeft.ShouldBe(0, summary);
+        }
+
+        [Fact]
+        public async Task A_resolve_that_ends_after_a_project_with_the_same_two_texts_was_opened_does_not_leave_the_status_restoring()
+        {
+            var first = Stored("p1", lockfile: null);
+            var second = Stored("p2", lockfile: null);
+            var projects = await ProjectsAsync(first, second);
+            var state = State(projects);
+            _manager.RestoreAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            var resolving = new TaskCompletionSource<PackageResolve>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.ResolveAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(resolving.Task, Task.FromResult<PackageResolve>(new PackageResolve.Resolved("a lock", [Words])));
+            _manager.RestoreAsync(Manifest, "a lock", Arg.Any<CancellationToken>()).Returns(new PackageRestore.Restored([Words]));
+            Builds("set-1");
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            await projects.OpenAsync("p2");
+            await state.EnsureRestoredAsync(projects.Current);
+            resolving.SetResult(new PackageResolve.Resolved("a lock", [Words]));
+            var firstRun = await preparing.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            var statusAfterFirstRun = state.Status;
+            await state.EnsureRestoredAsync(projects.Current);
+            var statusAfterAPause = state.Status;
+            var secondRun = await state.PrepareForRunAsync(projects.Current).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            var summary = $"first run {firstRun}, status after it {statusAfterFirstRun}, after a typing pause {statusAfterAPause}, run of p2 {secondRun}, status now {state.Status}";
+            firstRun.ShouldBeFalse(summary);
+            statusAfterFirstRun.ShouldNotBe(PackagesStatus.Restoring, summary);
+            secondRun.ShouldBeTrue(summary);
+        }
+
+        [Fact]
+        public async Task A_resolve_that_throws_is_not_remembered_and_the_next_typing_pause_restores_again()
+        {
+            var projects = await ProjectsAsync(Stored(lockfile: null));
+            var state = State(projects);
+            _manager.RestoreAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            _manager.ResolveAsync(Manifest, null, Arg.Any<CancellationToken>())
+                .ThrowsAsync(new InvalidOperationException("a secret of the server's"));
+
+            var mayRun = await state.PrepareForRunAsync(projects.Current);
+            var statusAfterRun = state.Status;
+            await state.EnsureRestoredAsync(projects.Current);
+
+            var restores = _manager.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IPackageManager.RestoreAsync));
+            var summary = $"run {mayRun}, status after it {statusAfterRun}, status after a typing pause {state.Status}, restores {restores}, from a run {state.ProblemsAreFromARun}";
+            mayRun.ShouldBeFalse(summary);
+            statusAfterRun.ShouldBe(PackagesStatus.Failed, summary);
+            restores.ShouldBe(2, summary);
+        }
+
+        [Fact]
+        public async Task A_lockfile_chosen_for_text_that_is_no_longer_the_projects_is_not_written()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            var restoringA = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.RestoreAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(restoringA.Task);
+            _manager.RestoreAsync("b", Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            _manager.ResolveAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(new PackageResolve.Resolved("chosen for the old manifest", [Words]));
+            Builds("set-A");
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            await projects.WriteFileAsync("p1", PackagesState.ManifestPath, "b");
+            await state.EnsureRestoredAsync(projects.Current);
+            restoringA.SetResult(new PackageRestore.Restored([Words]));
+            var mayRun = await preparing.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            var summary = $"run {mayRun}, status {state.Status}, manifest now '{projects.Current.Find(PackagesState.ManifestPath)!.Content}', lockfile now '{projects.Current.Find(PackagesState.LockfilePath)!.Content}', from a run {state.ProblemsAreFromARun}";
+            projects.Current.Find(PackagesState.LockfilePath)!.Content.ShouldBe(Lockfile, summary);
+        }
+
+        [Fact]
+        public async Task A_run_whose_restore_was_overtaken_waits_for_the_newer_one()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            var restoringA = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var restoringB = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.RestoreAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(restoringA.Task);
+            _manager.RestoreAsync("b", Lockfile, Arg.Any<CancellationToken>()).Returns(restoringB.Task);
+            Builds("set-B");
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            await projects.WriteFileAsync("p1", PackagesState.ManifestPath, "b");
+            var newer = state.EnsureRestoredAsync(projects.Current);
+            restoringA.SetResult(new PackageRestore.Restored([Words]));
+            restoringB.SetResult(new PackageRestore.Restored([Words]));
+            var mayRun = await preparing.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            await newer.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            mayRun.ShouldBeTrue();
+            state.Status.ShouldBe(PackagesStatus.Ready);
+            state.Dependencies.ShouldBe("set-B");
+            await _manager.DidNotReceive().ResolveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_run_gives_up_and_says_nothing_when_the_manifest_goes_on_changing_while_it_waits()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            var changes = 0;
+            _manager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(async call =>
+            {
+                // Someone changes the manifest while pmj works, every time.
+                await projects.WriteFileAsync("p1", PackagesState.ManifestPath, "changed " + ++changes);
+                return (PackageRestore)new PackageRestore.Restored([]);
+            });
+
+            var mayRun = await state.PrepareForRunAsync(projects.Current).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            mayRun.ShouldBeFalse();
+            changes.ShouldBe(3);
+            state.ProblemsAreFromARun.ShouldBeFalse();
+            await _manager.DidNotReceive().ResolveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+            _toolchain.ReceivedCalls().ShouldBeEmpty();
+        }
+
+        [Fact]
         public void No_more_than_two_archives_are_on_their_way_from_one_host_at_once()
         {
             var uploads = new PackageUploads();

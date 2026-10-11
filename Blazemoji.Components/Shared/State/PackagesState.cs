@@ -58,14 +58,27 @@ namespace Blazemoji.Shared.State
         // keeping what it is given, and asking for ever would not mend it.
         private const int MostRoundsOfArchives = 2;
 
+        // A run waits for the project as it is open. Someone may change one of the two files
+        // while it waits, which starts a newer restore, and that is waited for in turn: a few
+        // times, and not for as long as someone goes on typing.
+        private const int MostTurnsOfWaiting = 3;
+
         private const string Who = "Blazemoji";
 
         private readonly CancellationTokenSource _disposal = new();
 
-        // The pair of texts the present status is the answer for. A pair that was answered
-        // is not asked about again, so a check of the typing costs no call to pmj.
-        private Pair? _settled;
-        private (Pair Pair, Task Work)? _running;
+        // The pair of texts the present status is about, and whether that status is the
+        // answer for the pair until one of the two changes. Both are set with the status, in
+        // the one place it is set, so that neither outlives it: a status about other text, or
+        // one that is only how things stand for the moment, is never taken for the answer to
+        // what is open. A pair that was answered is not asked about again, so a check of the
+        // typing costs no call to pmj.
+        private Pair? _about;
+        private bool _remembered;
+
+        // The restore that is going on, if one is, with the number of its ask. Only the
+        // latest ask's restore may be joined: an older one's answer will be thrown away.
+        private (Pair Pair, int Ask, Task Work)? _running;
 
         // Each ask takes the next number, and only the latest may say how things stand: an
         // older one that ends later is about text that is no longer the project's.
@@ -107,26 +120,24 @@ namespace Blazemoji.Shared.State
 
             if (PairOf(project) is not { } pair)
             {
-                // Whatever is still being restored is for a project that is not this one.
+                // Whatever is still being worked out is for a project that is not this one.
                 _asks++;
                 _running = null;
-                _settled = null;
-                Apply(PackagesStatus.None, [], null, fromARun: false);
+                Apply(PackagesStatus.None, [], null, fromARun: false, about: null, remembered: true);
                 return Task.CompletedTask;
             }
 
-            if (pair == _settled)
+            if (_remembered && pair == _about)
                 return Task.CompletedTask;
 
-            if (_running is { } running && running.Pair == pair)
+            if (_running is { } running && running.Ask == _asks && running.Pair == pair)
                 return running.Work;
 
             var ask = ++_asks;
             var work = RestoreAsync(pair, ask);
 
-            // A restore that ended before it had to wait for anything has already cleared
-            // this, and must not be left here looking as if it were still going.
-            _running = work.IsCompleted ? null : (pair, work);
+            // A restore that ended before it had to wait for anything is not going on.
+            _running = work.IsCompleted ? null : (pair, ask, work);
             return work;
         }
 
@@ -136,42 +147,54 @@ namespace Blazemoji.Shared.State
         /// project, and then restored.
         /// </summary>
         /// <returns>
-        /// Whether the run may go ahead. False when the packages are not ready, whose
-        /// problems are then <see cref="Problems"/>, and when another project was opened in
-        /// the meantime.
+        /// Whether the run may go ahead. True only when the status is the answer for the
+        /// project as it is open. False when the packages are not ready, whose problems are
+        /// then <see cref="Problems"/>, and when another project was opened or the two files
+        /// went on changing while this waited.
         /// </returns>
         public async Task<bool> PrepareForRunAsync(Project project)
         {
             // Run is the one thing someone can press. What failed before may have been the
             // network, so it is tried again for the same two texts.
             if (Status == PackagesStatus.Failed)
-                _settled = null;
+                _remembered = false;
 
-            await EnsureRestoredAsync(project);
+            // What is waited for is the project as it is open now, not as it was when Run was
+            // pressed. A restore that a newer one overtook ends with nothing to say, and the
+            // newer one is then the one to wait for.
+            var settled = false;
+            for (var turn = 0; turn < MostTurnsOfWaiting && !settled; turn++)
+            {
+                if (projects.Current.Id != project.Id)
+                    return false;
 
-            if (Status == PackagesStatus.OutOfDate && PairOf(project) is { } pair)
+                await EnsureRestoredAsync(projects.Current);
+                settled = SaysHowThingsStandFor(project.Id);
+            }
+
+            if (settled && Status == PackagesStatus.OutOfDate && _about is { } pair)
+            {
                 await ResolveAsync(project.Id, pair);
+                settled = SaysHowThingsStandFor(project.Id);
+            }
 
-            if (project.Id != projects.Current.Id)
+            // Another project was opened, or the two files went on changing: there is nothing
+            // to say about a run of what was asked for.
+            if (!settled)
                 return false;
 
             if (Status is PackagesStatus.None or PackagesStatus.Ready or PackagesStatus.Unavailable)
                 return true;
 
-            if (!ProblemsAreFromARun && Status is PackagesStatus.Failed or PackagesStatus.OutOfDate)
-            {
-                ProblemsAreFromARun = true;
-                StateChanged?.Invoke();
-            }
-
+            Apply(Status, Problems, Dependencies, fromARun: true, _about, _remembered);
             return false;
         }
 
         public async Task<string?> RestoreAgainAsync(CancellationToken cancellationToken = default)
         {
-            _settled = null;
+            _remembered = false;
             await EnsureRestoredAsync(projects.Current).WaitAsync(cancellationToken);
-            return Status == PackagesStatus.Ready ? Dependencies : null;
+            return Status == PackagesStatus.Ready && PairOf(projects.Current) == _about ? Dependencies : null;
         }
 
         public async ValueTask DisposeAsync()
@@ -185,19 +208,24 @@ namespace Blazemoji.Shared.State
         private static Pair? PairOf(Project project) =>
             project.Find(ManifestPath) is { } manifest ? new Pair(manifest.Content, project.Find(LockfilePath)?.Content) : null;
 
+        /// <summary>
+        /// Whether the present status is the answer for this project as it is open now: it is
+        /// the project that is open, its two texts are the ones the status is about, and
+        /// nothing is still being worked out.
+        /// </summary>
+        private bool SaysHowThingsStandFor(string projectId) =>
+            projects.Current.Id == projectId && PairOf(projects.Current) == _about && Status != PackagesStatus.Restoring;
+
         private async Task RestoreAsync(Pair pair, int ask)
         {
-            Apply(PackagesStatus.Restoring, [], null, fromARun: false);
+            Apply(PackagesStatus.Restoring, [], null, fromARun: false, pair, remembered: false);
             try
             {
                 var outcome = await WorkOutAsync(pair, _disposal.Token);
                 if (ask != _asks)
                     return;
 
-                if (outcome.Remember)
-                    _settled = pair;
-
-                Apply(outcome.Status, outcome.Problems, outcome.Dependencies, fromARun: false);
+                Apply(outcome.Status, outcome.Problems, outcome.Dependencies, fromARun: false, pair, outcome.Remember);
             }
             catch (OperationCanceledException) when (_disposal.IsCancellationRequested)
             {
@@ -207,11 +235,11 @@ namespace Blazemoji.Shared.State
             {
                 logger.LogError(exception, "The project's packages could not be restored");
                 if (ask == _asks)
-                    Apply(PackagesStatus.Failed, [PmjProblems.Unreadable(Who)], null, fromARun: false);
+                    Apply(PackagesStatus.Failed, [PmjProblems.Unreadable(Who)], null, fromARun: false, pair, remembered: false);
             }
             finally
             {
-                if (ask == _asks)
+                if (_running is { } running && running.Ask == ask)
                     _running = null;
             }
         }
@@ -326,9 +354,9 @@ namespace Blazemoji.Shared.State
         private async Task ResolveAsync(string projectId, Pair pair)
         {
             var ask = ++_asks;
-            Apply(PackagesStatus.Restoring, [], null, fromARun: false);
+            Apply(PackagesStatus.Restoring, [], null, fromARun: false, pair, remembered: false);
 
-            PackageResolve resolved;
+            PackageResolve? resolved;
             try
             {
                 resolved = await manager.ResolveAsync(pair.Manifest, pair.Lockfile, _disposal.Token);
@@ -341,27 +369,31 @@ namespace Blazemoji.Shared.State
             {
                 logger.LogError(exception, "The project's packages could not be resolved");
                 if (ask == _asks)
-                    Apply(PackagesStatus.Failed, [PmjProblems.Unreadable(Who)], null, fromARun: true);
+                    Apply(PackagesStatus.Failed, [PmjProblems.Unreadable(Who)], null, fromARun: true, pair, remembered: false);
 
                 return;
             }
 
-            // Someone changed one of the two files, or opened another project, while pmj was
-            // choosing. What it chose is for text that is no longer there.
+            // A newer ask has taken over since, and how things stand is its to say.
             if (ask != _asks)
                 return;
 
-            if (resolved is PackageResolve.Failed failed)
+            if (resolved is not PackageResolve.Resolved chosen)
             {
-                var outcome = Failed(failed.Problems);
-                _settled = outcome.Remember ? pair : null;
-                Apply(outcome.Status, outcome.Problems, null, fromARun: true);
+                var outcome = Failed(resolved is PackageResolve.Failed failed ? failed.Problems : [PmjProblems.Unreadable(Who)]);
+                Apply(outcome.Status, outcome.Problems, null, fromARun: true, pair, outcome.Remember);
                 return;
             }
 
-            // Refused when another project is the open one by now: the lockfile was chosen
-            // for the project they left, and is written nowhere.
-            await projects.WriteFileAsync(projectId, LockfilePath, ((PackageResolve.Resolved)resolved).Lockfile);
+            // The lockfile was chosen for this project as these two texts. It is written only
+            // where that is still what is open: someone may have opened another project, or
+            // changed the manifest, while pmj was choosing.
+            var open = projects.Current;
+            if (open.Id == projectId && PairOf(open) == pair)
+                await projects.WriteFileAsync(projectId, LockfilePath, chosen.Lockfile);
+
+            // Whatever is open now is restored, whether or not anything was written. The
+            // status has been "restoring" since this began, and must not be left so.
             await EnsureRestoredAsync(projects.Current);
         }
 
@@ -379,10 +411,15 @@ namespace Blazemoji.Shared.State
             return new Outcome(PackagesStatus.Failed, problems, null, Remember: !aboutTheMoment);
         }
 
-        private void Apply(PackagesStatus status, IReadOnlyList<PackageProblem> problems, string? dependencies, bool fromARun)
+        /// <param name="about">The pair of texts this status is about. Null for a project with no manifest.</param>
+        /// <param name="remembered">Whether this is the answer for that pair until one of the two texts changes.</param>
+        private void Apply(PackagesStatus status, IReadOnlyList<PackageProblem> problems, string? dependencies, bool fromARun, Pair? about, bool remembered)
         {
             if (_disposal.IsCancellationRequested)
                 return;
+
+            _about = about;
+            _remembered = remembered;
 
             if (Status == status && Dependencies == dependencies && ProblemsAreFromARun == fromARun && Problems.SequenceEqual(problems))
                 return;
