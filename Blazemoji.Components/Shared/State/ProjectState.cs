@@ -42,6 +42,12 @@ namespace Blazemoji.Shared.State
 
         public event Action? StateChanged;
 
+        /// <summary>
+        /// A file's text was changed by something other than the editor, which then holds
+        /// text the project no longer has. The argument is the file's path.
+        /// </summary>
+        public event Action<string>? FileTextChanged;
+
         /// <summary>False until the saved projects have been read.</summary>
         public bool Loaded { get; private set; }
 
@@ -383,6 +389,39 @@ namespace Blazemoji.Shared.State
             await SaveAsync();
             if (SaveFailed != failedBefore)
                 NotifyStateChanged();
+        }
+
+        /// <summary>
+        /// Puts a file in the project from somewhere other than the editor, as when the
+        /// project's packages are locked and the lockfile is written for it. The file is
+        /// added if it is not there. It is given no tab, and the file on show stays on show.
+        /// </summary>
+        /// <param name="projectId">
+        /// The project the text was made for. Whoever made it may have taken a while, and
+        /// someone may have opened another project since: it is then not written anywhere.
+        /// </param>
+        /// <returns>True when the project has the file with that text afterwards.</returns>
+        public async Task<bool> WriteFileAsync(string projectId, string path, string content)
+        {
+            if (projectId != Current.Id || !SourceFileNames.IsSafe(path) || SameOnAnyDisk(path, FileProjectStore.DescriptionFile))
+                return false;
+
+            if (Current.Find(path) is { } file)
+            {
+                if (file.Content == content)
+                    return true;
+
+                Current = Current with { Files = Current.Files.Select(other => other.Path == path ? other with { Content = content } : other).ToList() };
+            }
+            else
+            {
+                Current = Current with { Files = Sorted([.. Current.Files, new ProjectFile(path, content)]) };
+            }
+
+            await SaveAsync();
+            FileTextChanged?.Invoke(path);
+            NotifyStateChanged();
+            return true;
         }
 
         private async Task SaveAsync(bool alsoLastOpened = false)
