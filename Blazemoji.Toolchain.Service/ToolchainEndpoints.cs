@@ -180,21 +180,34 @@ namespace Blazemoji.Toolchain.Service
             statusCode >= 200 && statusCode is not (StatusCodes.Status204NoContent or StatusCodes.Status205ResetContent or StatusCodes.Status304NotModified);
 
         /// <returns>Null when the body is longer than <paramref name="limit"/>.</returns>
-        private static async Task<byte[]?> ReadBodyAsync(HttpRequest request, long limit, CancellationToken cancellationToken)
+        private static Task<byte[]?> ReadBodyAsync(HttpRequest request, long limit, CancellationToken cancellationToken) =>
+            ReadBodyAsync(request.Body, request.ContentLength, limit, cancellationToken);
+
+        /// <returns>Null when the body is longer than <paramref name="limit"/>.</returns>
+        internal static async Task<byte[]?> ReadBodyAsync(Stream request, long? contentLength, long limit, CancellationToken cancellationToken)
         {
-            if (request.ContentLength > limit)
+            if (contentLength > limit)
                 return null;
 
             using var body = new MemoryStream();
             var buffer = new byte[16 * 1024];
 
-            int read;
-            while ((read = await request.Body.ReadAsync(buffer, cancellationToken)) > 0)
+            try
             {
-                if (body.Length + read > limit)
-                    return null;
+                int read;
+                while ((read = await request.ReadAsync(buffer, cancellationToken)) > 0)
+                {
+                    if (body.Length + read > limit)
+                        return null;
 
-                body.Write(buffer, 0, read);
+                    body.Write(buffer, 0, read);
+                }
+            }
+            catch (BadHttpRequestException exception) when (exception.StatusCode == StatusCodes.Status413PayloadTooLarge)
+            {
+                // For a body of unknown length the server counts the bytes it has taken off the
+                // wire, which runs ahead of what has been read here, so it can reach its own limit first.
+                return null;
             }
 
             return body.ToArray();
