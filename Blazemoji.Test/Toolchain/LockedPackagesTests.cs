@@ -111,6 +111,8 @@ namespace Blazemoji.Test.Toolchain
 
             var ready = (await sets.PrepareAsync(request, Cancellation)).ShouldBeOfType<DependencyAnswer.Ready>();
             ready.Packages.ShouldBe(["hello_greeter", "hello_words"]);
+            // This is what gives the refusal test's "nothing was built" its meaning.
+            Directory.Exists(Path.Combine(_work, "packmoji", "built")).ShouldBeTrue();
 
             var build = await toolchain.CompileAsync(Compile(ready.Id), Cancellation);
             build.Ok.ShouldBeTrue(Describe(build));
@@ -163,8 +165,10 @@ namespace Blazemoji.Test.Toolchain
         [Fact]
         [Trait("Category", "Toolchain")]
         [Trait("Requires", "Packmoji")]
-        public async Task A_second_toolchain_on_the_same_machine_is_given_what_the_first_built()
+        public async Task A_second_toolchain_on_the_same_machine_needs_no_archive_handed_to_it_again()
         {
+            // The two share pmj's home, so the second finds every archive there and is ready
+            // without an upload.
             Assert.SkipUnless(Available, SkipReason);
             var (sets, _) = Create();
             var first = await ReadyAsync(sets);
@@ -201,8 +205,10 @@ namespace Blazemoji.Test.Toolchain
 
             var failed = (await sets.PrepareAsync(lying, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
 
-            failed.Problems.ShouldNotBeEmpty();
-            failed.Problems.ShouldAllBe(problem => problem.Message.Length > 0);
+            var refusal = failed.Problems.ShouldHaveSingleItem();
+            refusal.Code.ShouldBe("release.invalid");
+            refusal.Code.ShouldNotBe(PackageProblemCodes.Unreadable);
+            refusal.Message.ShouldContain("hello_words");
             Directory.Exists(Path.Combine(_work, "packmoji", "built")).ShouldBeFalse();
         }
 
