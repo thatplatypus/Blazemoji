@@ -1,4 +1,5 @@
 using Blazemoji.Toolchain;
+using Blazemoji.Toolchain.Local;
 using Blazemoji.Toolchain.Service;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -20,6 +21,10 @@ namespace Blazemoji.Test.Service
         private readonly string _packageDocs = Path.Combine(Path.GetTempPath(), "blazemoji-tests", "package-docs-" + Guid.NewGuid().ToString("N"));
 
         public IToolchain Toolchain { get; } = Substitute.For<IToolchain, IBuildStore>();
+
+        public IToolchainPackages Packages { get; } = Substitute.For<IToolchainPackages>();
+
+        public long MaxArchiveBytes { get; set; } = 16L * 1024 * 1024;
 
         public FakeTimeProvider Time { get; } = new();
 
@@ -57,9 +62,11 @@ namespace Blazemoji.Test.Service
             {
                 services.RemoveAll<IToolchain>();
                 services.RemoveAll<IBuildStore>();
+                services.RemoveAll<IToolchainPackages>();
                 services.RemoveAll<TimeProvider>();
                 services.AddSingleton(Toolchain);
                 services.AddSingleton((IBuildStore)Toolchain);
+                services.AddSingleton(Packages);
                 services.AddSingleton<TimeProvider>(Time);
                 services.Configure<ToolchainServiceOptions>(options =>
                 {
@@ -68,6 +75,7 @@ namespace Blazemoji.Test.Service
                     options.MaxProxiedRequestBytes = MaxProxiedRequestBytes;
                     options.PackageDocumentationPath = _packageDocs;
                 });
+                services.Configure<ToolchainOptions>(options => options.MaxArchiveBytes = MaxArchiveBytes);
             });
         }
 

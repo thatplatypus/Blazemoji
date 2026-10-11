@@ -71,6 +71,15 @@ if docker compose -p "$PROJECT" exec -T toolchain curl -s -m 5 -o /dev/null http
 fi
 echo "toolchain container answers locally and has no route out: ok"
 
+# The website's toolchain builds packages of two scopes only. A compose file that lost the
+# setting would build anyone's.
+scopes="$(docker compose -p "$PROJECT" exec -T toolchain printenv Packmoji__Scopes || true)"
+if [ "$scopes" != "thatplatypus,emojicode" ]; then
+  echo "The toolchain container builds packages of the scopes '$scopes'. It must be limited to thatplatypus,emojicode." >&2
+  exit 1
+fi
+echo "toolchain container builds packages of thatplatypus and emojicode only: ok"
+
 # Docker's resolver answers on an internal network too. A name that resolves is not a route,
 # but it is worth knowing, because a lookup can carry data out.
 if docker compose -p "$PROJECT" exec -T toolchain getent hosts example.com > /dev/null 2>&1; then

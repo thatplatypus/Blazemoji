@@ -109,5 +109,8 @@ WORKDIR /web
 COPY --from=publish-web /app/publish .
 COPY docker/all-in-one.sh /usr/local/bin/blazemoji-all-in-one
 ENV ToolchainClient__BaseUrl=http://127.0.0.1:5290
+# This image is what the public site runs. Both processes in it read this, and build
+# packages of these scopes and no others.
+ENV Packmoji__Scopes=thatplatypus,emojicode
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/blazemoji-all-in-one"]

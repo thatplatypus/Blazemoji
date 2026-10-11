@@ -1,5 +1,6 @@
 using Blazemoji.Toolchain.Http;
 using Blazemoji.Toolchain.Local;
+using Blazemoji.Toolchain.Packmoji;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Blazemoji.Toolchain.Service
@@ -10,11 +11,16 @@ namespace Blazemoji.Toolchain.Service
         {
             services.Configure<ToolchainOptions>(configuration.GetSection(ToolchainOptions.SectionName));
             services.Configure<ToolchainServiceOptions>(configuration.GetSection(ToolchainServiceOptions.SectionName));
+            services.Configure<PackmojiOptions>(configuration.GetSection(PackmojiOptions.SectionName));
 
             services.TryAddSingleton(TimeProvider.System);
             services.AddSingleton<LocalToolchain>();
             services.AddSingleton<IToolchain>(provider => provider.GetRequiredService<LocalToolchain>());
             services.AddSingleton<IBuildStore>(provider => provider.GetRequiredService<LocalToolchain>());
+            services.AddSingleton<IPmj, PmjProcess>();
+            services.AddSingleton<LocalDependencySets>();
+            services.AddSingleton<IToolchainPackages>(provider => provider.GetRequiredService<LocalDependencySets>());
+            services.AddSingleton<IDependencySetStore>(provider => provider.GetRequiredService<LocalDependencySets>());
             services.AddSingleton<RunRegistry>();
             services.AddSingleton<CompileGate>();
             services.AddSingleton<PackageCatalog>();

@@ -14,6 +14,10 @@ services:
       dockerfile: Blazemoji/Dockerfile
       target: toolchain
     platform: linux/amd64
+    environment:
+      # The website builds packages of these scopes and no others. The web app has the same
+      # list; this is the service refusing for itself, whatever it is sent.
+      Packmoji__Scopes: thatplatypus,emojicode
     networks:
       - sandbox
     # A program can start processes of its own, and each of those gets a fresh per-process
