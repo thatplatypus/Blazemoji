@@ -12,6 +12,13 @@ namespace Blazemoji.Toolchain.Packmoji
     public sealed class PmjProcess(IOptions<PackmojiOptions> options, ILogger<PmjProcess> logger) : IPmj
     {
         private static readonly TimeSpan LongestTimeout = TimeSpan.FromDays(1);
+        private static readonly TimeSpan FallbackTimeout = TimeSpan.FromMinutes(2);
+
+        /// <summary>
+        /// How long what pmj printed is waited for once pmj has ended. Something pmj started can
+        /// outlive it and keep its pipes open, and then the reads would never reach their end.
+        /// </summary>
+        private static readonly TimeSpan ReadPatience = TimeSpan.FromSeconds(5);
 
         private readonly PackmojiOptions _options = options.Value;
 
@@ -32,8 +39,9 @@ namespace Blazemoji.Toolchain.Packmoji
 
             // Both pipes are drained while pmj runs. Reading one after the other deadlocks as
             // soon as the unread pipe's buffer fills, and a build prints a compiler's output.
-            var stdout = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-            var stderr = process.StandardError.ReadToEndAsync(CancellationToken.None);
+            using var reading = new CancellationTokenSource();
+            var stdout = process.StandardOutput.ReadToEndAsync(reading.Token);
+            var stderr = process.StandardError.ReadToEndAsync(reading.Token);
 
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(Usable(command.Timeout ?? _options.Timeout));
@@ -47,11 +55,51 @@ namespace Blazemoji.Toolchain.Packmoji
             {
                 End(process);
                 await process.WaitForExitAsync(CancellationToken.None);
-                cancellationToken.ThrowIfCancellationRequested();
-                timedOut = true;
+                timedOut = !cancellationToken.IsCancellationRequested;
             }
 
-            return new PmjResult(timedOut ? PmjOutcome.TimedOut : PmjOutcome.Ran, process.ExitCode, await stdout, await stderr);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                await reading.CancelAsync();
+                await Finish(stdout, stderr);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            reading.CancelAfter(ReadPatience);
+            var printed = await Finish(stdout, stderr);
+            if (printed is null)
+            {
+                logger.LogWarning("pmj ended but something it started kept its output open past {Patience}", ReadPatience);
+                return new PmjResult(PmjOutcome.TimedOut, process.ExitCode, string.Empty, string.Empty);
+            }
+
+            return new PmjResult(timedOut ? PmjOutcome.TimedOut : PmjOutcome.Ran, process.ExitCode, printed.Value.Stdout, printed.Value.Stderr);
+        }
+
+        /// <summary>Awaits both reads to their end, whether that is the end of the output or a cancelled read. Null when cancelled.</summary>
+        private static async Task<(string Stdout, string Stderr)?> Finish(Task<string> stdout, Task<string> stderr)
+        {
+            string? output = null;
+            string? err = null;
+            try
+            {
+                output = await stdout;
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancelled, so the other read is awaited below all the same.
+            }
+
+            try
+            {
+                err = await stderr;
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancelled.
+            }
+
+            return output is null || err is null ? null : (output, err);
         }
 
         private ProcessStartInfo StartInfo(PmjCommand command)
@@ -86,8 +134,9 @@ namespace Blazemoji.Toolchain.Packmoji
             return startInfo;
         }
 
-        private static TimeSpan Usable(TimeSpan timeout) =>
-            timeout > TimeSpan.Zero && timeout <= LongestTimeout ? timeout : LongestTimeout;
+        /// <summary>A limit that is zero, negative or more than a day is a mistake, and falls back to the default and not to the longest.</summary>
+        internal static TimeSpan Usable(TimeSpan timeout) =>
+            timeout > TimeSpan.Zero && timeout <= LongestTimeout ? timeout : FallbackTimeout;
 
         /// <summary>A build starts a compiler, so everything pmj started is ended with it.</summary>
         private static void End(Process process)

@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Blazemoji.Toolchain.Packmoji
 {
-    /// <param name="Ok">False when any problem is an error.</param>
+    /// <param name="Ok">What pmj said (<c>ok</c>), which pmj sets false when any problem is an error. It is pmj's word, not worked out here.</param>
     public sealed record PmjReport(bool Ok, IReadOnlyList<PackageProblem> Problems);
 
     public sealed record PmjTree(PmjReport Report, IReadOnlyList<LockedPackage> Packages);
@@ -15,30 +15,43 @@ namespace Blazemoji.Toolchain.Packmoji
 
     /// <summary>
     /// Reads the one JSON object pmj puts on standard output when it is given <c>--json</c>.
-    /// The text is another program's, so a part that is missing or of the wrong kind is read
-    /// as empty, and text that is not that object at all is read as nothing.
+    /// The text is another program's. A problem with a part missing or of the wrong kind is
+    /// read as empty there, but a package pmj could not have printed makes the text not pmj's,
+    /// and text that is not that object at all is read as nothing.
     /// </summary>
     public static class PmjJson
     {
         public static PmjTree? ReadTree(string stdout) =>
-            Read(stdout, (report, root) => new PmjTree(
-                report,
-                Objects(root, "packages")
-                    .Select(package => new LockedPackage(Text(package, "name"), Text(package, "version"), Text(package, "sha256")))
-                    .ToList()));
+            Read(stdout, (report, packages) =>
+            {
+                var locked = new List<LockedPackage>();
+                foreach (var package in packages)
+                {
+                    var (name, version, sha256) = (Required(package, "name"), Required(package, "version"), Required(package, "sha256"));
+                    if (name is null || version is null || sha256 is null)
+                        return null;
+                    locked.Add(new LockedPackage(name, version, sha256));
+                }
+
+                return new PmjTree(report, locked);
+            });
 
         public static PmjBuild? ReadBuild(string stdout) =>
-            Read(stdout, (report, root) => new PmjBuild(
-                report,
-                Objects(root, "packages")
-                    .Select(package => new BuiltPackage(
-                        Text(package, "name"),
-                        Text(package, "version"),
-                        Text(package, "bareName"),
-                        Items(package, "link").Where(library => library.ValueKind == JsonValueKind.String).Select(library => library.GetString()!).ToList()))
-                    .ToList()));
+            Read(stdout, (report, packages) =>
+            {
+                var built = new List<BuiltPackage>();
+                foreach (var package in packages)
+                {
+                    var (name, version, bareName, link) = (Required(package, "name"), Required(package, "version"), Required(package, "bareName"), Link(package));
+                    if (name is null || version is null || bareName is null || link is null)
+                        return null;
+                    built.Add(new BuiltPackage(name, version, bareName, link));
+                }
 
-        private static T? Read<T>(string stdout, Func<PmjReport, JsonElement, T> read)
+                return new PmjBuild(report, built);
+            });
+
+        private static T? Read<T>(string stdout, Func<PmjReport, IReadOnlyList<JsonElement>, T?> read)
             where T : class
         {
             try
@@ -52,8 +65,12 @@ namespace Blazemoji.Toolchain.Packmoji
                     return null;
                 }
 
+                var packages = Items(root, "packages").ToList();
+                if (packages.Any(package => package.ValueKind != JsonValueKind.Object))
+                    return null;
+
                 var problems = Objects(root, "diagnostics").Select(Problem).ToList();
-                return read(new PmjReport(ok.GetBoolean(), problems), root);
+                return read(new PmjReport(ok.GetBoolean(), problems), packages);
             }
             catch (Exception exception) when (exception is JsonException or ArgumentException or InvalidOperationException)
             {
@@ -77,6 +94,24 @@ namespace Blazemoji.Toolchain.Packmoji
                 file.Length > 0 ? file : null,
                 located ? Number(location, "line") : 0,
                 located ? Number(location, "column") : 0);
+        }
+
+        private static string? Required(JsonElement package, string name)
+        {
+            var text = Text(package, name);
+            return text.Length > 0 ? text : null;
+        }
+
+        /// <summary>The libraries to link, or null when <c>link</c> is there and is not an array of text.</summary>
+        private static List<string>? Link(JsonElement package)
+        {
+            if (!package.TryGetProperty("link", out var link))
+                return [];
+
+            if (link.ValueKind != JsonValueKind.Array || link.EnumerateArray().Any(library => library.ValueKind != JsonValueKind.String))
+                return null;
+
+            return link.EnumerateArray().Select(library => library.GetString()!).ToList();
         }
 
         private static IEnumerable<JsonElement> Objects(JsonElement parent, string name) =>

@@ -208,17 +208,36 @@ namespace Blazemoji.Test.Packmoji
         }
 
         [Fact]
-        public void Parts_of_the_wrong_kind_are_left_out_and_nothing_is_thrown()
+        public void Diagnostics_of_the_wrong_kind_are_left_out_and_nothing_is_thrown()
         {
-            const string odd = """{"ok":true,"diagnostics":["x",7,{"code":5,"location":"here"}],"packages":[3,{"name":4,"link":"m"},{"name":"@a/b","version":"1.0.0","bareName":"b","sha256":"x","link":["m",2]}]}""";
+            const string odd = """{"ok":true,"diagnostics":["x",7,{"code":5,"location":"here"}],"packages":[]}""";
 
-            var tree = PmjJson.ReadTree(odd).ShouldNotBeNull();
-            tree.Report.Problems.ShouldHaveSingleItem().Code.ShouldBeEmpty();
-            tree.Packages.Count.ShouldBe(2);
-            tree.Packages[1].ShouldBe(new LockedPackage("@a/b", "1.0.0", "x"));
+            var problem = PmjJson.ReadTree(odd).ShouldNotBeNull().Report.Problems.ShouldHaveSingleItem();
 
-            var build = PmjJson.ReadBuild(odd).ShouldNotBeNull();
-            build.Packages[1].Link.ShouldBe(["m"]);
+            problem.Code.ShouldBeEmpty();
+            problem.File.ShouldBeNull();
+            problem.Line.ShouldBe(0);
+        }
+
+        [Theory]
+        [InlineData("""{"ok":true,"packages":[3]}""")]
+        [InlineData("""{"ok":true,"packages":[{"name":4,"version":"1.0.0","sha256":"x","bareName":"b"}]}""")]
+        [InlineData("""{"ok":true,"packages":[{"name":"@a/b","version":"1.0.0"}]}""")]
+        [InlineData("""{"ok":true,"packages":[{"name":"","version":"1.0.0","sha256":"x","bareName":"b"}]}""")]
+        public void A_package_of_the_wrong_kind_makes_the_whole_text_nothing(string stdout)
+        {
+            PmjJson.ReadTree(stdout).ShouldBeNull();
+            PmjJson.ReadBuild(stdout).ShouldBeNull();
+        }
+
+        [Fact]
+        public void A_library_to_link_that_is_not_text_makes_a_build_nothing()
+        {
+            const string number = """{"ok":true,"packages":[{"name":"@a/b","version":"1.0.0","bareName":"b","link":["m",2]}]}""";
+            const string text = """{"ok":true,"packages":[{"name":"@a/b","version":"1.0.0","bareName":"b","link":"m"}]}""";
+
+            PmjJson.ReadBuild(number).ShouldBeNull();
+            PmjJson.ReadBuild(text).ShouldBeNull();
         }
 
         [Fact]

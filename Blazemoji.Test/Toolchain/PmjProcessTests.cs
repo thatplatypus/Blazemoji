@@ -112,6 +112,49 @@ namespace Blazemoji.Test.Toolchain
         }
 
         [Fact]
+        public async Task Something_pmj_started_that_outlives_it_and_holds_its_output_does_not_keep_the_caller_waiting()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var pmj = Pmj(ToolchainFixture.Script("fake-pmj", "sleep 30 &\necho done\nexit 0"));
+            var clock = Stopwatch.StartNew();
+
+            var result = await pmj.RunAsync(new PmjCommand(Folder(), []), Cancellation);
+
+            result.Outcome.ShouldBe(PmjOutcome.TimedOut);
+            clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(20));
+        }
+
+        [Fact]
+        public async Task Output_larger_than_a_pipe_holds_on_both_streams_is_read_whole()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var pmj = Pmj(ToolchainFixture.Script("fake-pmj",
+                "head -c 200000 /dev/zero | tr '\\0' 'a'\nhead -c 200000 /dev/zero | tr '\\0' 'b' >&2\nexit 0"));
+
+            var result = await pmj.RunAsync(new PmjCommand(Folder(), []), Cancellation);
+
+            result.Outcome.ShouldBe(PmjOutcome.Ran);
+            result.ExitCode.ShouldBe(0);
+            result.Stdout.Length.ShouldBe(200000);
+            result.Stderr.Length.ShouldBe(200000);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(-1)]
+        [InlineData(172800)]
+        public void A_time_limit_that_makes_no_sense_falls_back_to_two_minutes_and_not_to_a_day(int seconds)
+        {
+            PmjProcess.Usable(TimeSpan.FromSeconds(seconds)).ShouldBe(TimeSpan.FromMinutes(2));
+        }
+
+        [Fact]
+        public void A_sensible_time_limit_is_kept_as_it_is()
+        {
+            PmjProcess.Usable(TimeSpan.FromSeconds(30)).ShouldBe(TimeSpan.FromSeconds(30));
+        }
+
+        [Fact]
         public async Task A_caller_who_stops_waiting_ends_the_program_and_is_told_so()
         {
             Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
