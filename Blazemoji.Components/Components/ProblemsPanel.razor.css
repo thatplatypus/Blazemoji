@@ -8,3 +8,8 @@
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
 }
+
+/* Why a package problem happened and what to do about it, under its message. */
+.problem-more {
+    color: var(--mud-palette-text-secondary);
+}

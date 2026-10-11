@@ -422,6 +422,19 @@
     public async Task<string?> GetCodeAsync(string key) =>
         _models.TryGetValue(key, out var model) ? await model.GetValue(EndOfLinePreference.TextDefined, false) : null;
 
+    /// <summary>
+    /// Gives a file's model the text the project now has, when something other than this
+    /// editor changed it. A file that was never shown has no model yet, and is given the
+    /// project's text when it is first opened.
+    /// </summary>
+    public async Task ReplaceTextAsync(string key, string content)
+    {
+        if (_initializing || !_models.TryGetValue(key, out var model))
+            return;
+
+        await model.SetValue(content);
+    }
+
     public async Task SetCodeAsync(string code)
     {
         await _editor.SetValue(code);

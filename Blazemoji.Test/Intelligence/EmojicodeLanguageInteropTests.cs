@@ -1,8 +1,11 @@
 using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Interop;
+using Blazemoji.Services.Packages;
 using Blazemoji.Services.Projects;
 using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
+using Blazemoji.Toolchain;
+using Blazemoji.Toolchain.Packmoji;
 using Bunit;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
@@ -16,6 +19,7 @@ namespace Blazemoji.Test.Intelligence
         private readonly ICodeIntelligence _intelligence = Substitute.For<ICodeIntelligence>();
         private readonly IPackageLibrary _library = Substitute.For<IPackageLibrary>();
         private readonly ProjectState _project;
+        private readonly PackagesState _packages;
 
         public EmojicodeLanguageInteropTests()
         {
@@ -24,13 +28,14 @@ namespace Blazemoji.Test.Intelligence
             var templates = Substitute.For<IProjectTemplates>();
             templates.All.Returns([template]);
             _project = new ProjectState(Substitute.For<IProjectStore>(), templates, NullLogger<ProjectState>.Instance);
+            _packages = Blazemoji.Test.State.TestPackages.State(projects: _project);
 
             _intelligence.Imports(Arg.Any<string>()).Returns(call => new CodeIntelligence([], new EmojiNames()).Imports(call.Arg<string>()));
             _library.GetAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([TestPackages.Web]);
         }
 
         private EmojicodeLanguageInterop Create() =>
-            new(JSInterop.JSRuntime, _intelligence, _library, _project, NullLogger<EmojicodeLanguageInterop>.Instance);
+            new(JSInterop.JSRuntime, _intelligence, _library, _project, _packages, NullLogger<EmojicodeLanguageInterop>.Instance);
 
         [Fact]
         public async Task Registering_loads_the_module_and_registers_the_providers_once()
@@ -120,6 +125,32 @@ namespace Blazemoji.Test.Intelligence
             await interop.RegisterAsync("emojiscript");
 
             await Should.NotThrowAsync(async () => await interop.DisposeAsync());
+        }
+
+        [Fact]
+        public async Task Reports_are_asked_for_by_the_set_the_projects_packages_were_built_as()
+        {
+            var manager = Substitute.For<IPackageManager>();
+            manager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                .Returns(new PackageRestore.Restored([new LockedPackage("@thatplatypus/hello_words", "0.1.0", new string('a', 64))]));
+            var toolchain = Substitute.For<IToolchainPackages>();
+            toolchain.PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>()).Returns(new DependencyAnswer.Ready("set-1", ["hello_words"]));
+            var projects = Blazemoji.Test.State.TestPackages.Projects();
+            var packages = Blazemoji.Test.State.TestPackages.State(manager, toolchain, projects);
+            await packages.EnsureRestoredAsync(new Project(
+                "p1", "App", ProjectKind.Program, "main.🍇",
+                [new ProjectFile("main.🍇", "🏁 🍇 🍉"), new ProjectFile(PackagesState.ManifestPath, "m"), new ProjectFile(PackagesState.LockfilePath, "l")]));
+            var library = Substitute.For<IPackageLibrary>();
+            library.GetAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([]);
+            var intelligence = Substitute.For<ICodeIntelligence>();
+            intelligence.Imports(Arg.Any<string>()).Returns([]);
+            intelligence.Complete(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IReadOnlyList<PackageDocumentation>>()).Returns([]);
+            await using var interop = new EmojicodeLanguageInterop(
+                Substitute.For<Microsoft.JSInterop.IJSRuntime>(), intelligence, library, projects, packages, NullLogger<EmojicodeLanguageInterop>.Instance);
+
+            await interop.CompleteAsync("🏁 🍇 🍉", 0);
+
+            await library.Received(1).GetAsync(Arg.Any<IEnumerable<string>>(), "set-1", Arg.Any<CancellationToken>());
         }
     }
 }

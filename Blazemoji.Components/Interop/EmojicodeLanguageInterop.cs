@@ -38,6 +38,7 @@ namespace Blazemoji.Interop
         ICodeIntelligence intelligence,
         IPackageLibrary library,
         ProjectState project,
+        PackagesState packages,
         ILogger<EmojicodeLanguageInterop> logger) : IAsyncDisposable
     {
         private const string ModulePath = "./_content/Blazemoji.Components/js/emojicodeLanguage.js";
@@ -181,14 +182,17 @@ namespace Blazemoji.Interop
         /// </summary>
         private Task<IReadOnlyList<PackageDocumentation>> PackagesAsync(string text)
         {
-            var packages = project.Current.Files
+            var names = project.Current.Files
                 .Select(file => file.Content)
                 .Append(text)
                 .SelectMany(intelligence.Imports)
                 .Distinct()
                 .ToList();
 
-            return library.GetAsync(packages);
+            // A locked package has its report under the project's set and nowhere else. Until
+            // the set is ready there is no id, and such a package has no completion or hover,
+            // as an unknown package has none.
+            return library.GetAsync(names, packages.Dependencies);
         }
     }
 }

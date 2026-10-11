@@ -1,5 +1,6 @@
 using Blazemoji.Components;
 using Blazemoji.Toolchain;
+using Blazemoji.Toolchain.Packmoji;
 using Bunit;
 using MudBlazor.Services;
 
@@ -68,6 +69,63 @@ namespace Blazemoji.Test.Components
             await cut.FindAll("[data-testid=problem]")[1].ClickAsync(new());
 
             selected.ShouldBe(Error);
+        }
+
+        private static readonly PackageProblem OutsideScopes = new(
+            PackageProblem.Error,
+            "scope.not-allowed",
+            "\"@someone/thing\" is outside the scopes pmj is limited to here.",
+            "packmoji.json asks for it, and PACKMOJI_SCOPES allows only emojicode",
+            "depend only on packages of that scope");
+
+        private static readonly PackageProblem BadManifest = new(
+            PackageProblem.Error, "json.syntax", "The file is not valid JSON.", "strict JSON is required", "correct the JSON at this position", "packmoji.json", 4, 1);
+
+        [Fact]
+        public void A_package_problem_is_a_row_with_its_message_then_why_then_what_to_do()
+        {
+            var cut = Render<ProblemsPanel>(parameters => parameters.Add(p => p.Diagnostics, []).Add(p => p.PackageProblems, [OutsideScopes]));
+
+            var row = cut.Find("[data-testid=package-problem]");
+            row.TextContent.ShouldContain("\"@someone/thing\" is outside the scopes pmj is limited to here.");
+            cut.Find("[data-testid=problem-why]").TextContent.ShouldBe("Why: packmoji.json asks for it, and PACKMOJI_SCOPES allows only emojicode");
+            cut.Find("[data-testid=problem-fix]").TextContent.ShouldBe("Fix: depend only on packages of that scope");
+            cut.Markup.ShouldNotContain("No problems.");
+            cut.FindAll("[data-testid=problem]").ShouldBeEmpty();
+        }
+
+        [Fact]
+        public void A_package_problem_with_a_place_says_which_file_and_where()
+        {
+            var cut = Render<ProblemsPanel>(parameters => parameters.Add(p => p.Diagnostics, []).Add(p => p.PackageProblems, [BadManifest, OutsideScopes]));
+
+            var rows = cut.FindAll("[data-testid=package-problem]");
+            rows[0].QuerySelector("[data-testid=problem-position]").ShouldNotBeNull().TextContent.ShouldBe("packmoji.json 4:1");
+            rows[1].QuerySelector("[data-testid=problem-position]").ShouldBeNull();
+        }
+
+        [Fact]
+        public void Package_problems_come_before_the_compilers_and_both_are_listed()
+        {
+            var cut = Render<ProblemsPanel>(parameters => parameters.Add(p => p.Diagnostics, [Error]).Add(p => p.PackageProblems, [OutsideScopes]));
+
+            cut.FindAll("[data-testid=package-problem]").Count.ShouldBe(1);
+            cut.FindAll("[data-testid=problem]").Count.ShouldBe(1);
+            cut.Markup.IndexOf("package-problem", StringComparison.Ordinal).ShouldBeLessThan(cut.Markup.IndexOf("\"problem\"", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public async Task A_click_on_a_package_problem_raises_it()
+        {
+            PackageProblem? raised = null;
+            var cut = Render<ProblemsPanel>(parameters => parameters
+                .Add(p => p.Diagnostics, [])
+                .Add(p => p.PackageProblems, [BadManifest])
+                .Add(p => p.PackageProblemSelected, problem => raised = problem));
+
+            await cut.Find("[data-testid=package-problem]").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+
+            raised.ShouldBe(BadManifest);
         }
     }
 }

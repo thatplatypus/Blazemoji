@@ -3,6 +3,7 @@ using Blazemoji.Interop;
 using Blazemoji.Components;
 using Blazemoji.Components.Shared;
 using Blazemoji.Services.Layout;
+using Blazemoji.Services.Packages;
 using Blazemoji.Services.Library;
 using Blazemoji.Services.Projects;
 using Blazemoji.Services.Settings;
@@ -11,6 +12,7 @@ using Blazemoji.Shared.Models.Layout;
 using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
 using Blazemoji.Toolchain;
+using Blazemoji.Toolchain.Packmoji;
 using BlazorMonaco.Editor;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,11 +32,22 @@ namespace Blazemoji.Test.Components
     {
         private const string CreateModel = "blazorMonaco.editor.createModel";
         private const string Reveal = "blazorMonaco.editor.revealLineInCenter";
+        private const string SetValue = "blazorMonaco.editor.model.setValue";
+        private const string RunButton = "[data-testid=run-button]";
 
         private static readonly Project Stored = new(
             "p1", "Two", ProjectKind.Program, "a.🍇",
             [new ProjectFile("a.🍇", "text of a"), new ProjectFile("b.🍇", "text of b\nline 2\nline 3")]);
 
+        private static readonly Project WithPackages = Stored with
+        {
+            Files = [.. Stored.Files, new ProjectFile(PackagesState.ManifestPath, "the manifest"), new ProjectFile(PackagesState.LockfilePath, "the lockfile")],
+        };
+
+        private static readonly LockedPackage Words = new("@thatplatypus/hello_words", "0.1.0", new string('a', 64));
+
+        private readonly IPackageManager _packageManager = Substitute.For<IPackageManager>();
+        private readonly IToolchainPackages _toolchainPackages = Substitute.For<IToolchainPackages>();
         private readonly IToolchain _toolchain = Substitute.For<IToolchain>();
         private readonly IProjectStore _store = Substitute.For<IProjectStore>();
         private readonly ILibraryService _library = Substitute.For<ILibraryService>();
@@ -61,6 +74,11 @@ namespace Blazemoji.Test.Components
             Services.AddSingleton(_dialogs);
             Services.AddSingleton(new LocalStorageFiles());
             Services.AddScoped<RunState>();
+            Services.AddSingleton(_packageManager);
+            Services.AddSingleton(_toolchainPackages);
+            Services.AddSingleton<PackageUploads>();
+            Services.AddScoped<PackagesState>();
+            Services.AddScoped<IPackageSets>(provider => provider.GetRequiredService<PackagesState>());
             Services.AddScoped<ProjectState>();
             Services.AddScoped<RequestState>();
             Services.AddSingleton(Substitute.For<ICodeIntelligence>());
@@ -514,6 +532,96 @@ namespace Blazemoji.Test.Components
 
             cut.WaitForAssertion(() => JSInterop.Invocations.Count(call => call.Identifier == "blazorMonaco.editor.focus").ShouldBe(focusedBefore + 1));
             Project.OpenPath.ShouldBe("c.🍇");
+        }
+
+        private void TheProjectHasPackages()
+        {
+            _store.LoadAsync(Stored.Id).Returns(WithPackages);
+            _packageManager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new PackageRestore.Restored([Words]));
+            _toolchainPackages.PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>()).Returns(new DependencyAnswer.Ready("set-1", ["hello_words"]));
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [], null));
+        }
+
+        [Fact]
+        public void A_projects_packages_are_restored_when_it_is_opened_with_no_click()
+        {
+            TheProjectHasPackages();
+
+            var cut = RenderShowingTheFirstFile();
+
+            cut.WaitForAssertion(() => _packageManager.Received(1).RestoreAsync("the manifest", "the lockfile", Arg.Any<CancellationToken>()));
+            cut.WaitForAssertion(() => Services.GetRequiredService<PackagesState>().Dependencies.ShouldBe("set-1"));
+            _packageManager.DidNotReceive().ResolveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_run_compiles_against_the_set_the_projects_packages_were_built_as()
+        {
+            TheProjectHasPackages();
+            ModelHolds(1, "text of a");
+            var cut = RenderShowingTheFirstFile();
+            cut.WaitForAssertion(() => Services.GetRequiredService<PackagesState>().Status.ShouldBe(PackagesStatus.Ready));
+
+            await cut.Find(RunButton).ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+
+            cut.WaitForAssertion(() => _toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.Dependencies == "set-1"), Arg.Any<CancellationToken>()));
+        }
+
+        [Fact]
+        public async Task A_run_whose_packages_are_not_ready_does_not_reach_the_compiler_and_its_problems_are_shown()
+        {
+            TheProjectHasPackages();
+            var problem = new PackageProblem(PackageProblem.Error, "release.invalid", "The release is not what was locked.", "its digest differs", "lock it again");
+            _packageManager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new PackageRestore.Failed([problem]));
+            ModelHolds(1, "text of a");
+            var cut = RenderShowingTheFirstFile();
+            cut.WaitForAssertion(() => Services.GetRequiredService<PackagesState>().Status.ShouldBe(PackagesStatus.Failed));
+
+            await cut.Find(RunButton).ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+
+            cut.WaitForAssertion(() => cut.Find("[data-testid=package-problem]").TextContent.ShouldContain("The release is not what was locked."));
+            await _toolchain.DidNotReceive().CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_check_of_the_typing_is_not_made_while_the_packages_are_missing_and_is_made_once_they_are_there()
+        {
+            TheProjectHasPackages();
+            _packageManager.RestoreAsync("the manifest", "the lockfile", Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            ModelHolds(1, "text of a");
+            var cut = RenderShowingTheFirstFile();
+            cut.WaitForAssertion(() => Services.GetRequiredService<PackagesState>().Status.ShouldBe(PackagesStatus.OutOfDate));
+            var editor = cut.FindComponent<EmojiCodeEditor>();
+
+            await cut.InvokeAsync(() => editor.Instance.ContentSettled.InvokeAsync());
+
+            await _toolchain.DidNotReceive().CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
+
+            await cut.InvokeAsync(() => Project.WriteFileAsync(Stored.Id, PackagesState.LockfilePath, "a lockfile that answers"));
+            await cut.InvokeAsync(() => editor.Instance.ContentSettled.InvokeAsync());
+
+            cut.WaitForAssertion(() => _toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly && request.Dependencies == "set-1"), Arg.Any<CancellationToken>()));
+        }
+
+        [Fact]
+        public async Task A_lockfile_rewritten_while_it_is_open_reaches_the_editor_and_is_not_overwritten_by_what_the_editor_held()
+        {
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [], null));
+            ModelHolds(1, "what the editor still holds");
+            var telling = JSInterop.SetupVoid(SetValue, invocation => (string?)invocation.Arguments[0] == Uri(1));
+            var cut = RenderShowingTheFirstFile();
+
+            // The file on show is rewritten from outside the editor, and the editor has not
+            // yet been told when Run is pressed.
+            await cut.InvokeAsync(() => Project.WriteFileAsync(Stored.Id, "a.🍇", "rewritten for the project"));
+            cut.WaitForAssertion(() => JSInterop.Invocations[SetValue].Count.ShouldBe(1));
+            await cut.Find(RunButton).ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+
+            cut.WaitForAssertion(() => _toolchain.Received(1).CompileAsync(
+                Arg.Is<CompileRequest>(request => request.Files["a.🍇"] == "rewritten for the project"), Arg.Any<CancellationToken>()));
+            JSInterop.Invocations[SetValue].Single().Arguments[1].ShouldBe("rewritten for the project");
+            Project.Current.Find("a.🍇").ShouldNotBeNull().Content.ShouldBe("rewritten for the project");
+            telling.SetVoidResult();
         }
     }
 }

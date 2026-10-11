@@ -1,34 +1,73 @@
 @using Blazemoji.Toolchain
+@using Blazemoji.Toolchain.Packmoji
 
-@if (Diagnostics.Count == 0)
+@if (Diagnostics.Count == 0 && PackageProblems.Count == 0)
 {
     <MudText Typo="Typo.body2" Class="pa-2">No problems.</MudText>
 }
 else
 {
-    <MudList T="Diagnostic" Dense="true">
-        @for (var index = 0; index < Diagnostics.Count; index++)
-        {
-            var diagnostic = Diagnostics[index];
-            <MudListItem T="Diagnostic"
-                         @key="index"
-                         data-testid="problem"
-                         Icon="@IconFor(diagnostic)"
-                         IconColor="@ColorFor(diagnostic)"
-                         OnClick="@(() => ProblemSelected.InvokeAsync(diagnostic))">
-                <span class="problem-message">@diagnostic.Message</span>
-                @if (diagnostic.Line > 0)
-                {
-                    <span class="problem-position" data-testid="problem-position">@Position(diagnostic)</span>
-                }
-            </MudListItem>
-        }
-    </MudList>
+    @* What is wrong with the project's packages comes first: while it stands, the compiler
+       cannot find what the project imports, and most of what it says follows from that. *@
+    @if (PackageProblems.Count > 0)
+    {
+        <MudList T="PackageProblem" Dense="true">
+            @for (var index = 0; index < PackageProblems.Count; index++)
+            {
+                var problem = PackageProblems[index];
+                <MudListItem T="PackageProblem"
+                             @key="index"
+                             data-testid="package-problem"
+                             Icon="@(problem.IsError ? BlazemojiIcons.Error : BlazemojiIcons.Warning)"
+                             IconColor="@(problem.IsError ? Color.Error : Color.Warning)"
+                             OnClick="@(() => PackageProblemSelected.InvokeAsync(problem))">
+                    <span class="problem-message">@problem.Message</span>
+                    @if (problem.File is { } file && problem.Line > 0)
+                    {
+                        <span class="problem-position" data-testid="problem-position">@file @problem.Line:@problem.Column</span>
+                    }
+                    @if (problem.Reason.Length > 0)
+                    {
+                        <div class="problem-more" data-testid="problem-why">Why: @problem.Reason</div>
+                    }
+                    @if (problem.Fix.Length > 0)
+                    {
+                        <div class="problem-more" data-testid="problem-fix">Fix: @problem.Fix</div>
+                    }
+                </MudListItem>
+            }
+        </MudList>
+    }
+    @if (Diagnostics.Count > 0)
+    {
+        <MudList T="Diagnostic" Dense="true">
+            @for (var index = 0; index < Diagnostics.Count; index++)
+            {
+                var diagnostic = Diagnostics[index];
+                <MudListItem T="Diagnostic"
+                             @key="index"
+                             data-testid="problem"
+                             Icon="@IconFor(diagnostic)"
+                             IconColor="@ColorFor(diagnostic)"
+                             OnClick="@(() => ProblemSelected.InvokeAsync(diagnostic))">
+                    <span class="problem-message">@diagnostic.Message</span>
+                    @if (diagnostic.Line > 0)
+                    {
+                        <span class="problem-position" data-testid="problem-position">@Position(diagnostic)</span>
+                    }
+                </MudListItem>
+            }
+        </MudList>
+    }
 }
 
 @code {
     [Parameter, EditorRequired]
     public IReadOnlyList<Diagnostic> Diagnostics { get; set; } = [];
+
+    /// <summary>What is wrong with the project's packages, each shown as its message, why, and what to do.</summary>
+    [Parameter]
+    public IReadOnlyList<PackageProblem> PackageProblems { get; set; } = [];
 
     /// <summary>Put the file's path in front of each position.</summary>
     [Parameter]
@@ -36,6 +75,9 @@ else
 
     [Parameter]
     public EventCallback<Diagnostic> ProblemSelected { get; set; }
+
+    [Parameter]
+    public EventCallback<PackageProblem> PackageProblemSelected { get; set; }
 
     private string Position(Diagnostic diagnostic) => ShowFiles && diagnostic.File.Length > 0
         ? $"{diagnostic.File} {diagnostic.Line}:{diagnostic.Character}"

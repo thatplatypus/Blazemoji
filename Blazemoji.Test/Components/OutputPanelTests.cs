@@ -1,8 +1,11 @@
 using Blazemoji.Components;
 using Blazemoji.Interop;
+using Blazemoji.Services.Packages;
+using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
 using Blazemoji.Test.State;
 using Blazemoji.Toolchain;
+using Blazemoji.Toolchain.Packmoji;
 using Bunit;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +26,14 @@ namespace Blazemoji.Test.Components
         private readonly ScriptedRun _run = new();
         private readonly FakeTimeProvider _time = new();
         private readonly RunState _state;
+
+        private static readonly Project WithAManifest = new(
+            "p1", "App", ProjectKind.Program, "main.🍇",
+            [new ProjectFile("main.🍇", Code), new ProjectFile(PackagesState.ManifestPath, "the manifest")]);
+
+        private readonly IPackageManager _packageManager = Substitute.For<IPackageManager>();
+        private readonly ProjectState _projects = TestPackages.Projects();
+        private readonly PackagesState _packages;
         private readonly BunitJSModuleInterop _inputScript;
 
         public OutputPanelTests()
@@ -31,6 +42,8 @@ namespace Blazemoji.Test.Components
             JSInterop.Mode = JSRuntimeMode.Loose;
 
             _state = new RunState(_toolchain, NullLogger<RunState>.Instance, _time);
+            _packages = TestPackages.State(manager: _packageManager, projects: _projects);
+            Services.AddSingleton(_packages);
             _inputScript = JSInterop.SetupModule(InputScript);
             _inputScript.Mode = JSRuntimeMode.Loose;
             Services.AddScoped<ProgramInputInterop>();
@@ -391,6 +404,56 @@ namespace Blazemoji.Test.Components
 
             cut.WaitForAssertion(() =>
                 cut.FindAll("[data-testid=output-line]").Select(line => line.TextContent).ShouldBe(["fixed"]));
+        }
+
+        [Fact]
+        public async Task While_packages_are_fetched_or_built_it_says_so_where_it_says_Compiling()
+        {
+            var restoring = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _packageManager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(restoring.Task);
+            var cut = Render<OutputPanel>();
+
+            var ensuring = cut.InvokeAsync(() => _packages.EnsureRestoredAsync(WithAManifest));
+
+            cut.WaitForAssertion(() => cut.Find("[data-testid=run-status]").TextContent.ShouldBe("Getting packages"));
+            cut.Find(".output-progress").ClassList.ShouldNotContain("output-progress-idle");
+            restoring.SetResult(new PackageRestore.Restored([]));
+            await ensuring;
+            cut.WaitForAssertion(() => cut.Find("[data-testid=run-status]").TextContent.ShouldBe("Ready"));
+            cut.Find(".output-progress").ClassList.ShouldContain("output-progress-idle");
+        }
+
+        [Fact]
+        public async Task A_package_problem_found_while_typing_is_counted_on_the_tab_and_leaves_the_person_where_they_were()
+        {
+            _packageManager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            var cut = Render<OutputPanel>();
+
+            await cut.InvokeAsync(() => _packages.EnsureRestoredAsync(WithAManifest));
+
+            cut.WaitForAssertion(() => cut.Markup.ShouldContain("Problems"));
+            cut.FindAll("[data-testid=package-problem]").ShouldBeEmpty();
+            cut.Find("[data-testid=run-status]").TextContent.ShouldBe("Ready");
+            _packages.Problems.Count.ShouldBe(1);
+        }
+
+        [Fact]
+        public async Task A_run_that_the_packages_stopped_shows_the_problems_and_says_the_packages_failed()
+        {
+            _packageManager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            _packageManager.ResolveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                .Returns(new PackageResolve.Failed([new PackageProblem(PackageProblem.Error, "package.not-found", "No release was found.", "it is not there", "check the name")]));
+            await _projects.WriteFileAsync(_projects.Current.Id, PackagesState.ManifestPath, "the manifest");
+            var cut = Render<OutputPanel>();
+
+            await cut.InvokeAsync(() => _packages.PrepareForRunAsync(_projects.Current));
+
+            cut.WaitForAssertion(() => cut.Find("[data-testid=package-problem]").TextContent.ShouldContain("No release was found."));
+            cut.Find("[data-testid=problem-fix]").TextContent.ShouldBe("Fix: check the name");
+
+            // The status is on the Output tab, which the problems have just taken the place of.
+            await cut.FindAll("[role=tab]").First(tab => tab.TextContent.Contains("Output")).ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+            cut.WaitForAssertion(() => cut.Find("[data-testid=run-status]").TextContent.ShouldBe("Packages failed"));
         }
     }
 }
