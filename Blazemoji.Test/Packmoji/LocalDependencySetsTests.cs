@@ -468,6 +468,36 @@ namespace Blazemoji.Test.Packmoji
         }
 
         [Fact]
+        public async Task A_build_failure_whose_reason_names_a_place_on_this_machine_is_still_passed_on_without_it()
+        {
+            var sets = Sets();
+            Lock(Words);
+            await StoreAsync(sets, Words, WordsBytes);
+            _pmj.BuildProblems.Add(new PackageProblem(PackageProblem.Error, "build.native-failed", "The package \"@thatplatypus/hello_words\" could not be compiled.", $"{_work}/packmoji/cache/x/answer.cpp:3:1: error: expected ';'", "tell its author"));
+
+            var failed = (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+
+            var problem = failed.Problems.ShouldHaveSingleItem();
+            problem.Code.ShouldBe("build.native-failed");
+            problem.Message.ShouldBe("The package \"@thatplatypus/hello_words\" could not be compiled.");
+            problem.Fix.ShouldBe("tell its author");
+            problem.Reason.ShouldBe("what the compiler said is in the toolchain's log");
+        }
+
+        [Fact]
+        public async Task A_build_failure_whose_message_names_a_place_on_this_machine_is_not_passed_on()
+        {
+            var sets = Sets();
+            Lock(Words);
+            await StoreAsync(sets, Words, WordsBytes);
+            _pmj.BuildProblems.Add(new PackageProblem(PackageProblem.Error, "build.native-failed", $"{_work}/packmoji/cache/x could not be compiled.", "anything", "tell its author"));
+
+            var failed = (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+
+            failed.Problems.ShouldHaveSingleItem().Code.ShouldBe(PackageProblemCodes.Unreadable);
+        }
+
+        [Fact]
         public async Task A_warning_about_this_machine_is_dropped_and_the_rest_is_passed_on()
         {
             var sets = Sets();

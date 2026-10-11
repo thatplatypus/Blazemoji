@@ -474,16 +474,23 @@ namespace Blazemoji.Toolchain.Local
         {
             var passedOn = new List<PackageProblem>();
             var withheldError = false;
-            foreach (var problem in problems)
+            foreach (var reported in problems)
             {
+                var problem = reported;
+                if (CompilerCodes.Contains(problem.Code))
+                {
+                    logger.LogWarning("pmj reported {Code}: {Message} ({Reason})", problem.Code, problem.Message, problem.Reason);
+                    problem = problem with { Reason = CompilerSaidReason };
+                }
+
                 if (!IsPassedOn(problem))
                 {
-                    logger.LogError("pmj reported {Code}: {Message} ({Reason})", problem.Code, problem.Message, problem.Reason);
+                    logger.LogError("pmj reported {Code}: {Message} ({Reason})", reported.Code, reported.Message, reported.Reason);
                     withheldError |= problem.IsError;
                     continue;
                 }
 
-                passedOn.Add(CompilerCodes.Contains(problem.Code) ? problem with { Reason = CompilerSaidReason } : problem);
+                passedOn.Add(problem);
             }
 
             return withheldError || !passedOn.Any(problem => problem.IsError) ? Unreadable() : new DependencyAnswer.Failed(passedOn);
