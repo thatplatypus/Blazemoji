@@ -1,0 +1,17 @@
+{
+  "package": {
+    "name": "@thatplatypus/hello",
+    "version": "0.1.0",
+    "kind": "app",
+    "emojicode": ">=1.0.0-beta.2",
+    "description": "Says hello through two packages, one of which has native code",
+    "license": "MIT",
+    "repository": "github.com/thatplatypus/packmoji"
+  },
+  "dependencies": {
+    "@thatplatypus/hello_greeter": "0.1"
+  },
+  "build": {
+    "entry": "src/main.🍇"
+  }
+}
