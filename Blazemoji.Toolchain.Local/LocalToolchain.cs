@@ -15,10 +15,11 @@ namespace Blazemoji.Toolchain.Local
     /// Runs the Emojicode compiler and the programs it produces as local processes.
     /// Every build and every run gets its own directory under <see cref="ToolchainOptions.WorkRoot"/>.
     /// </summary>
-    public sealed partial class LocalToolchain(IOptions<ToolchainOptions> options, ILogger<LocalToolchain> logger) : IToolchain, IBuildStore, IAsyncDisposable
+    public sealed partial class LocalToolchain(IOptions<ToolchainOptions> options, ILogger<LocalToolchain> logger, IDependencySetStore? sets = null) : IToolchain, IBuildStore, IAsyncDisposable
     {
         private const string ProgramFileName = "program";
         private const string ObjectFileName = "program.o";
+        private const string MissingDependencies = "The project's packages are not built here.";
         private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
 
         private static readonly Lazy<string?> LineBufferingTool = new(() => FindOnPath("stdbuf"));
@@ -44,6 +45,15 @@ namespace Blazemoji.Toolchain.Local
             if (Validate(request) is { } problem)
                 return Failed(problem);
 
+            // Held to the end of the compile, so that the set is not dropped for room while
+            // the compiler or the linker is reading it.
+            using var set = request.Dependencies is null ? null : sets?.Lease(request.Dependencies);
+            if (request.Dependencies is not null && set is null)
+            {
+                logger.LogInformation("A compile named a set of packages that is not held here");
+                return new CompileResult(false, [Error(MissingDependencies)], null, ReachedCompiler: false, DependenciesMissing: true);
+            }
+
             SweepStaleBuilds();
 
             var buildId = Guid.NewGuid().ToString("N");
@@ -54,7 +64,7 @@ namespace Blazemoji.Toolchain.Local
             {
                 await WriteSourcesAsync(request, buildDirectory, cancellationToken);
 
-                var compiler = await RunCompilerAsync(request.Entry, buildDirectory, cancellationToken);
+                var compiler = await RunCompilerAsync(request.Entry, buildDirectory, set, cancellationToken);
                 if (compiler is null)
                     return Failed("The compiler could not be started.");
 
@@ -89,7 +99,7 @@ namespace Blazemoji.Toolchain.Local
                     return new CompileResult(false, [.. diagnostics, Error("The compiler failed without reporting an error.")], null);
                 }
 
-                if (!await LinkAsync(buildDirectory, cancellationToken))
+                if (!await LinkAsync(buildDirectory, set, cancellationToken))
                     return new CompileResult(false, [.. diagnostics, Error("The program could not be linked.")], null);
 
                 keepBuild = true;
@@ -278,9 +288,16 @@ namespace Blazemoji.Toolchain.Local
             }
         }
 
-        private async Task<ProcessResult?> RunCompilerAsync(string entry, string buildDirectory, CancellationToken cancellationToken)
+        private async Task<ProcessResult?> RunCompilerAsync(string entry, string buildDirectory, DependencySetLease? set, CancellationToken cancellationToken)
         {
-            string[] arguments = [entry, "--json", "-c", "-o", Path.Combine(buildDirectory, ObjectFileName), "-S", _options.PackagesPath];
+            List<string> arguments = [entry, "--json", "-c", "-o", Path.Combine(buildDirectory, ObjectFileName)];
+
+            // The compiler takes the first folder of a package's name that it finds, so a
+            // project's own packages are named ahead of the stock ones.
+            if (set?.PackagesDirectory is { } packages)
+                arguments.AddRange(["-S", packages]);
+
+            arguments.AddRange(["-S", _options.PackagesPath]);
 
             try
             {
@@ -300,8 +317,11 @@ namespace Blazemoji.Toolchain.Local
         /// object, and the link happens here: every package archive in one group, where the
         /// order does not matter and the linker takes only what the program refers to. The two
         /// system libraries are the link hints of the standard package.
+        /// A project's own packages join the same group, and the libraries their manifests name
+        /// are linked ahead of those two. This is how pmj links, which is how a program that
+        /// uses its packages has to be linked.
         /// </summary>
-        private async Task<bool> LinkAsync(string buildDirectory, CancellationToken cancellationToken)
+        private async Task<bool> LinkAsync(string buildDirectory, DependencySetLease? set, CancellationToken cancellationToken)
         {
             var program = Path.Combine(buildDirectory, ProgramFileName);
             string[] arguments =
@@ -309,7 +329,9 @@ namespace Blazemoji.Toolchain.Local
                 Path.Combine(buildDirectory, ObjectFileName),
                 "-Wl,--start-group",
                 .. PackageArchives(),
+                .. set?.Archives ?? [],
                 "-Wl,--end-group",
+                .. (set?.LinkLibraries ?? []).Select(library => "-l" + library),
                 "-lm",
                 "-lpthread",
                 "-o",
