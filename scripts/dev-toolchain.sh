@@ -25,9 +25,12 @@ fi
 scripts/build-grapevine.sh --if-needed || echo "Grapevine could not be built; projects that import it will not compile." >&2
 docker build --quiet --file Blazemoji/Dockerfile --target toolchain --tag blazemoji-toolchain . > /dev/null
 
-# The same limits the compose file gives the service.
+# The same limits the compose file gives the service. It builds anyone's packages, which is
+# right for a service only this machine can reach, and it is said outright because a service
+# told no scopes builds no one's.
 docker run --detach --name "$NAME" --platform linux/amd64 \
   --publish "127.0.0.1:$PORT:8080" \
+  --env 'Packmoji__Scopes=*' \
   --read-only --tmpfs /tmp:exec,size=768m,mode=1777 \
   --cap-drop ALL --security-opt no-new-privileges \
   --pids-limit 1024 --memory 2g --cpus 4 \

@@ -35,7 +35,7 @@ namespace Blazemoji.Test.Packmoji
 
         private static string Digest(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
-        private LocalDependencySets Sets(Action<ToolchainOptions>? configure = null, string? scopes = null, string? home = null)
+        private LocalDependencySets Sets(Action<ToolchainOptions>? configure = null, string? scopes = PackageScopes.Any, string? home = null)
         {
             var options = new ToolchainOptions { WorkRoot = _work };
             configure?.Invoke(options);
@@ -230,6 +230,33 @@ namespace Blazemoji.Test.Packmoji
             problem.Message.ShouldContain("@thatplatypus/hello_words");
             problem.Reason.ShouldContain("emojicode");
             _pmj.Builds.ShouldBe(0);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("  ")]
+        public async Task A_toolchain_told_no_scopes_builds_no_ones_packages_and_says_what_would_have_it_build_them(string? scopes)
+        {
+            var sets = Sets(scopes: scopes);
+            Lock(Greeter, Words);
+
+            var failed = (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+
+            failed.Problems.Select(problem => problem.Code).ShouldBe([PackageProblemCodes.Scope, PackageProblemCodes.Scope]);
+            failed.Problems.ShouldAllBe(problem => problem.Reason == "it has been told no scopes to build packages of");
+            failed.Problems.ShouldAllBe(problem => problem.Fix.Contains("Packmoji__Scopes"));
+            _pmj.Builds.ShouldBe(0);
+        }
+
+        [Fact]
+        public async Task A_toolchain_told_no_scopes_keeps_no_ones_archive()
+        {
+            var sets = Sets(scopes: null);
+
+            (await sets.AddArchiveAsync(Words, new MemoryStream(WordsBytes), Cancellation)).ShouldBe(ArchiveOutcome.NotAllowed);
+
+            Directory.Exists(Path.Combine(Home, "cache", "thatplatypus")).ShouldBeFalse();
         }
 
         [Fact]

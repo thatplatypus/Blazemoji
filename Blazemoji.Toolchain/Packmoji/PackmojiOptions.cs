@@ -17,7 +17,7 @@ namespace Blazemoji.Toolchain.Packmoji
 
         /// <summary>
         /// The scopes whose packages are fetched and built, separated by commas, or <c>*</c> for
-        /// any. Null takes the default of whoever reads this.
+        /// any. Null is no scope at all, so whoever runs this says whose packages it takes.
         /// </summary>
         public string? Scopes { get; set; }
 

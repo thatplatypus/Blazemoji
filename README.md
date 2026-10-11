@@ -155,9 +155,9 @@ Plain HTTP/1.1 and server-sent events, so that it can be reimplemented elsewhere
 
 The compiler only produces an object file. The service links it itself against every bundled package, because the compiler's own link step fails when one package uses another.
 
-A project's own packages are [Packmoji](https://github.com/thatplatypus/Packmoji) packages. The service builds them with `pmj`, Packmoji's command, which the image carries, built from the commit in `packmoji.pin`. It is handed each package's archive and never fetches one: it needs no network, and `pmj` is given an address for GitHub that nothing listens at. `Packmoji__Scopes` says whose packages it builds, as scopes separated by commas, or `*` for anyone's; `docker compose` and the all-in-one image set it to `thatplatypus,emojicode`.
+A project's own packages are [Packmoji](https://github.com/thatplatypus/Packmoji) packages. The service builds them with `pmj`, Packmoji's command, which the image carries, built from the commit in `packmoji.pin`. It is handed each package's archive and never fetches one: it needs no network, and `pmj` is given an address for GitHub that nothing listens at. `Packmoji__Scopes` says whose packages it builds, as scopes separated by commas, or `*` for anyone's. A service told nothing builds no one's, so that a setting left out never opens a server to every package there is. `docker compose` and the all-in-one image set it to `thatplatypus,emojicode`, and `scripts/dev-toolchain.sh`, which only this machine can reach, sets it to `*`.
 
-Each run gets its own working directory and limits on wall-clock time, processor time, memory, file size and output. `Blazemoji.Toolchain.ContractTests` describes the contract from the outside: point `TOOLCHAIN_BASE_URL` at any implementation and run it.
+Each run gets its own working directory and limits on wall-clock time, processor time, memory, file size and output. `Blazemoji.Toolchain.ContractTests` describes the contract from the outside: point `TOOLCHAIN_BASE_URL` at any implementation and run it. The packages it hands over are `thatplatypus` ones, so the service has to be one that builds those.
 
 ## Running Tests
 

@@ -71,8 +71,8 @@ if docker compose -p "$PROJECT" exec -T toolchain curl -s -m 5 -o /dev/null http
 fi
 echo "toolchain container answers locally and has no route out: ok"
 
-# The website's toolchain builds packages of two scopes only. A compose file that lost the
-# setting would build anyone's.
+# The website's toolchain builds packages of two scopes only. A compose file whose list had
+# grown, or had become a star, would build more.
 scopes="$(docker compose -p "$PROJECT" exec -T toolchain printenv Packmoji__Scopes || true)"
 if [ "$scopes" != "thatplatypus,emojicode" ]; then
   echo "The toolchain container builds packages of the scopes '$scopes'. It must be limited to thatplatypus,emojicode." >&2

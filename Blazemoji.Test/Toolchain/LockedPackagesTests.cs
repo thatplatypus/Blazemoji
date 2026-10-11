@@ -57,7 +57,7 @@ namespace Blazemoji.Test.Toolchain
             var options = Options.Create(new ToolchainOptions { WorkRoot = _work });
             _sets = new LocalDependencySets(
                 options,
-                Options.Create(new PackmojiOptions { Path = PmjFixture.Path! }),
+                Options.Create(new PackmojiOptions { Path = PmjFixture.Path!, Scopes = "thatplatypus" }),
                 PmjFixture.Create(),
                 NullLogger<LocalDependencySets>.Instance);
             _toolchain = new LocalToolchain(options, NullLogger<LocalToolchain>.Instance, _sets);
@@ -175,7 +175,7 @@ namespace Blazemoji.Test.Toolchain
 
             await using var second = new LocalDependencySets(
                 Options.Create(new ToolchainOptions { WorkRoot = _work }),
-                Options.Create(new PackmojiOptions { Path = PmjFixture.Path! }),
+                Options.Create(new PackmojiOptions { Path = PmjFixture.Path!, Scopes = "thatplatypus" }),
                 PmjFixture.Create(),
                 NullLogger<LocalDependencySets>.Instance);
             var again = (await second.PrepareAsync(await RequestAsync(), Cancellation)).ShouldBeOfType<DependencyAnswer.Ready>();
