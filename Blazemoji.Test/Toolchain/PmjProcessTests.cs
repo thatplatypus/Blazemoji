@@ -167,5 +167,49 @@ namespace Blazemoji.Test.Toolchain
 
             clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(15));
         }
+
+        [Fact]
+        public async Task What_pmj_prints_past_the_limit_is_thrown_away_and_an_answer_cut_short_is_no_answer()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var pmj = new PmjProcess(
+                Options.Create(new PackmojiOptions
+                {
+                    Path = ToolchainFixture.Script("fake-pmj", "head -c 200000 /dev/zero | tr '\\0' 'o'\nhead -c 200000 /dev/zero | tr '\\0' 'e' >&2\nexit 3"),
+                    MaxOutput = 1000,
+                }),
+                NullLogger<PmjProcess>.Instance);
+
+            var result = await pmj.RunAsync(new PmjCommand(Folder(), []), Cancellation);
+
+            result.Outcome.ShouldBe(PmjOutcome.Ran);
+            result.ExitCode.ShouldBe(3);
+            result.Stdout.ShouldBeEmpty();
+            result.Stderr.Length.ShouldBe(1000);
+        }
+
+        [Fact]
+        public async Task Output_within_the_limit_is_kept_whole()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var pmj = new PmjProcess(
+                Options.Create(new PackmojiOptions { Path = ToolchainFixture.Script("fake-pmj", "printf 'exactly ten'"), MaxOutput = 11 }),
+                NullLogger<PmjProcess>.Instance);
+
+            (await pmj.RunAsync(new PmjCommand(Folder(), []), Cancellation)).Stdout.ShouldBe("exactly ten");
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(-5)]
+        public async Task A_limit_that_makes_no_sense_is_the_default_and_not_none(int most)
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var pmj = new PmjProcess(
+                Options.Create(new PackmojiOptions { Path = ToolchainFixture.Script("fake-pmj", "printf 'kept'"), MaxOutput = most }),
+                NullLogger<PmjProcess>.Instance);
+
+            (await pmj.RunAsync(new PmjCommand(Folder(), []), Cancellation)).Stdout.ShouldBe("kept");
+        }
     }
 }

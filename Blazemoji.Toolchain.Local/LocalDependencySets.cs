@@ -33,30 +33,7 @@ namespace Blazemoji.Toolchain.Local
         // handed to it. Port 9 is the discard port, which nothing here runs.
         private const string NoGitHub = "http://127.0.0.1:9";
 
-        private const string CompilerSaidReason = "what the compiler said is in the toolchain's log";
-
-        // pmj words this reason with the compiler's own path, which is not under any folder the
-        // place check knows, so the words are fixed and pmj's are logged.
-        private const string CompilerTooOldReason = "the compiler this toolchain has is older than that";
-
         private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
-
-        // The codes of the problems pmj finds in a visitor's two files and in the packages they
-        // name, which are the visitor's to read and fix. A code that is not here is about this
-        // machine or is not known, and is not passed on: it goes to the log.
-        private static readonly string[] PassedOnPrefixes =
-        [
-            "file.", "json.", "key.", "name.", "version.", "requirement.", "kind.", "description.",
-            "license.", "repository.", "dependency.", "path.", "glob.", "link.", "list.", "entry.",
-            "lock.", "pin.", "sha256.", "verified.", "resolve.", "release.", "archive.",
-            "attestation.", "native.",
-        ];
-
-        private static readonly string[] PassedOnCodes = ["compiler.invalid", "compiler.too-old", "package.not-found"];
-
-        private static readonly string[] CompilerCodes = ["build.compile-failed", "build.native-failed", "build.archive-failed", "build.link-failed"];
-
-        private const string CompilerTooOldCode = "compiler.too-old";
 
         private readonly ToolchainOptions _options = toolchainOptions.Value;
         private readonly PackageScopes _scopes = PackageScopes.Parse(packmojiOptions.Value.Scopes);
@@ -478,71 +455,38 @@ namespace Blazemoji.Toolchain.Local
 
         private static DependencyAnswer? NotRun(PmjResult result) => result.Outcome switch
         {
-            PmjOutcome.NotFound => Failed(
-                PackageProblemCodes.NoPackmoji,
-                "This toolchain has no Packmoji.",
-                "the pmj program is not where the toolchain looks for it",
-                "run a toolchain that came with pmj, or say where it is with Packmoji:Path"),
-            PmjOutcome.TimedOut => Failed(
-                PackageProblemCodes.TimedOut,
-                "The project's packages took too long.",
-                "pmj was stopped when it ran out of time",
-                "try again: a package that was built is not built a second time"),
+            PmjOutcome.NotFound => new DependencyAnswer.Failed([PmjProblems.NoPackmoji("This toolchain")]),
+            PmjOutcome.TimedOut => new DependencyAnswer.Failed([PmjProblems.TimedOut()]),
             _ => null,
         };
 
         private DependencyAnswer FailedWith(IReadOnlyList<PackageProblem> problems)
         {
+            string[] places = [_options.WorkRoot, _root, _home];
             var passedOn = new List<PackageProblem>();
             var withheldError = false;
             foreach (var reported in problems)
             {
-                var problem = reported;
-                if (CompilerCodes.Contains(problem.Code))
-                {
-                    logger.LogWarning("pmj reported {Code}: {Message} ({Reason})", problem.Code, problem.Message, problem.Reason);
-                    problem = problem with { Reason = CompilerSaidReason };
-                }
-                else if (problem.Code == CompilerTooOldCode)
-                {
-                    logger.LogWarning("pmj reported {Code}: {Message} ({Reason})", problem.Code, problem.Message, problem.Reason);
-                    problem = problem with { Reason = CompilerTooOldReason };
-                }
-
-                if (!IsPassedOn(problem))
+                // The service's pmj is given no way to GitHub, so a problem with GitHub is a
+                // fault of this machine's.
+                if (PmjProblems.ForAVisitor(reported, places, asksGitHub: false) is not { } shown)
                 {
                     logger.LogError("pmj reported {Code}: {Message} ({Reason})", reported.Code, reported.Message, reported.Reason);
-                    withheldError |= problem.IsError;
+                    withheldError |= reported.IsError;
                     continue;
                 }
 
-                passedOn.Add(problem);
+                // What a tool said of a package's code was taken out of it, and is kept here.
+                if (shown.Reason != reported.Reason)
+                    logger.LogWarning("pmj reported {Code}: {Message} ({Reason})", reported.Code, reported.Message, reported.Reason);
+
+                passedOn.Add(shown);
             }
 
             return withheldError || !passedOn.Any(problem => problem.IsError) ? Unreadable() : new DependencyAnswer.Failed(passedOn);
         }
 
-        private bool IsPassedOn(PackageProblem problem)
-        {
-            var known = PassedOnCodes.Contains(problem.Code)
-                || CompilerCodes.Contains(problem.Code)
-                || PassedOnPrefixes.Any(prefix => problem.Code.StartsWith(prefix, StringComparison.Ordinal));
-            if (!known)
-                return false;
-
-            var places = new[] { _options.WorkRoot, _root, _home }.Where(place => !string.IsNullOrEmpty(place));
-            return !places.Any(place =>
-                problem.Message.Contains(place, StringComparison.Ordinal)
-                || problem.Reason.Contains(place, StringComparison.Ordinal)
-                || problem.Fix.Contains(place, StringComparison.Ordinal)
-                || (problem.File?.Contains(place, StringComparison.Ordinal) ?? false));
-        }
-
-        private static DependencyAnswer Unreadable() => Failed(
-            PackageProblemCodes.Unreadable,
-            "The project's packages could not be worked out.",
-            "the toolchain could not use what Packmoji told it",
-            "try again; if it happens again, the reason is in the toolchain's log");
+        private static DependencyAnswer Unreadable() => new DependencyAnswer.Failed([PmjProblems.Unreadable("the toolchain")]);
 
         private PackageProblem OutsideTheScopes(LockedPackage package) => new(
             PackageProblem.Error,

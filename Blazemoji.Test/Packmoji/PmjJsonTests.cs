@@ -248,5 +248,80 @@ namespace Blazemoji.Test.Packmoji
 
             PmjJson.ReadTree(lone).ShouldBeNull();
         }
+
+        // The answers pmj at 61b4275 gave for a project that asks for Grapevine 0.1.0.
+        private const string Resolved = """
+            {
+              "ok": true,
+              "diagnostics": [],
+              "omittedDiagnostics": 0,
+              "written": true,
+              "changes": [
+                { "change": "added", "name": "@thatplatypus/crypto", "to": "0.1.0" }
+              ],
+              "packages": [
+                {
+                  "name": "@thatplatypus/crypto",
+                  "version": "0.1.0",
+                  "source": "github.com/thatplatypus/grapevine",
+                  "sha256": "8150116d875b82482156009d92283a3f890e95e7ed129876a1aeff5fe389b604",
+                  "verified": "checksum",
+                  "dependencies": []
+                }
+              ]
+            }
+            """;
+
+        private const string InstallRefused = """
+            {
+              "ok": false,
+              "diagnostics": [
+                {
+                  "severity": "error",
+                  "code": "lock.out-of-date",
+                  "message": "There is no packmoji.lock, and --locked forbids writing one.",
+                  "reason": "with --locked, pmj installs exactly what the lockfile holds and chooses nothing",
+                  "fix": "run pmj install without --locked, and commit the packmoji.lock it writes"
+                }
+              ],
+              "omittedDiagnostics": 0
+            }
+            """;
+
+        [Fact]
+        public void An_install_that_resolved_says_it_wrote_and_what_is_locked_now()
+        {
+            var install = PmjJson.ReadInstall(Resolved).ShouldNotBeNull();
+
+            install.Report.Ok.ShouldBeTrue();
+            install.Written.ShouldBeTrue();
+            install.Packages.ShouldBe([new LockedPackage("@thatplatypus/crypto", "0.1.0", "8150116d875b82482156009d92283a3f890e95e7ed129876a1aeff5fe389b604")]);
+        }
+
+        [Fact]
+        public void An_install_with_nothing_to_resolve_wrote_nothing()
+        {
+            PmjJson.ReadInstall(Resolved.Replace("\"written\": true", "\"written\": false")).ShouldNotBeNull().Written.ShouldBeFalse();
+        }
+
+        [Fact]
+        public void An_install_that_was_refused_has_its_problem_and_no_packages()
+        {
+            var install = PmjJson.ReadInstall(InstallRefused).ShouldNotBeNull();
+
+            install.Report.Ok.ShouldBeFalse();
+            install.Written.ShouldBeFalse();
+            install.Packages.ShouldBeEmpty();
+            install.Report.Problems.ShouldHaveSingleItem().Code.ShouldBe(PmjProblems.LockOutOfDate);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("error: Unrecognized command or argument '--nonsense'.")]
+        [InlineData("""{"ok":true,"packages":[{"name":"@a/b","version":"1.0.0"}]}""")]
+        public void An_install_answer_that_is_not_pmjs_is_nothing(string stdout)
+        {
+            PmjJson.ReadInstall(stdout).ShouldBeNull();
+        }
     }
 }

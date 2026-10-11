@@ -116,5 +116,33 @@ namespace Blazemoji.Test.Packmoji
             new LockedPackage("@thatplatypus/hello_words", "../0.1.0", Digest).IsWellFormed.ShouldBeFalse();
             new LockedPackage("@thatplatypus/hello_words", "0.1.0", "abc").IsWellFormed.ShouldBeFalse();
         }
+
+        [Theory]
+        [InlineData("@thatplatypus/con")]
+        [InlineData("@thatplatypus/nul")]
+        [InlineData("@thatplatypus/com1")]
+        [InlineData("@thatplatypus/lpt9")]
+        [InlineData("@aux/thing")]
+        [InlineData("@prn/thing")]
+        public void A_name_Windows_keeps_for_a_device_is_not_a_package(string fullName)
+        {
+            PackageNames.TryParse(fullName, out var scope, out var name).ShouldBeFalse();
+        }
+
+        [Theory]
+        [InlineData("@thatplatypus/console")]
+        [InlineData("@thatplatypus/com10")]
+        [InlineData("@thatplatypus/null_things")]
+        public void A_name_that_only_begins_like_a_device_is_a_package(string fullName)
+        {
+            PackageNames.TryParse(fullName, out var scope, out var name).ShouldBeTrue();
+        }
+
+        [Fact]
+        public void A_version_that_ends_in_a_dot_is_not_one_since_Windows_would_drop_the_dot_from_a_folder()
+        {
+            PackageNames.IsVersion("1.0.").ShouldBeFalse();
+            PackageNames.IsVersion("1.0.0").ShouldBeTrue();
+        }
     }
 }

@@ -20,6 +20,8 @@ namespace Blazemoji.Toolchain.Packmoji
         /// </summary>
         private static readonly TimeSpan ReadPatience = TimeSpan.FromSeconds(5);
 
+        private const int DefaultMaxOutput = 4 * 1024 * 1024;
+
         private readonly PackmojiOptions _options = options.Value;
 
         public async Task<PmjResult> RunAsync(PmjCommand command, CancellationToken cancellationToken = default)
@@ -40,8 +42,9 @@ namespace Blazemoji.Toolchain.Packmoji
             // Both pipes are drained while pmj runs. Reading one after the other deadlocks as
             // soon as the unread pipe's buffer fills, and a build prints a compiler's output.
             using var reading = new CancellationTokenSource();
-            var stdout = process.StandardOutput.ReadToEndAsync(reading.Token);
-            var stderr = process.StandardError.ReadToEndAsync(reading.Token);
+            var most = _options.MaxOutput > 0 ? _options.MaxOutput : DefaultMaxOutput;
+            var stdout = ReadAsync(process.StandardOutput, most, reading.Token);
+            var stderr = ReadAsync(process.StandardError, most, reading.Token);
 
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(Usable(command.Timeout ?? _options.Timeout));
@@ -73,14 +76,53 @@ namespace Blazemoji.Toolchain.Packmoji
                 return new PmjResult(PmjOutcome.TimedOut, process.ExitCode, string.Empty, string.Empty);
             }
 
-            return new PmjResult(timedOut ? PmjOutcome.TimedOut : PmjOutcome.Ran, process.ExitCode, printed.Value.Stdout, printed.Value.Stderr);
+            var outcome = timedOut ? PmjOutcome.TimedOut : PmjOutcome.Ran;
+            if (printed.Value.Stdout.Cut)
+            {
+                // Half of a JSON object is not one. Nothing is given back, so that whoever
+                // reads it finds no answer and not a wrong one.
+                logger.LogWarning("pmj printed more than {Most} characters, and what it printed is not used", most);
+                return new PmjResult(outcome, process.ExitCode, string.Empty, printed.Value.Stderr.Text);
+            }
+
+            return new PmjResult(outcome, process.ExitCode, printed.Value.Stdout.Text, printed.Value.Stderr.Text);
+        }
+
+        private readonly record struct Printed(string Text, bool Cut);
+
+        /// <summary>
+        /// Reads a stream to its end and keeps the first of it. It goes on reading past the
+        /// limit and keeps none of that: a pipe nobody reads fills, and pmj would wait on it
+        /// until its time ran out.
+        /// </summary>
+        private static async Task<Printed> ReadAsync(StreamReader reader, int most, CancellationToken cancellationToken)
+        {
+            var kept = new StringBuilder();
+            var cut = false;
+            var buffer = new char[8192];
+            int read;
+            while ((read = await reader.ReadAsync(buffer.AsMemory(), cancellationToken)) > 0)
+            {
+                var room = most - kept.Length;
+                if (room >= read)
+                {
+                    kept.Append(buffer, 0, read);
+                    continue;
+                }
+
+                if (room > 0)
+                    kept.Append(buffer, 0, room);
+                cut = true;
+            }
+
+            return new Printed(kept.ToString(), cut);
         }
 
         /// <summary>Awaits both reads to their end, whether that is the end of the output or a cancelled read. Null when cancelled.</summary>
-        private static async Task<(string Stdout, string Stderr)?> Finish(Task<string> stdout, Task<string> stderr)
+        private static async Task<(Printed Stdout, Printed Stderr)?> Finish(Task<Printed> stdout, Task<Printed> stderr)
         {
-            string? output = null;
-            string? err = null;
+            Printed? output = null;
+            Printed? err = null;
             try
             {
                 output = await stdout;
@@ -99,7 +141,7 @@ namespace Blazemoji.Toolchain.Packmoji
                 // Cancelled.
             }
 
-            return output is null || err is null ? null : (output, err);
+            return output is null || err is null ? null : (output.Value, err.Value);
         }
 
         private ProcessStartInfo StartInfo(PmjCommand command)

@@ -14,6 +14,16 @@ namespace Blazemoji.Toolchain.Packmoji
         private const int MaxLibraryLength = 64;
         private const int DigestLength = 64;
 
+        // Windows keeps these names for devices, with any extension or none, and no folder of
+        // one can be made there. pmj refuses to pack such a package. A scope and a name each
+        // become a folder under pmj's cache, on whatever machine the desktop app runs on.
+        private static readonly HashSet<string> Devices = new(StringComparer.Ordinal)
+        {
+            "con", "prn", "aux", "nul",
+            "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+            "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+        };
+
         /// <summary>Splits <c>@scope/name</c>. False, with both parts empty, when it is not written that way.</summary>
         public static bool TryParse(string? fullName, out string scope, out string name)
         {
@@ -40,16 +50,21 @@ namespace Blazemoji.Toolchain.Packmoji
         public static bool IsScope(string? scope) =>
             scope is { Length: > 0 and <= MaxScopeLength }
             && scope[0] != '-'
-            && scope.All(character => character is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-');
+            && scope.All(character => character is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-')
+            && !Devices.Contains(scope);
 
         public static bool IsBareName(string? name) =>
             name is { Length: > 0 and <= MaxNameLength }
             && name[0] is >= 'a' and <= 'z'
-            && name.All(character => character is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '_');
+            && name.All(character => character is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '_')
+            && !Devices.Contains(name);
 
+        // A folder's name cannot end in a dot on Windows: the dot is dropped, and two versions
+        // would share one folder.
         public static bool IsVersion(string? version) =>
             version is { Length: > 0 and <= MaxVersionLength }
             && version[0] is >= '0' and <= '9'
+            && version[^1] != '.'
             && version.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-');
 
         public static bool IsDigest(string? sha256) =>
