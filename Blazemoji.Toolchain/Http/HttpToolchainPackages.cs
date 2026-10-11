@@ -32,11 +32,11 @@ namespace Blazemoji.Toolchain.Http
                 {
                     switch (body.State)
                     {
-                        case DependencyStates.Needed when body.Needed is { Count: > 0 } needed:
+                        case DependencyStates.Needed when body.Needed is { Count: > 0 } needed && !needed.Any(package => package is null):
                             return new DependencyAnswer.Needed(needed.Select(package => package.ToLockedPackage()).ToList());
-                        case DependencyStates.Ready when body.Id is { Length: > 0 } id:
+                        case DependencyStates.Ready when body.Id is { Length: > 0 } id && body.Packages?.Any(package => package is null) != true:
                             return new DependencyAnswer.Ready(id, body.Packages ?? []);
-                        case DependencyStates.Failed when body.Diagnostics is { Count: > 0 } diagnostics:
+                        case DependencyStates.Failed when body.Diagnostics is { Count: > 0 } diagnostics && !diagnostics.Any(problem => problem is null):
                             return new DependencyAnswer.Failed(diagnostics.Select(problem => problem.ToProblem()).ToList());
                     }
                 }
@@ -49,7 +49,7 @@ namespace Blazemoji.Toolchain.Http
                 logger.LogError(exception, "The toolchain service could not be reached");
                 return new DependencyAnswer.Unavailable();
             }
-            catch (JsonException exception)
+            catch (Exception exception) when (exception is JsonException or NotSupportedException)
             {
                 logger.LogError(exception, "The toolchain service answered a request for a set of packages with what is not JSON");
                 return new DependencyAnswer.Unavailable();

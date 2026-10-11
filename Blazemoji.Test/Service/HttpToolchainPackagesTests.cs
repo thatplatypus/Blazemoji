@@ -123,11 +123,25 @@ namespace Blazemoji.Test.Service
         [InlineData("""{"state":"something new"}""")]
         [InlineData("""{}""")]
         [InlineData("""<html>a proxy's error page</html>""")]
+        [InlineData("""{"state":"needed","needed":[null]}""")]
+        [InlineData("""{"state":"failed","diagnostics":[null]}""")]
+        [InlineData("""{"state":"ready","id":"abc","packages":[null]}""")]
         public async Task An_answer_that_is_not_what_the_service_gives_is_unavailable(string body)
         {
             var client = ClientOver((_, _) => Task.FromResult(Json(body)));
 
             (await client.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Unavailable>();
+        }
+
+        [Fact]
+        public async Task A_page_that_is_not_json_at_all_is_unavailable_and_nothing_is_thrown()
+        {
+            var page = ClientOver((_, _) => Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<html>a proxy's error page</html>", Encoding.UTF8, "text/html") }));
+            var empty = ClientOver((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)));
+
+            (await page.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Unavailable>();
+            (await empty.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Unavailable>();
         }
 
         [Fact]
