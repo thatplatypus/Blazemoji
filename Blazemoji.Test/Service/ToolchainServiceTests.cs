@@ -179,7 +179,6 @@ namespace Blazemoji.Test.Service
         [InlineData("""{"files":{"main.🍇":"x"}}""", "The entry must name one of the files.")]
         [InlineData("""{"files":{"main.🍇":"x"},"entry":"other.🍇"}""", "The entry must name one of the files.")]
         [InlineData("""{"files":{"../main.🍇":"x"},"entry":"../main.🍇"}""", "File names must be relative and must not contain '..' segments.")]
-        [InlineData("""{"files":{"main.🍇":"x"},"entry":"main.🍇","packages":["nope"]}""", "An unknown package was requested.")]
         public async Task A_compile_request_that_cannot_be_right_is_a_400_and_never_reaches_the_compiler(string body, string title)
         {
             var response = await Client.PostAsync(ToolchainRoutes.Compile, new StringContent(body, Encoding.UTF8, "application/json"), Cancellation);
@@ -198,13 +197,13 @@ namespace Blazemoji.Test.Service
         }
 
         [Fact]
-        public async Task Known_packages_may_be_named()
+        public async Task A_packages_list_from_an_older_client_is_passed_over()
         {
             _factory.Toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
                 .Returns(new CompileResult(true, [], "build-1"));
 
             var response = await Client.PostAsync(ToolchainRoutes.Compile,
-                new StringContent("""{"files":{"main.🍇":"x"},"entry":"main.🍇","packages":["s","json"]}""", Encoding.UTF8, "application/json"), Cancellation);
+                new StringContent("""{"files":{"main.🍇":"x"},"entry":"main.🍇","packages":["s","nope"]}""", Encoding.UTF8, "application/json"), Cancellation);
 
             response.StatusCode.ShouldBe(HttpStatusCode.OK);
         }

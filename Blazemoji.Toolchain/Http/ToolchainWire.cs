@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Blazemoji.Toolchain.Packmoji;
 
 namespace Blazemoji.Toolchain.Http
 {
@@ -14,6 +15,7 @@ namespace Blazemoji.Toolchain.Http
         public const string Runs = "/runs";
         public const string Packages = "/packages";
         public const string Health = "/health";
+        public const string Dependencies = "/dependencies";
 
         public static string Run(string runId) => $"/runs/{Uri.EscapeDataString(runId)}";
 
@@ -27,6 +29,14 @@ namespace Blazemoji.Toolchain.Http
 
         public static string PackageDocumentation(string name) =>
             $"/packages/{Uri.EscapeDataString(name)}/documentation.json";
+
+        /// <summary>Where an archive is put. The name and the version say which package the digest is of.</summary>
+        public static string DependencyArchive(LockedPackage package) =>
+            $"/dependencies/archives/{Uri.EscapeDataString(package.Sha256)}?name={Uri.EscapeDataString(package.Name)}&version={Uri.EscapeDataString(package.Version)}";
+
+        /// <param name="package">The name the package is imported by.</param>
+        public static string DependencyDocumentation(string dependencies, string package) =>
+            $"/dependencies/{Uri.EscapeDataString(dependencies)}/packages/{Uri.EscapeDataString(package)}/documentation.json";
     }
 
     public static class ToolchainJson
@@ -59,7 +69,8 @@ namespace Blazemoji.Toolchain.Http
     }
 
     /// <param name="Check">See <see cref="CompileRequest.CheckOnly"/>.</param>
-    public sealed record CompileRequestBody(Dictionary<string, string>? Files, string? Entry, string[]? Packages = null, bool Check = false);
+    /// <param name="Dependencies">See <see cref="CompileRequest.Dependencies"/>.</param>
+    public sealed record CompileRequestBody(Dictionary<string, string>? Files, string? Entry, bool Check = false, string? Dependencies = null);
 
     public sealed record CompileResponseBody(bool Ok, IReadOnlyList<DiagnosticBody> Diagnostics, string? BuildId);
 
@@ -149,6 +160,87 @@ namespace Blazemoji.Toolchain.Http
             "timed-out" => ProgramResponseOutcome.TimedOut,
             "invalid-request" => ProgramResponseOutcome.InvalidRequest,
             _ => ProgramResponseOutcome.BadResponse,
+        };
+    }
+
+    /// <param name="Manifest">The text of <c>packmoji.json</c>.</param>
+    /// <param name="Lockfile">The text of <c>packmoji.lock</c>.</param>
+    public sealed record DependenciesRequestBody(string? Manifest, string? Lockfile);
+
+    /// <param name="State">One of the <see cref="DependencyStates"/>. Which of the other members is there goes by it.</param>
+    public sealed record DependenciesResponseBody(
+        string State,
+        string? Id = null,
+        IReadOnlyList<string>? Packages = null,
+        IReadOnlyList<LockedPackageBody>? Needed = null,
+        IReadOnlyList<PackageProblemBody>? Diagnostics = null);
+
+    public static class DependencyStates
+    {
+        public const string Needed = "needed";
+        public const string Ready = "ready";
+        public const string Failed = "failed";
+    }
+
+    public sealed record LockedPackageBody(string Name, string Version, string Sha256)
+    {
+        public static LockedPackageBody From(LockedPackage package) => new(package.Name, package.Version, package.Sha256);
+
+        public LockedPackage ToLockedPackage() => new(Name ?? string.Empty, Version ?? string.Empty, Sha256 ?? string.Empty);
+    }
+
+    /// <param name="Severity"><c>error</c> or <c>warning</c>.</param>
+    public sealed record PackageProblemBody(
+        string Severity,
+        string Code,
+        string Message,
+        string Reason,
+        string Fix,
+        string? File = null,
+        int Line = 0,
+        int Column = 0)
+    {
+        public static PackageProblemBody From(PackageProblem problem) =>
+            new(problem.Severity, problem.Code, problem.Message, problem.Reason, problem.Fix, problem.File, problem.Line, problem.Column);
+
+        public PackageProblem ToProblem() => new(
+            Severity == PackageProblem.Warning ? PackageProblem.Warning : PackageProblem.Error,
+            Code ?? string.Empty,
+            Message ?? string.Empty,
+            Reason ?? string.Empty,
+            Fix ?? string.Empty,
+            File,
+            Line,
+            Column);
+    }
+
+    /// <summary>
+    /// An archive that is refused carries <see cref="Header"/> with one of these reasons, so
+    /// that a client can tell why without reading words meant for a person.
+    /// </summary>
+    public static class ArchiveReasons
+    {
+        public const string Header = "X-Toolchain-Archive";
+
+        public static string? Name(ArchiveOutcome outcome) => outcome switch
+        {
+            ArchiveOutcome.WrongDigest => "wrong-digest",
+            ArchiveOutcome.Malformed => "malformed",
+            ArchiveOutcome.NotAllowed => "not-allowed",
+            ArchiveOutcome.TooLarge => "too-large",
+            ArchiveOutcome.Failed => "failed",
+            _ => null,
+        };
+
+        /// <summary>A reason this client does not know is the service not being usable, as far as a caller is concerned.</summary>
+        public static ArchiveOutcome Parse(string? name) => name switch
+        {
+            "wrong-digest" => ArchiveOutcome.WrongDigest,
+            "malformed" => ArchiveOutcome.Malformed,
+            "not-allowed" => ArchiveOutcome.NotAllowed,
+            "too-large" => ArchiveOutcome.TooLarge,
+            "failed" => ArchiveOutcome.Failed,
+            _ => ArchiveOutcome.Unavailable,
         };
     }
 }

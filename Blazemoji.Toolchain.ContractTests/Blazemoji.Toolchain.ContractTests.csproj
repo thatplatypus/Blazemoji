@@ -25,6 +25,9 @@
 
   <ItemGroup>
     <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Two packages as pmj pack made them, and the two files of an application that locks
+         them. Blazemoji.Test/Toolchain/Packages/README.md says where they come from. -->
+    <None Update="Packages\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

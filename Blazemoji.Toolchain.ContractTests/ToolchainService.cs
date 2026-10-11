@@ -65,6 +65,46 @@ namespace Blazemoji.Toolchain.ContractTests
             return Http.PostAsync("runs", Json(body), cancellationToken);
         }
 
+        public static Task<HttpResponseMessage> PostDependenciesAsync(string manifest, string lockfile, CancellationToken cancellationToken) =>
+            Http.PostAsync("dependencies", Json(new { manifest, lockfile }), cancellationToken);
+
+        public static Task<HttpResponseMessage> PutArchiveAsync(string name, string version, string sha256, byte[] archive, CancellationToken cancellationToken) =>
+            Http.PutAsync(
+                $"dependencies/archives/{sha256}?name={Uri.EscapeDataString(name)}&version={Uri.EscapeDataString(version)}",
+                new ByteArrayContent(archive),
+                cancellationToken);
+
+        /// <summary>
+        /// Asks for a set until it is ready, handing over whatever is asked for on the way and
+        /// asking again while the service says to. Gives the last answer, whatever it was.
+        /// </summary>
+        public static async Task<JsonElement> PrepareAsync(string manifest, string lockfile, IReadOnlyDictionary<string, byte[]> archivesByDigest, CancellationToken cancellationToken)
+        {
+            for (var asked = 0; ; asked++)
+            {
+                using var response = await PostDependenciesAsync(manifest, lockfile, cancellationToken);
+                if (response.StatusCode == HttpStatusCode.TooManyRequests && asked < 60)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                    continue;
+                }
+
+                response.StatusCode.ShouldBe(HttpStatusCode.OK);
+                var answer = await ReadJsonAsync(response, cancellationToken);
+                if (answer.GetProperty("state").GetString() != "needed" || asked >= 60)
+                    return answer;
+
+                foreach (var needed in answer.GetProperty("needed").EnumerateArray())
+                {
+                    var sha256 = needed.GetProperty("sha256").GetString()!;
+                    archivesByDigest.ContainsKey(sha256).ShouldBeTrue("the service asked for an archive the lockfile does not name");
+
+                    using var put = await PutArchiveAsync(needed.GetProperty("name").GetString()!, needed.GetProperty("version").GetString()!, sha256, archivesByDigest[sha256], cancellationToken);
+                    put.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+                }
+            }
+        }
+
         public static string MediaType(HttpResponseMessage response) =>
             response.Content.Headers.ContentType.ShouldNotBeNull("the response has no Content-Type").MediaType.ShouldNotBeNull();
 

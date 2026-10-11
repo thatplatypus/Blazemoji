@@ -1,6 +1,7 @@
 using System.Text;
 using Blazemoji.Toolchain.Http;
 using Blazemoji.Toolchain.Local;
+using Blazemoji.Toolchain.Packmoji;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Options;
 
@@ -21,11 +22,14 @@ namespace Blazemoji.Toolchain.Service
             app.Map("/runs/{runId}/http/{**path}", ProxyAsync);
             app.MapGet(ToolchainRoutes.Packages, (PackageCatalog catalog) => Results.Json(catalog.Names(), ToolchainJson.Options));
             app.MapGet("/packages/{name}/documentation.json", PackageDocumentation);
+            app.MapPost(ToolchainRoutes.Dependencies, PrepareDependenciesAsync);
+            app.MapPut("/dependencies/archives/{sha256}", AddArchiveAsync);
+            app.MapGet("/dependencies/{id}/packages/{name}/documentation.json", DependencyDocumentationAsync);
 
             return app;
         }
 
-        private static async Task<IResult> CompileAsync(CompileRequestBody body, IToolchain toolchain, PackageCatalog catalog, CompileGate gate, CancellationToken cancellationToken)
+        private static async Task<IResult> CompileAsync(CompileRequestBody body, IToolchain toolchain, CompileGate gate, CancellationToken cancellationToken)
         {
             if (body.Files is null || body.Files.Count == 0)
                 return BadRequest("At least one file is required.");
@@ -36,15 +40,15 @@ namespace Blazemoji.Toolchain.Service
             if (body.Files.Keys.Any(name => !SourceFileNames.IsSafe(name)))
                 return BadRequest("File names must be relative and must not contain '..' segments.");
 
-            if (body.Packages is { Length: > 0 } requested && requested.Except(catalog.Names(), StringComparer.Ordinal).Any())
-                return BadRequest("An unknown package was requested.");
-
             if (!gate.TryEnter())
                 return Problem("Too many programs are being compiled. Try again shortly.", StatusCodes.Status429TooManyRequests);
 
             try
             {
-                var result = await toolchain.CompileAsync(new CompileRequest(body.Files, body.Entry, body.Check), cancellationToken);
+                var result = await toolchain.CompileAsync(new CompileRequest(body.Files, body.Entry, body.Check, body.Dependencies), cancellationToken);
+                if (result.DependenciesMissing)
+                    return Problem("The project's packages are not built here.", StatusCodes.Status409Conflict);
+
                 var response = new CompileResponseBody(result.Ok, result.Diagnostics.Select(DiagnosticBody.From).ToList(), result.BuildId);
 
                 return Results.Json(response, ToolchainJson.Options);
@@ -176,21 +180,34 @@ namespace Blazemoji.Toolchain.Service
             statusCode >= 200 && statusCode is not (StatusCodes.Status204NoContent or StatusCodes.Status205ResetContent or StatusCodes.Status304NotModified);
 
         /// <returns>Null when the body is longer than <paramref name="limit"/>.</returns>
-        private static async Task<byte[]?> ReadBodyAsync(HttpRequest request, long limit, CancellationToken cancellationToken)
+        private static Task<byte[]?> ReadBodyAsync(HttpRequest request, long limit, CancellationToken cancellationToken) =>
+            ReadBodyAsync(request.Body, request.ContentLength, limit, cancellationToken);
+
+        /// <returns>Null when the body is longer than <paramref name="limit"/>.</returns>
+        internal static async Task<byte[]?> ReadBodyAsync(Stream request, long? contentLength, long limit, CancellationToken cancellationToken)
         {
-            if (request.ContentLength > limit)
+            if (contentLength > limit)
                 return null;
 
             using var body = new MemoryStream();
             var buffer = new byte[16 * 1024];
 
-            int read;
-            while ((read = await request.Body.ReadAsync(buffer, cancellationToken)) > 0)
+            try
             {
-                if (body.Length + read > limit)
-                    return null;
+                int read;
+                while ((read = await request.ReadAsync(buffer, cancellationToken)) > 0)
+                {
+                    if (body.Length + read > limit)
+                        return null;
 
-                body.Write(buffer, 0, read);
+                    body.Write(buffer, 0, read);
+                }
+            }
+            catch (BadHttpRequestException exception) when (exception.StatusCode == StatusCodes.Status413PayloadTooLarge)
+            {
+                // For a body of unknown length the server counts the bytes it has taken off the
+                // wire, which runs ahead of what has been read here, so it can reach its own limit first.
+                return null;
             }
 
             return body.ToArray();
@@ -224,6 +241,65 @@ namespace Blazemoji.Toolchain.Service
                 : Problem("No such package.", StatusCodes.Status404NotFound);
 
         private static IResult NoSuchRun() => Problem("No such run.", StatusCodes.Status404NotFound);
+
+        private static async Task<IResult> PrepareDependenciesAsync(DependenciesRequestBody body, IToolchainPackages packages, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrEmpty(body.Manifest) || string.IsNullOrEmpty(body.Lockfile))
+                return BadRequest("A manifest and a lockfile are required.");
+
+            return await packages.PrepareAsync(new DependencyRequest(body.Manifest, body.Lockfile), cancellationToken) switch
+            {
+                DependencyAnswer.Needed needed => Results.Json(
+                    new DependenciesResponseBody(DependencyStates.Needed, Needed: needed.Archives.Select(LockedPackageBody.From).ToList()), ToolchainJson.Options),
+                DependencyAnswer.Ready ready => Results.Json(
+                    new DependenciesResponseBody(DependencyStates.Ready, Id: ready.Id, Packages: ready.Packages), ToolchainJson.Options),
+                DependencyAnswer.Failed failed => Results.Json(
+                    new DependenciesResponseBody(DependencyStates.Failed, Diagnostics: failed.Problems.Select(PackageProblemBody.From).ToList()), ToolchainJson.Options),
+                DependencyAnswer.Busy => Problem("Too many sets of packages are being built. Try again shortly.", StatusCodes.Status429TooManyRequests),
+                _ => Problem("The project's packages could not be prepared.", StatusCodes.Status503ServiceUnavailable),
+            };
+        }
+
+        private static async Task<IResult> AddArchiveAsync(string sha256, string? name, string? version, HttpContext context, IToolchainPackages packages, IOptions<ToolchainOptions> toolchain)
+        {
+            var limit = toolchain.Value.MaxArchiveBytes;
+
+            // An archive may be larger than any other request, so the server's own limit is
+            // raised for this request alone, before its body is read. It is raised to one byte
+            // past the limit: the reading below then sees a body that is too long and refuses
+            // it in the service's own words, where at the limit itself the server would end the
+            // request first, in its own.
+            if (context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } size)
+                size.MaxRequestBodySize = limit + 1;
+
+            if (await ReadBodyAsync(context.Request, limit, context.RequestAborted) is not { } body)
+                return Refused(context, ArchiveOutcome.TooLarge);
+
+            var package = new LockedPackage(name ?? string.Empty, version ?? string.Empty, sha256);
+            var outcome = await packages.AddArchiveAsync(package, new MemoryStream(body), context.RequestAborted);
+
+            return outcome == ArchiveOutcome.Stored ? Results.NoContent() : Refused(context, outcome);
+        }
+
+        private static IResult Refused(HttpContext context, ArchiveOutcome outcome)
+        {
+            var (statusCode, title) = outcome switch
+            {
+                ArchiveOutcome.WrongDigest => (StatusCodes.Status400BadRequest, "The archive is not the bytes its digest names."),
+                ArchiveOutcome.Malformed => (StatusCodes.Status400BadRequest, "The package's name, version or digest is not well formed."),
+                ArchiveOutcome.NotAllowed => (StatusCodes.Status400BadRequest, "The package is not of a scope this service builds."),
+                ArchiveOutcome.TooLarge => (StatusCodes.Status413PayloadTooLarge, "The archive is too large."),
+                _ => (StatusCodes.Status500InternalServerError, "The archive could not be kept."),
+            };
+
+            context.Response.Headers[ArchiveReasons.Header] = ArchiveReasons.Name(outcome) ?? ArchiveReasons.Name(ArchiveOutcome.Failed);
+            return Problem(title, statusCode);
+        }
+
+        private static async Task<IResult> DependencyDocumentationAsync(string id, string name, IToolchainPackages packages, CancellationToken cancellationToken) =>
+            await packages.GetDocumentationAsync(id, name, cancellationToken) is { } report
+                ? Results.Text(report, "application/json", Encoding.UTF8)
+                : Problem("No such package.", StatusCodes.Status404NotFound);
 
         private static IResult BadRequest(string title) => Problem(title, StatusCodes.Status400BadRequest);
 

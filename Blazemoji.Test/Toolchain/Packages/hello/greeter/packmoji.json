@@ -1,0 +1,28 @@
+{
+  "package": {
+    "name": "@thatplatypus/hello_greeter",
+    "version": "0.1.0",
+    "kind": "library",
+    "emojicode": ">=1.0.0-beta.2",
+    "description": "Greets by name, with one function written in C++",
+    "license": "MIT",
+    "repository": "github.com/thatplatypus/packmoji"
+  },
+  "dependencies": {
+    "@thatplatypus/hello_words": "0.1"
+  },
+  "build": {
+    "entry": "src/lib.🍇"
+  },
+  "native": {
+    "sources": [
+      "native/*.cpp"
+    ],
+    "includeDirs": [
+      "native/include"
+    ],
+    "link": [
+      "m"
+    ]
+  }
+}

@@ -33,6 +33,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Packmoji's own sample packages: see Toolchain/Packages/README.md. -->
+    <None Update="Toolchain\Packages\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Blazemoji\Blazemoji.csproj" />
     <ProjectReference Include="..\Blazemoji.Toolchain\Blazemoji.Toolchain.csproj" />
     <ProjectReference Include="..\Blazemoji.Toolchain.Local\Blazemoji.Toolchain.Local.csproj" />

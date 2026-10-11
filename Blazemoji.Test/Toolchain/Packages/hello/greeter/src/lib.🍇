@@ -1,0 +1,12 @@
+📦 hello_words 🏠
+
+📗 Greets by name, and has a number that its C++ worked out. 📗
+🌍 🐇 🙋 🍇
+  📗 A greeting for *name*. 📗
+  🐇 ❗️ 💬 name 🔡 ➡️ 🔡 🍇
+    ↩️ 🔤🧲👋🐇📖❗️🧲, 🧲name🧲!🔤
+  🍉
+
+  📗 The answer, which the package's native code gives. 📗
+  🐇 ❗️ 🎲 ➡️ 🔢 📻 🔤helloGreeterAnswer🔤
+🍉

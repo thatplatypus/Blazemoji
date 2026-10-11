@@ -77,5 +77,36 @@ namespace Blazemoji.Toolchain.Local
         /// Builds that were never released are deleted once they are older than this.
         /// </summary>
         public TimeSpan BuildLifetime { get; set; } = TimeSpan.FromMinutes(10);
+
+        /// <summary>
+        /// How long building one set of packages may take. A package with C++ in it takes far
+        /// longer than a program: Grapevine's three took about two minutes under emulation.
+        /// </summary>
+        public TimeSpan DependencyBuildTimeout { get; set; } = TimeSpan.FromMinutes(5);
+
+        /// <summary>
+        /// Sets that may be building at once. They are counted apart from compiles, so that a
+        /// slow build does not use up the compiles of people who are typing.
+        /// </summary>
+        public int MaxConcurrentDependencyBuilds { get; set; } = 2;
+
+        /// <summary>
+        /// Requests for a set that may be asking pmj what is locked at once. One beyond this is
+        /// told to ask again shortly, not queued: each starts a process.
+        /// </summary>
+        public int MaxConcurrentDependencyRequests { get; set; } = 8;
+
+        /// <summary>
+        /// Built sets kept at once. Beyond this the one used longest ago is dropped, unless a
+        /// compile is using it. This does not bound memory or disk: dropping a set frees that
+        /// set's own copies only, while pmj keeps its cache of archives and its own copy of every
+        /// package it built under its home, which nothing here trims.
+        /// </summary>
+        public int MaxDependencySets { get; set; } = 16;
+
+        /// <summary>
+        /// The largest archive accepted for a package. It is Packmoji's own limit on one.
+        /// </summary>
+        public long MaxArchiveBytes { get; set; } = 16L * 1024 * 1024;
     }
 }

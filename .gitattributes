@@ -1,3 +1,7 @@
 # Shell scripts run inside Linux containers, so they keep LF endings on every platform.
 # With CRLF the image build fails with "/bin/sh: ... not found".
 *.sh text eol=lf
+
+# Test data whose bytes are asserted (packed digests): a checkout must not convert its line endings.
+Blazemoji.Test/Toolchain/Packages/hello/** -text
+Blazemoji.Toolchain.ContractTests/Packages/** -text

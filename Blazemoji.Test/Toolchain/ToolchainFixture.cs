@@ -16,7 +16,7 @@ namespace Blazemoji.Test.Toolchain
         /// <summary>
         /// A toolchain with its own empty work root, using the compiler and packages copied next to the tests.
         /// </summary>
-        public static LocalToolchain Create(Action<ToolchainOptions>? configure = null)
+        public static LocalToolchain Create(Action<ToolchainOptions>? configure = null, IDependencySetStore? sets = null)
         {
             var options = new ToolchainOptions
             {
@@ -24,7 +24,7 @@ namespace Blazemoji.Test.Toolchain
             };
             configure?.Invoke(options);
 
-            return new LocalToolchain(Options.Create(options), NullLogger<LocalToolchain>.Instance);
+            return new LocalToolchain(Options.Create(options), NullLogger<LocalToolchain>.Instance, sets);
         }
 
         /// <summary>

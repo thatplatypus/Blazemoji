@@ -1,0 +1,14 @@
+{
+  "package": {
+    "name": "@thatplatypus/hello_words",
+    "version": "0.1.0",
+    "kind": "library",
+    "emojicode": ">=1.0.0-beta.2",
+    "description": "The words a greeting is made of: as small as a package can be",
+    "license": "MIT",
+    "repository": "github.com/thatplatypus/packmoji"
+  },
+  "build": {
+    "entry": "src/lib.🍇"
+  }
+}

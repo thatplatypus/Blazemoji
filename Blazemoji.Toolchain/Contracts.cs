@@ -6,14 +6,22 @@ namespace Blazemoji.Toolchain
     /// Compile for the diagnostics alone: nothing is linked, no build is kept, and the result
     /// has no build id. This is what an editor asks for while someone is typing.
     /// </param>
-    public sealed record CompileRequest(IReadOnlyDictionary<string, string> Files, string Entry, bool CheckOnly = false);
+    /// <param name="Dependencies">
+    /// The set of packages to compile and link against, as <see cref="IToolchainPackages.PrepareAsync"/>
+    /// named it. Null for a project with no packages of its own.
+    /// </param>
+    public sealed record CompileRequest(IReadOnlyDictionary<string, string> Files, string Entry, bool CheckOnly = false, string? Dependencies = null);
 
     /// <param name="BuildId">Set only when <paramref name="Ok"/> is true.</param>
     /// <param name="ReachedCompiler">
     /// False when the diagnostics are not the compiler's: the toolchain was busy, refused the
     /// request, or could not be reached. Such a result says nothing about the program.
     /// </param>
-    public sealed record CompileResult(bool Ok, IReadOnlyList<Diagnostic> Diagnostics, string? BuildId, bool ReachedCompiler = true);
+    /// <param name="DependenciesMissing">
+    /// The request named a set of packages the toolchain does not hold, as after it was
+    /// restarted. Nothing was compiled. The set is to be prepared again, and the compile asked for again.
+    /// </param>
+    public sealed record CompileResult(bool Ok, IReadOnlyList<Diagnostic> Diagnostics, string? BuildId, bool ReachedCompiler = true, bool DependenciesMissing = false);
 
     /// <param name="Line">1-based. 0 when the compiler gave no location.</param>
     /// <param name="Character">1-based, counted in Unicode code points. 0 when unknown.</param>
