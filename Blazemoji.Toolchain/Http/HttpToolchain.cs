@@ -17,7 +17,7 @@ namespace Blazemoji.Toolchain.Http
     {
         public async Task<CompileResult> CompileAsync(CompileRequest request, CancellationToken cancellationToken = default)
         {
-            var body = new CompileRequestBody(new Dictionary<string, string>(request.Files), request.Entry, Check: request.CheckOnly);
+            var body = new CompileRequestBody(new Dictionary<string, string>(request.Files), request.Entry, request.CheckOnly, request.Dependencies);
 
             try
             {
@@ -28,6 +28,16 @@ namespace Blazemoji.Toolchain.Http
                     var result = await response.Content.ReadFromJsonAsync<CompileResponseBody>(ToolchainJson.Options, cancellationToken);
                     if (result is not null)
                         return new CompileResult(result.Ok, result.Diagnostics.Select(diagnostic => diagnostic.ToDiagnostic()).ToList(), result.BuildId);
+                }
+
+                if (response.StatusCode == HttpStatusCode.Conflict)
+                {
+                    return new CompileResult(
+                        false,
+                        [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, "The project's packages are not built on the toolchain service.")],
+                        null,
+                        ReachedCompiler: false,
+                        DependenciesMissing: true);
                 }
 
                 if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.TooManyRequests

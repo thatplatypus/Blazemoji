@@ -555,5 +555,33 @@ namespace Blazemoji.Test.Service
                 }
             }
         }
+
+        [Fact]
+        public async Task A_compile_names_its_set_to_the_service()
+        {
+            _factory.Toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(true, [], "build-1"));
+
+            await CreateClient().CompileAsync(
+                new CompileRequest(new Dictionary<string, string> { ["main.🍇"] = "x" }, "main.🍇", CheckOnly: true, Dependencies: "the-set"), Cancellation);
+
+            await _factory.Toolchain.Received(1).CompileAsync(
+                Arg.Is<CompileRequest>(request => request.Dependencies == "the-set" && request.CheckOnly), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_set_the_service_does_not_hold_is_an_outcome_of_its_own_and_not_a_compile_error()
+        {
+            _factory.Toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new CompileResult(false, [], null, ReachedCompiler: false, DependenciesMissing: true));
+
+            var result = await CreateClient().CompileAsync(
+                new CompileRequest(new Dictionary<string, string> { ["main.🍇"] = "x" }, "main.🍇", Dependencies: "the-set"), Cancellation);
+
+            result.Ok.ShouldBeFalse();
+            result.DependenciesMissing.ShouldBeTrue();
+            result.ReachedCompiler.ShouldBeFalse();
+            result.Diagnostics.ShouldHaveSingleItem().Message.ShouldBe("The project's packages are not built on the toolchain service.");
+        }
     }
 }

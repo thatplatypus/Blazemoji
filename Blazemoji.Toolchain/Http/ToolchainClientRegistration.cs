@@ -26,14 +26,16 @@ namespace Blazemoji.Toolchain.Http
     public static class ToolchainClientRegistration
     {
         /// <summary>
-        /// Registers <see cref="IToolchain"/> and <see cref="IPackageDocumentationSource"/> as
-        /// clients of the toolchain service at <see cref="ToolchainClientOptions.BaseUrl"/>.
+        /// Registers <see cref="IToolchain"/>, <see cref="IToolchainPackages"/> and
+        /// <see cref="IPackageDocumentationSource"/> as clients of the toolchain service at <see cref="ToolchainClientOptions.BaseUrl"/>.
         /// </summary>
         public static IHttpClientBuilder AddToolchainClient(this IServiceCollection services, IConfiguration configuration)
         {
             services.Configure<ToolchainClientOptions>(configuration.GetSection(ToolchainClientOptions.SectionName));
 
             services.AddHttpClient<IPackageDocumentationSource, HttpPackageDocumentationSource>(PointAtTheService)
+                .ConfigurePrimaryHttpMessageHandler(ShowNeverAct);
+            services.AddHttpClient<IToolchainPackages, HttpToolchainPackages>(PointAtTheService)
                 .ConfigurePrimaryHttpMessageHandler(ShowNeverAct);
             return services.AddHttpClient<IToolchain, HttpToolchain>(PointAtTheService)
                 .ConfigurePrimaryHttpMessageHandler(ShowNeverAct);
