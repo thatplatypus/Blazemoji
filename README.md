@@ -142,15 +142,20 @@ Plain HTTP/1.1 and server-sent events, so that it can be reimplemented elsewhere
 
 | Request | Answer |
 | --- | --- |
-| `POST /compile` with `{ "files": { "main.🍇": "..." }, "entry": "main.🍇", "packages": [], "check": false }` | `{ "ok", "diagnostics": [], "buildId" }`. A failed build is still a 200. With `"check": true` nothing is linked or kept and there is no `buildId`: it is for diagnostics alone. |
+| `POST /compile` with `{ "files": { "main.🍇": "..." }, "entry": "main.🍇", "check": false, "dependencies": "<id>" }` | `{ "ok", "diagnostics": [], "buildId" }`. A failed build is still a 200. With `"check": true` nothing is linked or kept and there is no `buildId`: it is for diagnostics alone. `"dependencies"` is left out by a project with no packages of its own; with it the program is compiled and linked against that set, and a set the service does not hold is a `409`. |
 | `POST /runs` with `{ "buildId", "env": {}, "http": false }` | `201` and `{ "runId" }`. With `"http": true` the program is run as a server: it is given a port in `PORT`, has no wall-clock limit, and is ended when it has had no request for the idle time. |
 | `GET /runs/{id}/events` | An event stream of `stdout`, `stderr` and one final `exit`. Replays from the start, or from after `Last-Event-ID`. |
 | `POST /runs/{id}/stdin` | Appends the body to the program's input; `?eof=true` ends it. |
 | `DELETE /runs/{id}` | Stops the program. |
 | Any method on `/runs/{id}/http/{path}` | Passes the request to a server program and returns its response. A response that comes from the service and not the program (no such run, not a server, ended, not listening yet, timed out) carries an `X-Toolchain-Proxy` header saying which. |
 | `GET /packages`, `GET /packages/{name}/documentation.json` | The bundled packages and the compiler's documentation report for each. |
+| `POST /dependencies` with `{ "manifest": "...", "lockfile": "..." }`, the text of a project's `packmoji.json` and `packmoji.lock` | `{ "state": "needed", "needed": [{ "name", "version", "sha256" }] }` when the service lacks archives, with nothing built. `{ "state": "ready", "id", "packages": [] }` once it has built the set. `{ "state": "failed", "diagnostics": [] }` with what is wrong, each with a `code`, a `message`, a `reason` and a `fix`. `429` when it is to be asked again shortly. It waits for a build, and the same packages asked for by anyone are built once. |
+| `PUT /dependencies/archives/{sha256}?name=@scope/name&version=1.2.3` with a package's archive as the body | `204`. Otherwise a problem whose `X-Toolchain-Archive` header says why: `wrong-digest`, `malformed`, `not-allowed`, `too-large` or `failed`. An archive may be 16 MiB, where every other request may be 4. |
+| `GET /dependencies/{id}/packages/{name}/documentation.json` | The compiler's documentation report for one package of a set. |
 
 The compiler only produces an object file. The service links it itself against every bundled package, because the compiler's own link step fails when one package uses another.
+
+A project's own packages are [Packmoji](https://github.com/thatplatypus/Packmoji) packages. The service builds them with `pmj`, Packmoji's command, which the image carries, built from the commit in `packmoji.pin`. It is handed each package's archive and never fetches one: it needs no network, and `pmj` is given an address for GitHub that nothing listens at. `Packmoji__Scopes` says whose packages it builds, as scopes separated by commas, or `*` for anyone's; `docker compose` and the all-in-one image set it to `thatplatypus,emojicode`.
 
 Each run gets its own working directory and limits on wall-clock time, processor time, memory, file size and output. `Blazemoji.Toolchain.ContractTests` describes the contract from the outside: point `TOOLCHAIN_BASE_URL` at any implementation and run it.
 

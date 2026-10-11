@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "root": {
+    "dependencies": [
+      "@thatplatypus/hello_greeter@0.1"
+    ],
+    "devDependencies": []
+  },
+  "packages": [
+    {
+      "name": "@thatplatypus/hello_greeter",
+      "version": "0.1.0",
+      "source": "github.com/thatplatypus/packmoji",
+      "releaseTag": "hello_greeter-v0.1.0",
+      "asset": "hello_greeter-0.1.0.pmj.tar.gz",
+      "sha256": "9da45105dcb3746b7e01d8bd0e702ef3100c90be1be7aa650ea0a9367b8fae3a",
+      "verified": "checksum",
+      "dependencies": [
+        "@thatplatypus/hello_words@0.1.0"
+      ]
+    },
+    {
+      "name": "@thatplatypus/hello_words",
+      "version": "0.1.0",
+      "source": "github.com/thatplatypus/packmoji",
+      "releaseTag": "hello_words-v0.1.0",
+      "asset": "hello_words-0.1.0.pmj.tar.gz",
+      "sha256": "8502cea823dc837cf74985e796e3d5604035095ec715289ad5c10540c73759f8",
+      "verified": "checksum",
+      "dependencies": []
+    }
+  ]
+}

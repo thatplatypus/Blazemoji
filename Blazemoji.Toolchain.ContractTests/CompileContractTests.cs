@@ -181,14 +181,15 @@ namespace Blazemoji.Toolchain.ContractTests
         }
 
         [Fact]
-        public async Task An_unknown_package_is_a_400_problem()
+        public async Task A_packages_list_from_an_older_client_is_passed_over()
         {
             Assert.SkipWhen(ToolchainService.BaseUrl is null, ToolchainService.SkipReason);
             var files = new Dictionary<string, string> { ["main.🍇"] = Programs.Hello };
 
             using var response = await ToolchainService.PostCompileAsync(new { files, entry = "main.🍇", packages = new[] { "no-such-package" } }, Cancellation);
 
-            await ToolchainService.ShouldBeProblemAsync(response, HttpStatusCode.BadRequest, Cancellation);
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+            (await ToolchainService.ReadJsonAsync(response, Cancellation)).GetProperty("ok").GetBoolean().ShouldBeTrue();
         }
 
         [Fact]
