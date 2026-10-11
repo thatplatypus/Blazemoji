@@ -24,6 +24,25 @@ namespace Blazemoji.E2E
         private static async Task<LocatorBoundingBoxResult> BoxAsync(IPage page, string selector) =>
             await page.Locator(selector).First.BoundingBoxAsync() ?? throw new ShouldAssertException($"Nothing is drawn for {selector}");
 
+        /// <summary>
+        /// Where the editor is, once it has measured itself. Monaco does that a moment after its
+        /// surroundings change size, and on a busy machine the moment is long enough for a
+        /// measurement taken straight away to find it at the size it had. It has measured when
+        /// it fills the element it is in again.
+        /// </summary>
+        private static async Task<LocatorBoundingBoxResult> EditorBoxAsync(IPage page)
+        {
+            await page.WaitForFunctionAsync(
+                @"editor => {
+                    const drawn = document.querySelector(editor);
+                    const size = drawn.getBoundingClientRect();
+                    const room = drawn.parentElement;
+                    return Math.abs(size.width - room.clientWidth) < 2 && Math.abs(size.height - room.clientHeight) < 2;
+                }",
+                Monaco);
+            return await BoxAsync(page, Monaco);
+        }
+
         /// <summary>Presses on a divider, moves it and lets go, as a hand on a mouse does.</summary>
         private static async Task DragAsync(IPage page, string divider, float right = 0, float down = 0)
         {
@@ -74,7 +93,7 @@ namespace Blazemoji.E2E
             await using var editor = await EditorPage.OpenAsync(browser);
 
             var sidebar = await BoxAsync(editor.Page, First(Columns));
-            var monaco = await BoxAsync(editor.Page, Monaco);
+            var monaco = await EditorBoxAsync(editor.Page);
             var output = await BoxAsync(editor.Page, Second(Rows));
 
             (sidebar.X + sidebar.Width).ShouldBeLessThanOrEqualTo(monaco.X);
@@ -91,7 +110,7 @@ namespace Blazemoji.E2E
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await EditorPage.OpenAsync(browser);
             var sidebar = await BoxAsync(editor.Page, First(Columns));
-            var monaco = await BoxAsync(editor.Page, Monaco);
+            var monaco = await EditorBoxAsync(editor.Page);
             var output = await BoxAsync(editor.Page, Second(Rows));
             var share = await ShareAsync(editor.Page, Columns);
 
@@ -99,7 +118,7 @@ namespace Blazemoji.E2E
             await ShareAfterAsync(editor.Page, Columns, share);
 
             ((double)(await BoxAsync(editor.Page, First(Columns))).Width).ShouldBe(sidebar.Width + 120, Rounding);
-            ((double)(await BoxAsync(editor.Page, Monaco)).Width).ShouldBe(monaco.Width - 120, Rounding);
+            ((double)(await EditorBoxAsync(editor.Page)).Width).ShouldBe(monaco.Width - 120, Rounding);
 
             // The divider under the editor is another split's, and stays where it was.
             ((double)(await BoxAsync(editor.Page, Second(Rows))).Height).ShouldBe(output.Height, Rounding);
@@ -112,7 +131,7 @@ namespace Blazemoji.E2E
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await EditorPage.OpenAsync(browser);
-            var monaco = await BoxAsync(editor.Page, Monaco);
+            var monaco = await EditorBoxAsync(editor.Page);
             var output = await BoxAsync(editor.Page, Second(Rows));
             var share = await ShareAsync(editor.Page, Rows);
 
@@ -120,7 +139,7 @@ namespace Blazemoji.E2E
             await ShareAfterAsync(editor.Page, Rows, share);
 
             ((double)(await BoxAsync(editor.Page, Second(Rows))).Height).ShouldBe(output.Height + 150, Rounding);
-            ((double)(await BoxAsync(editor.Page, Monaco)).Height).ShouldBe(monaco.Height - 150, Rounding);
+            ((double)(await EditorBoxAsync(editor.Page)).Height).ShouldBe(monaco.Height - 150, Rounding);
             await ThePageDoesNotScrollAsync(editor.Page);
         }
 
@@ -164,10 +183,7 @@ namespace Blazemoji.E2E
             ((double)(after.Width / roomAfter.Width)).ShouldBe(before.Width / roomBefore.Width, 0.005);
             await ThePageDoesNotScrollAsync(editor.Page);
 
-            // Monaco measures itself a moment after its surroundings change size.
-            await editor.Page.WaitForFunctionAsync(
-                "([editor, beside]) => Math.abs(document.querySelector(editor).getBoundingClientRect().width - document.querySelector(beside).getBoundingClientRect().width) < 2",
-                new[] { Monaco, Second(Columns) });
+            ((double)(await EditorBoxAsync(editor.Page)).Width).ShouldBe((await BoxAsync(editor.Page, Second(Columns))).Width, Rounding);
         }
 
         [Fact]
@@ -192,7 +208,7 @@ namespace Blazemoji.E2E
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await EditorPage.OpenAsync(browser);
             var sidebar = await BoxAsync(editor.Page, First(Columns));
-            var monaco = await BoxAsync(editor.Page, Monaco);
+            var monaco = await EditorBoxAsync(editor.Page);
             var share = await ShareAsync(editor.Page, Columns);
             var divider = editor.Page.Locator(Divider(Columns));
 
@@ -202,7 +218,7 @@ namespace Blazemoji.E2E
 
             var moved = await BoxAsync(editor.Page, First(Columns));
             moved.Width.ShouldBeGreaterThan(sidebar.Width);
-            ((double)(await BoxAsync(editor.Page, Monaco)).Width).ShouldBe(monaco.Width - (moved.Width - sidebar.Width), Rounding);
+            ((double)(await EditorBoxAsync(editor.Page)).Width).ShouldBe(monaco.Width - (moved.Width - sidebar.Width), Rounding);
 
             // What a screen reader is read is the sidebar's part of the width, in hundredths.
             var room = await BoxAsync(editor.Page, Columns);
@@ -358,7 +374,7 @@ namespace Blazemoji.E2E
             await editor.Page.Locator(SidebarToggle).ClickAsync();
 
             await Expect(sidebar).ToBeHiddenAsync();
-            ((double)(await BoxAsync(editor.Page, Monaco)).Width).ShouldBe(room.Width, Rounding);
+            ((double)(await EditorBoxAsync(editor.Page)).Width).ShouldBe(room.Width, Rounding);
             await ThePageDoesNotScrollAsync(editor.Page);
 
             // It is still hidden after the page is loaded again ...
