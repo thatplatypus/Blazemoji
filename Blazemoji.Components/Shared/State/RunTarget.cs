@@ -6,5 +6,9 @@ namespace Blazemoji.Shared.State
     /// <param name="Files">Every source file by its path in the project.</param>
     /// <param name="Entry">The path in <paramref name="Files"/> handed to the compiler.</param>
     /// <param name="Server">The program listens for HTTP requests until it is stopped.</param>
-    public sealed record RunTarget(IReadOnlyDictionary<string, string> Files, string Entry, bool Server);
+    /// <param name="Dependencies">
+    /// The set of packages the project locks, as the toolchain named it once it was built.
+    /// Null for a project with no packages of its own.
+    /// </param>
+    public sealed record RunTarget(IReadOnlyDictionary<string, string> Files, string Entry, bool Server, string? Dependencies = null);
 }
