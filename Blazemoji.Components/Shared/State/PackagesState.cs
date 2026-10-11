@@ -1,0 +1,446 @@
+using Blazemoji.Services.Packages;
+using Blazemoji.Shared.Models.Projects;
+using Blazemoji.Toolchain;
+using Blazemoji.Toolchain.Packmoji;
+
+namespace Blazemoji.Shared.State
+{
+    public enum PackagesStatus
+    {
+        /// <summary>The project has no <c>packmoji.json</c>, and nothing is asked of anyone.</summary>
+        None,
+
+        /// <summary>This copy of Blazemoji has no pmj. The project is compiled as if it had no packages.</summary>
+        Unavailable,
+
+        /// <summary>The packages are being fetched, chosen or built.</summary>
+        Restoring,
+
+        /// <summary>What the lockfile locks is built, or it locks nothing.</summary>
+        Ready,
+
+        /// <summary>The lockfile is missing or no longer answers the manifest. Running the project locks it.</summary>
+        OutOfDate,
+
+        Failed,
+    }
+
+    /// <summary>
+    /// Owns the state of the open project's packages. A project is a Packmoji project when it
+    /// has a <c>packmoji.json</c>. What its <c>packmoji.lock</c> locks is fetched here and
+    /// built by the toolchain when the project is opened and whenever either file changes,
+    /// with no click and with nothing written to the project. Versions are chosen, and the
+    /// lockfile written, only when someone runs the project: choosing asks GitHub and
+    /// rewrites a file, and a manifest being typed is half written most of the time.
+    /// </summary>
+    public sealed class PackagesState(
+        IPackageManager manager,
+        IToolchainPackages toolchain,
+        ProjectState projects,
+        PackageUploads uploads,
+        TimeProvider clock,
+        ILogger<PackagesState> logger) : IPackageSets, IAsyncDisposable
+    {
+        public const string ManifestPath = "packmoji.json";
+        public const string LockfilePath = "packmoji.lock";
+
+        /// <summary>How long to leave a toolchain that said to ask again before asking.</summary>
+        public static readonly TimeSpan AskAgainAfter = TimeSpan.FromSeconds(2);
+
+        /// <summary>
+        /// How long one set is waited for in all. A build has five minutes at the toolchain
+        /// and may have to wait its turn behind another, so this is twice that.
+        /// </summary>
+        public static readonly TimeSpan LongestWait = TimeSpan.FromMinutes(10);
+
+        // The toolchain says which archives it lacks, is handed them, and is asked again. A
+        // second round is for a set dropped in between. A third is a toolchain that is not
+        // keeping what it is given, and asking for ever would not mend it.
+        private const int MostRoundsOfArchives = 2;
+
+        private const string Who = "Blazemoji";
+
+        private readonly CancellationTokenSource _disposal = new();
+
+        // The pair of texts the present status is the answer for. A pair that was answered
+        // is not asked about again, so a check of the typing costs no call to pmj.
+        private Pair? _settled;
+        private (Pair Pair, Task Work)? _running;
+
+        // Each ask takes the next number, and only the latest may say how things stand: an
+        // older one that ends later is about text that is no longer the project's.
+        private int _asks;
+
+        public PackagesStatus Status { get; private set; } = PackagesStatus.None;
+
+        public IReadOnlyList<PackageProblem> Problems { get; private set; } = [];
+
+        /// <summary>
+        /// What a compile names the project's set of packages by. Null when there is no set:
+        /// no manifest, nothing locked, or nothing ready.
+        /// </summary>
+        public string? Dependencies { get; private set; }
+
+        /// <summary>
+        /// True when <see cref="Problems"/> stopped a run, false when they were found while
+        /// someone was typing. A run that could not start is worth interrupting someone for.
+        /// </summary>
+        public bool ProblemsAreFromARun { get; private set; }
+
+        /// <summary>
+        /// Whether a check of the typing is worth making. While packages are missing it would
+        /// only mark every import as not found. With no pmj it is made as it always was.
+        /// </summary>
+        public bool AllowsACheck => Status is PackagesStatus.None or PackagesStatus.Ready or PackagesStatus.Unavailable;
+
+        public event Action? StateChanged;
+
+        /// <summary>
+        /// Has what the project's lockfile locks fetched and built, unless that was done for
+        /// these same two texts already. It never chooses a version and never writes to the
+        /// project. It ends when the packages are ready or are known not to be.
+        /// </summary>
+        public Task EnsureRestoredAsync(Project project)
+        {
+            if (_disposal.IsCancellationRequested)
+                return Task.CompletedTask;
+
+            if (PairOf(project) is not { } pair)
+            {
+                // Whatever is still being restored is for a project that is not this one.
+                _asks++;
+                _running = null;
+                _settled = null;
+                Apply(PackagesStatus.None, [], null, fromARun: false);
+                return Task.CompletedTask;
+            }
+
+            if (pair == _settled)
+                return Task.CompletedTask;
+
+            if (_running is { } running && running.Pair == pair)
+                return running.Work;
+
+            var ask = ++_asks;
+            var work = RestoreAsync(pair, ask);
+
+            // A restore that ended before it had to wait for anything has already cleared
+            // this, and must not be left here looking as if it were still going.
+            _running = work.IsCompleted ? null : (pair, work);
+            return work;
+        }
+
+        /// <summary>
+        /// Makes the project's packages ready for a run. This is the one place versions are
+        /// chosen: when the lockfile is missing or out of date it is written, into the
+        /// project, and then restored.
+        /// </summary>
+        /// <returns>
+        /// Whether the run may go ahead. False when the packages are not ready, whose
+        /// problems are then <see cref="Problems"/>, and when another project was opened in
+        /// the meantime.
+        /// </returns>
+        public async Task<bool> PrepareForRunAsync(Project project)
+        {
+            // Run is the one thing someone can press. What failed before may have been the
+            // network, so it is tried again for the same two texts.
+            if (Status == PackagesStatus.Failed)
+                _settled = null;
+
+            await EnsureRestoredAsync(project);
+
+            if (Status == PackagesStatus.OutOfDate && PairOf(project) is { } pair)
+                await ResolveAsync(project.Id, pair);
+
+            if (project.Id != projects.Current.Id)
+                return false;
+
+            if (Status is PackagesStatus.None or PackagesStatus.Ready or PackagesStatus.Unavailable)
+                return true;
+
+            if (!ProblemsAreFromARun && Status is PackagesStatus.Failed or PackagesStatus.OutOfDate)
+            {
+                ProblemsAreFromARun = true;
+                StateChanged?.Invoke();
+            }
+
+            return false;
+        }
+
+        public async Task<string?> RestoreAgainAsync(CancellationToken cancellationToken = default)
+        {
+            _settled = null;
+            await EnsureRestoredAsync(projects.Current).WaitAsync(cancellationToken);
+            return Status == PackagesStatus.Ready ? Dependencies : null;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_disposal.IsCancellationRequested)
+                return;
+
+            await _disposal.CancelAsync();
+        }
+
+        private static Pair? PairOf(Project project) =>
+            project.Find(ManifestPath) is { } manifest ? new Pair(manifest.Content, project.Find(LockfilePath)?.Content) : null;
+
+        private async Task RestoreAsync(Pair pair, int ask)
+        {
+            Apply(PackagesStatus.Restoring, [], null, fromARun: false);
+            try
+            {
+                var outcome = await WorkOutAsync(pair, _disposal.Token);
+                if (ask != _asks)
+                    return;
+
+                if (outcome.Remember)
+                    _settled = pair;
+
+                Apply(outcome.Status, outcome.Problems, outcome.Dependencies, fromARun: false);
+            }
+            catch (OperationCanceledException) when (_disposal.IsCancellationRequested)
+            {
+                // The session is going away; there is nobody left to tell.
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "The project's packages could not be restored");
+                if (ask == _asks)
+                    Apply(PackagesStatus.Failed, [PmjProblems.Unreadable(Who)], null, fromARun: false);
+            }
+            finally
+            {
+                if (ask == _asks)
+                    _running = null;
+            }
+        }
+
+        private async Task<Outcome> WorkOutAsync(Pair pair, CancellationToken cancellationToken)
+        {
+            switch (await manager.RestoreAsync(pair.Manifest, pair.Lockfile, cancellationToken))
+            {
+                case PackageRestore.OutOfDate:
+                    return new Outcome(PackagesStatus.OutOfDate, [NotLocked()], null, Remember: true);
+
+                case PackageRestore.Failed failed:
+                    return Failed(failed.Problems);
+
+                // A lockfile that locks nothing needs no set. The toolchain is not asked, and
+                // the project compiles as one without packages does.
+                case PackageRestore.Restored { Packages.Count: 0 }:
+                    return new Outcome(PackagesStatus.Ready, [], null, Remember: true);
+
+                default:
+                    return await BuildAsync(pair, cancellationToken);
+            }
+        }
+
+        /// <summary>Asks the toolchain for the set, hands it what it lacks, and waits while it builds.</summary>
+        private async Task<Outcome> BuildAsync(Pair pair, CancellationToken cancellationToken)
+        {
+            var request = new DependencyRequest(pair.Manifest, pair.Lockfile ?? string.Empty);
+            var started = clock.GetTimestamp();
+            var rounds = 0;
+            while (true)
+            {
+                switch (await toolchain.PrepareAsync(request, cancellationToken))
+                {
+                    case DependencyAnswer.Ready ready:
+                        return new Outcome(PackagesStatus.Ready, [], ready.Id, Remember: true);
+
+                    case DependencyAnswer.Failed failed:
+                        return Failed(failed.Problems);
+
+                    case DependencyAnswer.Unavailable:
+                        return new Outcome(PackagesStatus.Failed, [NoToolchain()], null, Remember: false);
+
+                    case DependencyAnswer.Needed needed:
+                        if (++rounds > MostRoundsOfArchives)
+                        {
+                            logger.LogError("The toolchain asked a third time for archives it had been handed");
+                            return new Outcome(PackagesStatus.Failed, [PmjProblems.Unreadable(Who)], null, Remember: false);
+                        }
+
+                        if (await HandOverAsync(needed.Archives, started, cancellationToken) is { } refused)
+                            return refused;
+
+                        break;
+
+                    // Busy: too much is being built, or this set's build is not done yet. It
+                    // goes on without anyone waiting on the line, and the next ask joins it.
+                    default:
+                        if (clock.GetElapsedTime(started) > LongestWait)
+                            return new Outcome(PackagesStatus.Failed, [PmjProblems.TimedOut()], null, Remember: false);
+
+                        await Task.Delay(AskAgainAfter, clock, cancellationToken);
+                        break;
+                }
+            }
+        }
+
+        /// <returns>Null when every archive was taken. Otherwise how things stand instead.</returns>
+        private async Task<Outcome?> HandOverAsync(IReadOnlyList<LockedPackage> archives, long started, CancellationToken cancellationToken)
+        {
+            foreach (var package in archives)
+            {
+                while (!uploads.TryBegin())
+                {
+                    if (clock.GetElapsedTime(started) > LongestWait)
+                        return new Outcome(PackagesStatus.Failed, [PmjProblems.TimedOut()], null, Remember: false);
+
+                    await Task.Delay(AskAgainAfter, clock, cancellationToken);
+                }
+
+                ArchiveOutcome taken;
+                try
+                {
+                    await using var archive = manager.OpenArchive(package);
+                    if (archive is null)
+                    {
+                        logger.LogError("The archive of {Package} {Version} was restored and is not in the cache", package.Name, package.Version);
+                        return new Outcome(PackagesStatus.Failed, [NotHandedOver(package)], null, Remember: false);
+                    }
+
+                    taken = await toolchain.AddArchiveAsync(package, archive, cancellationToken);
+                }
+                finally
+                {
+                    uploads.End();
+                }
+
+                if (taken != ArchiveOutcome.Stored)
+                {
+                    logger.LogWarning("The toolchain did not take the archive of {Package} {Version}: {Outcome}", package.Name, package.Version, taken);
+
+                    // A package it will not build, or one too large for it, is the same answer
+                    // however often it is sent. Anything else may go better next time.
+                    return new Outcome(PackagesStatus.Failed, [NotTaken(package, taken)], null, Remember: taken is ArchiveOutcome.NotAllowed or ArchiveOutcome.TooLarge);
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>Chooses versions, and writes the lockfile into the project it was chosen for.</summary>
+        private async Task ResolveAsync(string projectId, Pair pair)
+        {
+            var ask = ++_asks;
+            Apply(PackagesStatus.Restoring, [], null, fromARun: false);
+
+            PackageResolve resolved;
+            try
+            {
+                resolved = await manager.ResolveAsync(pair.Manifest, pair.Lockfile, _disposal.Token);
+            }
+            catch (OperationCanceledException) when (_disposal.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "The project's packages could not be resolved");
+                if (ask == _asks)
+                    Apply(PackagesStatus.Failed, [PmjProblems.Unreadable(Who)], null, fromARun: true);
+
+                return;
+            }
+
+            // Someone changed one of the two files, or opened another project, while pmj was
+            // choosing. What it chose is for text that is no longer there.
+            if (ask != _asks)
+                return;
+
+            if (resolved is PackageResolve.Failed failed)
+            {
+                var outcome = Failed(failed.Problems);
+                _settled = outcome.Remember ? pair : null;
+                Apply(outcome.Status, outcome.Problems, null, fromARun: true);
+                return;
+            }
+
+            // Refused when another project is the open one by now: the lockfile was chosen
+            // for the project they left, and is written nowhere.
+            await projects.WriteFileAsync(projectId, LockfilePath, ((PackageResolve.Resolved)resolved).Lockfile);
+            await EnsureRestoredAsync(projects.Current);
+        }
+
+        private static Outcome Failed(IReadOnlyList<PackageProblem> problems)
+        {
+            if (problems.Any(problem => problem.Code == PackageProblemCodes.NoPackmoji))
+                return new Outcome(PackagesStatus.Unavailable, problems, null, Remember: true);
+
+            // A problem with the two files is the same until they change. One about this
+            // moment (too much going on, out of time, GitHub out of reach, an answer nobody
+            // could read) is worth asking about again for the same files.
+            var aboutTheMoment = problems.Any(problem =>
+                problem.Code is PackageProblemCodes.Busy or PackageProblemCodes.TimedOut or PackageProblemCodes.Unreadable or PackageProblemCodes.Toolchain
+                || problem.Code.StartsWith("github.", StringComparison.Ordinal));
+            return new Outcome(PackagesStatus.Failed, problems, null, Remember: !aboutTheMoment);
+        }
+
+        private void Apply(PackagesStatus status, IReadOnlyList<PackageProblem> problems, string? dependencies, bool fromARun)
+        {
+            if (_disposal.IsCancellationRequested)
+                return;
+
+            if (Status == status && Dependencies == dependencies && ProblemsAreFromARun == fromARun && Problems.SequenceEqual(problems))
+                return;
+
+            Status = status;
+            Problems = problems;
+            Dependencies = dependencies;
+            ProblemsAreFromARun = fromARun;
+            StateChanged?.Invoke();
+        }
+
+        private static PackageProblem NotLocked() => new(
+            PackageProblem.Error,
+            PmjProblems.LockOutOfDate,
+            "The project's packages are not locked.",
+            "packmoji.lock is missing, or no longer answers what packmoji.json asks for",
+            "run the project: its packages are chosen then, and packmoji.lock is written");
+
+        private static PackageProblem NoToolchain() => new(
+            PackageProblem.Error,
+            PackageProblemCodes.Toolchain,
+            "The toolchain service could not be reached.",
+            "the project's packages are built there",
+            "check that it is running, and try again");
+
+        private static PackageProblem NotHandedOver(LockedPackage package) => new(
+            PackageProblem.Error,
+            PackageProblemCodes.Unreadable,
+            $"The package \"{package.Name}\" could not be handed to the toolchain.",
+            "it is not where Packmoji keeps what it has fetched",
+            "try again; if it happens again, the reason is in Blazemoji's log");
+
+        private static PackageProblem NotTaken(LockedPackage package, ArchiveOutcome outcome) => outcome switch
+        {
+            ArchiveOutcome.NotAllowed => new(
+                PackageProblem.Error,
+                PackageProblemCodes.Scope,
+                $"The package \"{package.Name}\" is not one the toolchain builds.",
+                "it is outside the scopes the toolchain is limited to",
+                "depend only on packages the toolchain builds, or use a toolchain of your own"),
+            ArchiveOutcome.TooLarge => new(
+                PackageProblem.Error,
+                PackageProblemCodes.TooLarge,
+                $"The package \"{package.Name}\" is too large for the toolchain.",
+                "an archive may be 16 MiB",
+                "depend on a smaller package"),
+            ArchiveOutcome.Unavailable => NoToolchain(),
+            _ => new(
+                PackageProblem.Error,
+                PackageProblemCodes.Unreadable,
+                $"The toolchain did not take the package \"{package.Name}\".",
+                "what it was handed was not what it expected",
+                "try again; if it happens again, the reason is in Blazemoji's log"),
+        };
+
+        private sealed record Pair(string Manifest, string? Lockfile);
+
+        /// <param name="Remember">Whether this is the answer for these two texts until one of them changes.</param>
+        private sealed record Outcome(PackagesStatus Status, IReadOnlyList<PackageProblem> Problems, string? Dependencies, bool Remember);
+    }
+}

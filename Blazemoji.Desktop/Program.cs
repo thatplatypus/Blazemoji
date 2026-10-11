@@ -79,6 +79,8 @@ public static class Program
         builder.Services.AddSingleton<RequestState>();
         builder.Services.AddSingleton<LayoutState>();
         builder.Services.AddSingleton<SettingsState>();
+        builder.Services.AddSingleton<PackagesState>();
+        builder.Services.AddSingleton<IPackageSets>(provider => provider.GetRequiredService<PackagesState>());
         builder.Services.Configure<SettingsOptions>(settings => settings.Host = SettingHosts.Desktop);
         builder.Services.AddSingleton<LocalStorageFiles>();
         builder.Services.AddBlazemojiEditor(builder.Configuration);

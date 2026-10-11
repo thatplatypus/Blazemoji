@@ -3,12 +3,14 @@ using Blazemoji.Emojicode;
 using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Interop;
 using Blazemoji.Services.Library;
+using Blazemoji.Services.Packages;
 using Blazemoji.Services.Projects;
 using Blazemoji.Services.Settings;
 using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
 using Blazemoji.Toolchain;
 using Blazemoji.Toolchain.Http;
+using Blazemoji.Toolchain.Packmoji;
 using System.Text.RegularExpressions;
 using Bunit;
 using Microsoft.Extensions.Configuration;
@@ -40,6 +42,28 @@ namespace Blazemoji.Test
             Services.AddBlazemojiEditor();
             Services.AddSingleton(Substitute.For<IProjectStore>());
             Services.AddSingleton(Substitute.For<ILibraryService>());
+        }
+
+        [Fact]
+        public async Task The_editors_call_brings_the_packages_state_and_one_package_manager_for_everyone()
+        {
+            var services = new ServiceCollection();
+            services.AddToolchainClient(new ConfigurationBuilder().AddInMemoryCollection([]).Build());
+            services.AddBlazemojiEditor(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { [PackmojiOptions.SectionName + ":Scopes"] = "emojicode" })
+                .Build());
+            services.AddSingleton(Substitute.For<IProjectStore>());
+
+            // Disposed as a host disposes them: the state can only be disposed without blocking.
+            await using var provider = services.BuildServiceProvider(validateScopes: true);
+            await using var one = provider.CreateAsyncScope();
+            await using var two = provider.CreateAsyncScope();
+
+            provider.GetRequiredService<IOptions<PackmojiOptions>>().Value.Scopes.ShouldBe("emojicode");
+            provider.GetRequiredService<IPackageManager>().ShouldBeOfType<PmjPackageManager>();
+            one.ServiceProvider.GetRequiredService<IPackageManager>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<IPackageManager>());
+            one.ServiceProvider.GetRequiredService<PackagesState>().ShouldNotBeSameAs(two.ServiceProvider.GetRequiredService<PackagesState>());
+            one.ServiceProvider.GetRequiredService<IPackageSets>().ShouldBeSameAs(one.ServiceProvider.GetRequiredService<PackagesState>());
         }
 
         [Fact]
