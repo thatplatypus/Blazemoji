@@ -20,7 +20,7 @@ RUN /tmp/install-toolchain-deps.sh
 FROM sdk-deps AS pmj
 COPY packmoji.pin /tmp/packmoji.pin
 COPY docker/build-pmj.sh /tmp/build-pmj.sh
-RUN /tmp/build-pmj.sh /tmp/packmoji.pin /pmj
+RUN /tmp/build-pmj.sh /tmp/packmoji.pin /pmj linux-x64
 
 # What the tests need: the SDK, the compiler's needs, and pmj. scripts/test-in-docker.sh runs
 # the tests in a container made from this stage alone. The variable is the one the toolchain

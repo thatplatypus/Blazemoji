@@ -30,6 +30,14 @@ namespace Blazemoji.Toolchain.Packmoji
 
         public bool AllowsNothing => _allowed is { Count: 0 };
 
+        /// <summary>
+        /// The list as pmj reads it in its own variable, or null when pmj is to be told
+        /// nothing. pmj has no word for any scope: it means that by the variable not being
+        /// set. And it takes a variable set to nothing for a mistake, so a list of no scopes
+        /// is never given to it: whoever holds one refuses before pmj is run.
+        /// </summary>
+        public string? ForPmj => _allowed is { Count: > 0 } ? string.Join(',', _allowed.Order(StringComparer.Ordinal)) : null;
+
         public bool Allows(string? fullName) =>
             PackageNames.TryParse(fullName, out var scope, out _) && (_allowed is null || _allowed.Contains(scope));
 

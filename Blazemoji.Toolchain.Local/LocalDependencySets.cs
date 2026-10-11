@@ -143,7 +143,7 @@ namespace Blazemoji.Toolchain.Local
                     if (_building.Count >= Math.Max(1, _options.MaxConcurrentDependencyBuilds))
                         return new DependencyAnswer.Busy();
 
-                    build = BuildOnceAsync(id, request);
+                    build = BuildOnceAsync(id, request, packages);
                     _building[id] = build;
                 }
             }
@@ -300,14 +300,14 @@ namespace Blazemoji.Toolchain.Local
             }
         }
 
-        private async Task<DependencyAnswer> BuildOnceAsync(string id, DependencyRequest request)
+        private async Task<DependencyAnswer> BuildOnceAsync(string id, DependencyRequest request, IReadOnlyList<LockedPackage> locked)
         {
             // Started while the table is locked: this hands the lock back before any work.
             await Task.Yield();
 
             try
             {
-                return await BuildAsync(id, request);
+                return await BuildAsync(id, request, locked);
             }
             catch (Exception exception)
             {
@@ -326,7 +326,7 @@ namespace Blazemoji.Toolchain.Local
             }
         }
 
-        private async Task<DependencyAnswer> BuildAsync(string id, DependencyRequest request)
+        private async Task<DependencyAnswer> BuildAsync(string id, DependencyRequest request, IReadOnlyList<LockedPackage> locked)
         {
             var folder = Path.Combine(_root, $"{id}-{Guid.NewGuid():N}");
             var kept = false;
@@ -354,7 +354,7 @@ namespace Blazemoji.Toolchain.Local
                     return FailedWith(build.Report.Problems);
                 }
 
-                if (Describe(folder, build.Packages) is not { } set)
+                if (Describe(folder, build.Packages, locked) is not { } set)
                 {
                     logger.LogError("pmj build said it built set {Id}, and what it left in {Folder} is not that", id, folder);
                     return Unreadable();
@@ -386,8 +386,15 @@ namespace Blazemoji.Toolchain.Local
         /// are worked out here from where pmj is documented to put a package, and a name or a
         /// library that could not be what it claims makes the whole set unusable.
         /// </summary>
-        private static BuiltSet? Describe(string folder, IReadOnlyList<BuiltPackage> packages)
+        private static BuiltSet? Describe(string folder, IReadOnlyList<BuiltPackage> packages, IReadOnlyList<LockedPackage> locked)
         {
+            // The set is kept under an id made from what was locked, so it has to hold those
+            // packages and no others. pmj's word that it built something else is not taken.
+            var built = packages.Select(package => $"{package.Name}@{package.Version}").Order(StringComparer.Ordinal);
+            var wanted = locked.Select(package => $"{package.Name}@{package.Version}").Order(StringComparer.Ordinal);
+            if (!built.SequenceEqual(wanted, StringComparer.Ordinal))
+                return null;
+
             if (packages.Count == 0)
                 return new BuiltSet(folder, null, [], [], []);
 
@@ -458,6 +465,14 @@ namespace Blazemoji.Toolchain.Local
             settings[PmjVariables.CompilerPackages] = _options.PackagesPath;
             settings[PmjVariables.CompilerInclude] = Path.Combine(Path.GetDirectoryName(_options.CompilerPath) ?? string.Empty, "include");
             settings[PmjVariables.Cxx] = _options.LinkerPath;
+
+            // This class has already refused a package outside the scopes. pmj is told them
+            // as well, so that a mistake here is not the only thing between a visitor's
+            // lockfile and a compile. Reading what a lockfile locks is not told them: this
+            // class's refusal names the package in its own words, and pmj's would come first.
+            if (_scopes.ForPmj is { } scopes)
+                settings[PmjVariables.Scopes] = scopes;
+
             return settings;
         }
 
