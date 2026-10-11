@@ -72,6 +72,12 @@ namespace Blazemoji.Test.State
 
         private static PackageProblem Problem(string code) => new(PackageProblem.Error, code, "The message.", "the reason", "the fix");
 
+        private static string LockOf(ProjectState projects) => projects.Current.Find(PackagesState.LockfilePath)?.Content ?? "(none)";
+
+        private int RestoreCalls() => _manager.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IPackageManager.RestoreAsync));
+
+        private int ResolveCalls() => _manager.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IPackageManager.ResolveAsync));
+
         /// <summary>Lets the state's own waits pass: each turn moves the clock on by one ask.</summary>
         private async Task<T> EventuallyAsync<T>(Task<T> work, TimeSpan? step = null)
         {
@@ -794,6 +800,110 @@ namespace Blazemoji.Test.State
             state.ProblemsAreFromARun.ShouldBeFalse();
             await _manager.DidNotReceive().ResolveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
             _toolchain.ReceivedCalls().ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_typing_pause_for_the_same_two_texts_while_a_run_is_resolving_joins_it_and_the_run_goes_ahead()
+        {
+            var projects = await ProjectsAsync(Stored(lockfile: null));
+            var state = State(projects);
+            _manager.RestoreAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            var resolving = new TaskCompletionSource<PackageResolve>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.ResolveAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(resolving.Task);
+            _manager.RestoreAsync(Manifest, "a lock", Arg.Any<CancellationToken>()).Returns(new PackageRestore.Restored([Words]));
+            Builds("set-1");
+
+            await state.EnsureRestoredAsync(projects.Current).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            state.Status.ShouldBe(PackagesStatus.OutOfDate);
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            var statusWhileResolving = state.Status;
+            // The pause joins the resolve, so it cannot end before the resolve is let end.
+            var pause = state.EnsureRestoredAsync(projects.Current);
+            var statusAfterThePause = state.Status;
+            resolving.SetResult(new PackageResolve.Resolved("a lock", [Words]));
+            var mayRun = await preparing.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            await pause.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            var summary = $"while resolving {statusWhileResolving}, after the pause {statusAfterThePause}, run {mayRun}, status {state.Status}, "
+                + $"problems [{string.Join(", ", state.Problems.Select(problem => problem.Code))}], from a run {state.ProblemsAreFromARun}, "
+                + $"lockfile now '{LockOf(projects)}', restores {RestoreCalls()}, resolves {ResolveCalls()}";
+            mayRun.ShouldBeTrue(summary);
+            LockOf(projects).ShouldBe("a lock", summary);
+            await _manager.Received(1).ResolveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+            await _manager.Received(1).RestoreAsync(Manifest, null, Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_project_opened_while_another_with_the_same_two_texts_is_resolving_does_not_wait_for_its_resolve()
+        {
+            var first = Stored("p1", lockfile: null);
+            var second = Stored("p2", lockfile: null);
+            var projects = await ProjectsAsync(first, second);
+            var state = State(projects);
+            _manager.RestoreAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            var resolving = new TaskCompletionSource<PackageResolve>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.ResolveAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(resolving.Task);
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            var restoresBefore = RestoreCalls();
+            await projects.OpenAsync("p2").WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            await state.EnsureRestoredAsync(projects.Current).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            var restoresAfter = RestoreCalls();
+            resolving.SetResult(new PackageResolve.Resolved("a lock", [Words]));
+            await preparing.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            restoresAfter.ShouldBe(restoresBefore + 1, "the second project is restored for itself");
+            projects.Current.Id.ShouldBe("p2");
+            projects.Current.Find(PackagesState.LockfilePath).ShouldBeNull();
+            await projects.OpenAsync("p1").WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            projects.Current.Find(PackagesState.LockfilePath).ShouldBeNull();
+        }
+
+        [Fact]
+        public async Task A_typing_pause_whose_restore_is_still_going_when_a_resolve_of_the_same_two_texts_ends_does_not_cost_the_run()
+        {
+            var projects = await ProjectsAsync(Stored(lockfile: null));
+            var state = State(projects);
+            var slow = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.RestoreAsync(Manifest, null, Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<PackageRestore>(new PackageRestore.OutOfDate()), slow.Task);
+            var resolving = new TaskCompletionSource<PackageResolve>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.ResolveAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(resolving.Task);
+            _manager.RestoreAsync(Manifest, "a lock", Arg.Any<CancellationToken>()).Returns(new PackageRestore.Restored([Words]));
+            Builds("set-1");
+
+            await state.EnsureRestoredAsync(projects.Current).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            var pause = state.EnsureRestoredAsync(projects.Current);
+            resolving.SetResult(new PackageResolve.Resolved("a lock", [Words]));
+            var mayRun = await preparing.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            var summary = $"run {mayRun}, status as the run returned {state.Status}, problems {state.Problems.Count}, from a run {state.ProblemsAreFromARun}, lockfile '{LockOf(projects)}'";
+            slow.SetResult(new PackageRestore.OutOfDate());
+            await pause.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            summary += $"; once the pause's restore ended: status {state.Status}, from a run {state.ProblemsAreFromARun}, restores {RestoreCalls()}, resolves {ResolveCalls()}";
+
+            mayRun.ShouldBeTrue(summary);
+        }
+
+        [Fact]
+        public async Task A_manifest_changed_while_pmj_was_choosing_and_not_yet_asked_about_gets_no_lockfile_written()
+        {
+            var projects = await ProjectsAsync(Stored(lockfile: null));
+            var state = State(projects);
+            _manager.RestoreAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            _manager.RestoreAsync("b", Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            var resolving = new TaskCompletionSource<PackageResolve>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.ResolveAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(resolving.Task);
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            await projects.WriteFileAsync("p1", PackagesState.ManifestPath, "b").WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+            resolving.SetResult(new PackageResolve.Resolved("chosen for the old manifest", [Words]));
+            var mayRun = await preparing.WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            var summary = $"run {mayRun}, status {state.Status}, from a run {state.ProblemsAreFromARun}, lockfile now '{LockOf(projects)}', restores {RestoreCalls()}, resolves {ResolveCalls()}";
+            LockOf(projects).ShouldBe("(none)", summary);
+            mayRun.ShouldBeFalse(summary);
+            state.Status.ShouldNotBe(PackagesStatus.Restoring, summary);
         }
 
         [Fact]
