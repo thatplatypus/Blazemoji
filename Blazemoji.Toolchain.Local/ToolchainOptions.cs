@@ -98,7 +98,9 @@ namespace Blazemoji.Toolchain.Local
 
         /// <summary>
         /// Built sets kept at once. Beyond this the one used longest ago is dropped, unless a
-        /// compile is using it. They are under the work root, which in a container is memory.
+        /// compile is using it. This does not bound memory or disk: dropping a set frees that
+        /// set's own copies only, while pmj keeps its cache of archives and its own copy of every
+        /// package it built under its home, which nothing here trims.
         /// </summary>
         public int MaxDependencySets { get; set; } = 16;
 

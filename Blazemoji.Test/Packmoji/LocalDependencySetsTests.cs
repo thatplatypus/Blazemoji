@@ -451,6 +451,49 @@ namespace Blazemoji.Test.Packmoji
         }
 
         [Fact]
+        public async Task A_problem_whose_file_is_a_place_on_this_machine_is_not_passed_on()
+        {
+            var sets = Sets();
+            _pmj.TreeProblems.Add(new PackageProblem(PackageProblem.Error, "json.syntax", "The manifest is not JSON.", "it ends too soon", "fix it", Path.Combine(_work, "asks", "packmoji.json"), 3, 14));
+
+            var failed = (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+
+            failed.Problems.ShouldHaveSingleItem().Code.ShouldBe(PackageProblemCodes.Unreadable);
+        }
+
+        [Fact]
+        public async Task A_problem_in_one_of_the_two_files_keeps_its_place()
+        {
+            var sets = Sets();
+            _pmj.TreeProblems.Add(new PackageProblem(PackageProblem.Error, "json.syntax", "The manifest is not JSON.", "it ends too soon", "fix it", "packmoji.json", 3, 14));
+
+            var failed = (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+
+            var problem = failed.Problems.ShouldHaveSingleItem();
+            problem.Code.ShouldBe("json.syntax");
+            problem.File.ShouldBe("packmoji.json");
+            problem.Line.ShouldBe(3);
+            problem.Column.ShouldBe(14);
+        }
+
+        [Fact]
+        public async Task A_package_that_asks_for_a_newer_compiler_is_passed_on_without_where_the_compiler_is()
+        {
+            var sets = Sets();
+            Lock(Words);
+            await StoreAsync(sets, Words, WordsBytes);
+            _pmj.BuildProblems.Add(new PackageProblem(PackageProblem.Error, "compiler.too-old", "\"@thatplatypus/hello_words\" asks for a newer compiler.", "the compiler at \"/app/emojicodec/emojicodec\" says it is 1.0.0-beta.2", "use a version of the package that this compiler builds"));
+
+            var failed = (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+
+            var problem = failed.Problems.ShouldHaveSingleItem();
+            problem.Code.ShouldBe("compiler.too-old");
+            problem.Message.ShouldBe("\"@thatplatypus/hello_words\" asks for a newer compiler.");
+            problem.Fix.ShouldBe("use a version of the package that this compiler builds");
+            problem.Reason.ShouldBe("the compiler this toolchain has is older than that");
+        }
+
+        [Fact]
         public async Task A_build_that_a_compiler_refused_is_passed_on_without_what_the_compiler_said()
         {
             var sets = Sets();
@@ -762,7 +805,7 @@ namespace Blazemoji.Test.Packmoji
                 var envelope = new Dictionary<string, object?>
                 {
                     ["ok"] = ok,
-                    ["diagnostics"] = problems.Select(problem => new { severity = problem.Severity, code = problem.Code, message = problem.Message, reason = problem.Reason, fix = problem.Fix }),
+                    ["diagnostics"] = problems.Select(problem => new { severity = problem.Severity, code = problem.Code, message = problem.Message, reason = problem.Reason, fix = problem.Fix, location = problem.File is null ? null : new { file = problem.File, line = problem.Line, column = problem.Column } }),
                     ["omittedDiagnostics"] = 0,
                 };
                 foreach (var property in JsonSerializer.SerializeToElement(rest).EnumerateObject())

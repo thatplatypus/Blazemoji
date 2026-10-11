@@ -35,6 +35,10 @@ namespace Blazemoji.Toolchain.Local
 
         private const string CompilerSaidReason = "what the compiler said is in the toolchain's log";
 
+        // pmj words this reason with the compiler's own path, which is not under any folder the
+        // place check knows, so the words are fixed and pmj's are logged.
+        private const string CompilerTooOldReason = "the compiler this toolchain has is older than that";
+
         private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
 
         // The codes of the problems pmj finds in a visitor's two files and in the packages they
@@ -51,6 +55,8 @@ namespace Blazemoji.Toolchain.Local
         private static readonly string[] PassedOnCodes = ["compiler.invalid", "compiler.too-old", "package.not-found"];
 
         private static readonly string[] CompilerCodes = ["build.compile-failed", "build.native-failed", "build.archive-failed", "build.link-failed"];
+
+        private const string CompilerTooOldCode = "compiler.too-old";
 
         private readonly ToolchainOptions _options = toolchainOptions.Value;
         private readonly PackageScopes _scopes = PackageScopes.Parse(packmojiOptions.Value.Scopes, PackageScopes.Any);
@@ -482,6 +488,11 @@ namespace Blazemoji.Toolchain.Local
                     logger.LogWarning("pmj reported {Code}: {Message} ({Reason})", problem.Code, problem.Message, problem.Reason);
                     problem = problem with { Reason = CompilerSaidReason };
                 }
+                else if (problem.Code == CompilerTooOldCode)
+                {
+                    logger.LogWarning("pmj reported {Code}: {Message} ({Reason})", problem.Code, problem.Message, problem.Reason);
+                    problem = problem with { Reason = CompilerTooOldReason };
+                }
 
                 if (!IsPassedOn(problem))
                 {
@@ -508,7 +519,8 @@ namespace Blazemoji.Toolchain.Local
             return !places.Any(place =>
                 problem.Message.Contains(place, StringComparison.Ordinal)
                 || problem.Reason.Contains(place, StringComparison.Ordinal)
-                || problem.Fix.Contains(place, StringComparison.Ordinal));
+                || problem.Fix.Contains(place, StringComparison.Ordinal)
+                || (problem.File?.Contains(place, StringComparison.Ordinal) ?? false));
         }
 
         private static DependencyAnswer Unreadable() => Failed(

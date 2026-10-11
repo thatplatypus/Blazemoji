@@ -6,6 +6,7 @@ using Blazemoji.Toolchain;
 using Blazemoji.Toolchain.Http;
 using Blazemoji.Toolchain.Packmoji;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace Blazemoji.Test.Service
 {
@@ -279,6 +280,30 @@ namespace Blazemoji.Test.Service
 
             response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
             (await ProblemTitleAsync(response)).ShouldBe("No such package.");
+        }
+
+        [Theory]
+        [InlineData("prepare")]
+        [InlineData("archive")]
+        [InlineData("documentation")]
+        public async Task An_exception_behind_a_route_is_a_500_that_gives_nothing_away(string route)
+        {
+            var thrown = new InvalidOperationException("secret path /srv/keys");
+            _factory.Packages.PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>()).ThrowsAsync(thrown);
+            _factory.Packages.AddArchiveAsync(Arg.Any<LockedPackage>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>()).ThrowsAsync(thrown);
+            _factory.Packages.GetDocumentationAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).ThrowsAsync(thrown);
+
+            var response = route switch
+            {
+                "prepare" => await AskAsync(),
+                "archive" => await PutAsync(Words, [1, 2, 3]),
+                _ => await Client.GetAsync(ToolchainRoutes.DependencyDocumentation(SetId, "hello_words"), Cancellation),
+            };
+
+            response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+            var body = await response.Content.ReadAsStringAsync(Cancellation);
+            body.ShouldNotContain("secret");
+            body.ShouldNotContain("/srv/keys");
         }
 
         [Fact]
