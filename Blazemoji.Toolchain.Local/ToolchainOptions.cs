@@ -91,6 +91,12 @@ namespace Blazemoji.Toolchain.Local
         public int MaxConcurrentDependencyBuilds { get; set; } = 2;
 
         /// <summary>
+        /// Requests for a set that may be asking pmj what is locked at once. One beyond this is
+        /// told to ask again shortly, not queued: each starts a process.
+        /// </summary>
+        public int MaxConcurrentDependencyRequests { get; set; } = 8;
+
+        /// <summary>
         /// Built sets kept at once. Beyond this the one used longest ago is dropped, unless a
         /// compile is using it. They are under the work root, which in a container is memory.
         /// </summary>

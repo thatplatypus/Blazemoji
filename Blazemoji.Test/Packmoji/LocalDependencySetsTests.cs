@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace Blazemoji.Test.Packmoji
 {
-    public sealed class LocalDependencySetsTests : IDisposable
+    public sealed class LocalDependencySetsTests : IAsyncDisposable
     {
         private static readonly byte[] WordsBytes = "the archive of hello_words"u8.ToArray();
         private static readonly byte[] GreeterBytes = "the archive of hello_greeter"u8.ToArray();
@@ -24,10 +24,10 @@ namespace Blazemoji.Test.Packmoji
 
         private string Home => Path.Combine(_work, "packmoji");
 
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
             foreach (var sets in _made)
-                sets.Dispose();
+                await sets.DisposeAsync();
 
             if (Directory.Exists(_work))
                 Directory.Delete(_work, recursive: true);
@@ -388,7 +388,149 @@ namespace Blazemoji.Test.Packmoji
             sets.Lease(both.Id).ShouldBeNull();
             using var kept = sets.Lease(one.Id).ShouldNotBeNull();
             Directory.GetDirectories(Directory.GetDirectories(_work, "sets-*").Single())
-                .Select(Path.GetFileName).Where(name => name != "asks").ShouldBe([one.Id]);
+                .Select(Path.GetFileName).Where(name => name != "asks")
+                .ShouldHaveSingleItem().ShouldStartWith(one.Id + "-");
+        }
+
+        [Fact]
+        public async Task A_set_built_again_after_being_dropped_has_a_folder_of_its_own()
+        {
+            var sets = Sets(options => options.MaxDependencySets = 1);
+            var first = await ReadyAsync(sets);
+            string? firstPackages;
+            using (var lease = sets.Lease(first.Id).ShouldNotBeNull())
+            {
+                firstPackages = lease.PackagesDirectory.ShouldNotBeNull();
+            }
+
+            Lock(Words);
+            (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Ready>();
+            sets.Lease(first.Id).ShouldBeNull();
+
+            Lock(Greeter, Words);
+            var again = (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Ready>();
+
+            again.Id.ShouldBe(first.Id);
+            using var second = sets.Lease(again.Id).ShouldNotBeNull();
+            second.PackagesDirectory.ShouldNotBe(firstPackages);
+            second.Archives.ShouldAllBe(archive => File.Exists(archive));
+        }
+
+        [Theory]
+        [InlineData("cache.unusable")]
+        [InlineData("built.unusable")]
+        [InlineData("project.unreadable")]
+        [InlineData("compiler.incomplete")]
+        [InlineData("compiler.not-found")]
+        [InlineData("tool.not-found")]
+        [InlineData("github.unreachable")]
+        [InlineData("some.new-code")]
+        public async Task A_problem_about_this_machine_is_not_passed_on_and_names_no_place_on_it(string code)
+        {
+            var sets = Sets();
+            Lock(Words);
+            await StoreAsync(sets, Words, WordsBytes);
+            _pmj.BuildProblems.Add(new PackageProblem(PackageProblem.Error, code, "\"/srv/secret/place\" could not be written", "Access to the path '/srv/secret/place' is denied.", "fix it"));
+
+            var failed = (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+
+            var problem = failed.Problems.ShouldHaveSingleItem();
+            problem.Code.ShouldBe(PackageProblemCodes.Unreadable);
+            (problem.Message + problem.Reason + problem.Fix).ShouldNotContain("secret");
+        }
+
+        [Fact]
+        public async Task A_problem_that_names_a_place_under_the_work_root_is_not_passed_on_whatever_its_code()
+        {
+            var sets = Sets();
+            _pmj.TreeProblems.Add(new PackageProblem(PackageProblem.Error, "lock.mismatch", "The lock does not match.", $"it was read at {Path.Combine(_work, "somewhere")}", "run pmj install"));
+
+            var failed = (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+
+            failed.Problems.ShouldHaveSingleItem().Code.ShouldBe(PackageProblemCodes.Unreadable);
+        }
+
+        [Fact]
+        public async Task A_build_that_a_compiler_refused_is_passed_on_without_what_the_compiler_said()
+        {
+            var sets = Sets();
+            Lock(Words);
+            await StoreAsync(sets, Words, WordsBytes);
+            _pmj.BuildProblems.Add(new PackageProblem(PackageProblem.Error, "build.compile-failed", "The package \"@thatplatypus/hello_words\" could not be compiled.", "lib.🍇:3:5: 🍉 expected", "tell its author"));
+
+            var failed = (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+
+            var problem = failed.Problems.ShouldHaveSingleItem();
+            problem.Code.ShouldBe("build.compile-failed");
+            problem.Message.ShouldBe("The package \"@thatplatypus/hello_words\" could not be compiled.");
+            problem.Fix.ShouldBe("tell its author");
+            problem.Reason.ShouldBe("what the compiler said is in the toolchain's log");
+        }
+
+        [Fact]
+        public async Task A_warning_about_this_machine_is_dropped_and_the_rest_is_passed_on()
+        {
+            var sets = Sets();
+            var outOfDate = new PackageProblem(PackageProblem.Error, "lock.out-of-date", "There is no packmoji.lock.", "this command reads what is locked", "run pmj install");
+            _pmj.TreeProblems.Add(new PackageProblem(PackageProblem.Warning, "cache.unusable", "The cache is odd.", "somewhere", "nothing"));
+            _pmj.TreeProblems.Add(outOfDate);
+
+            var failed = (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+
+            failed.Problems.ShouldHaveSingleItem().ShouldBe(outOfDate);
+        }
+
+        [Fact]
+        public async Task Disposing_ends_a_build_that_is_running_and_everyone_waiting_is_answered()
+        {
+            var sets = Sets();
+            Lock(Words);
+            await StoreAsync(sets, Words, WordsBytes);
+            _pmj.HoldBuilds = new TaskCompletionSource();
+
+            var pending = sets.PrepareAsync(Request, Cancellation);
+            await _pmj.BuildStarted.Task.WaitAsync(TimeSpan.FromSeconds(30), Cancellation);
+            await sets.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30), Cancellation);
+
+            (await pending.WaitAsync(TimeSpan.FromSeconds(30), Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+            Directory.GetDirectories(_work, "sets-*").ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task After_it_is_disposed_it_refuses_work()
+        {
+            var sets = Sets();
+            await sets.DisposeAsync();
+
+            await Should.ThrowAsync<ObjectDisposedException>(() => sets.PrepareAsync(Request, Cancellation));
+            await Should.ThrowAsync<ObjectDisposedException>(() => sets.AddArchiveAsync(Words, new MemoryStream(WordsBytes), Cancellation));
+            await Should.ThrowAsync<ObjectDisposedException>(() => sets.GetDocumentationAsync("id", "hello_words", Cancellation));
+            Should.Throw<ObjectDisposedException>(() => sets.Lease("id"));
+        }
+
+        [Fact]
+        public async Task Disposing_twice_is_harmless()
+        {
+            var sets = Sets();
+
+            await sets.DisposeAsync();
+            await sets.DisposeAsync();
+        }
+
+        [Fact]
+        public async Task More_asks_at_once_than_are_allowed_is_busy()
+        {
+            var sets = Sets(options => options.MaxConcurrentDependencyRequests = 1);
+            _pmj.HoldTrees = new TaskCompletionSource();
+
+            var first = sets.PrepareAsync(Request, Cancellation);
+            await _pmj.TreeStarted.Task.WaitAsync(TimeSpan.FromSeconds(30), Cancellation);
+            var second = await sets.PrepareAsync(Request, Cancellation);
+
+            second.ShouldBeOfType<DependencyAnswer.Busy>();
+            _pmj.HoldTrees.SetResult();
+            await first.WaitAsync(TimeSpan.FromSeconds(30), Cancellation);
+            (await sets.PrepareAsync(Request, Cancellation)).ShouldNotBeOfType<DependencyAnswer.Busy>();
         }
 
         [Fact]
@@ -522,6 +664,10 @@ namespace Blazemoji.Test.Packmoji
 
             public TaskCompletionSource BuildStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+            public TaskCompletionSource? HoldTrees { get; set; }
+
+            public TaskCompletionSource TreeStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
             public bool LeaveOutArchives { get; set; }
 
             public int Builds
@@ -549,7 +695,13 @@ namespace Blazemoji.Test.Packmoji
                     return instead(command);
 
                 if (command.Arguments[0] == "tree")
+                {
+                    TreeStarted.TrySetResult();
+                    if (HoldTrees is { } holdTree)
+                        await holdTree.Task.WaitAsync(cancellationToken);
+
                     return Printed(TreeProblems, new { packages = locked.Select(package => new { name = package.Name, version = package.Version, sha256 = package.Sha256 }) });
+                }
 
                 BuildStarted.TrySetResult();
                 if (HoldBuilds is { } hold)

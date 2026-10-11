@@ -16,7 +16,7 @@ namespace Blazemoji.Toolchain.Local
         IOptions<ToolchainOptions> toolchainOptions,
         IOptions<PackmojiOptions> packmojiOptions,
         IPmj pmj,
-        ILogger<LocalDependencySets> logger) : IToolchainPackages, IDependencySetStore, IDisposable
+        ILogger<LocalDependencySets> logger) : IToolchainPackages, IDependencySetStore, IAsyncDisposable
     {
         private const string ManifestFile = "packmoji.json";
         private const string LockfileFile = "packmoji.lock";
@@ -33,7 +33,24 @@ namespace Blazemoji.Toolchain.Local
         // handed to it. Port 9 is the discard port, which nothing here runs.
         private const string NoGitHub = "http://127.0.0.1:9";
 
+        private const string CompilerSaidReason = "what the compiler said is in the toolchain's log";
+
         private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
+
+        // The codes of the problems pmj finds in a visitor's two files and in the packages they
+        // name, which are the visitor's to read and fix. A code that is not here is about this
+        // machine or is not known, and is not passed on: it goes to the log.
+        private static readonly string[] PassedOnPrefixes =
+        [
+            "file.", "json.", "key.", "name.", "version.", "requirement.", "kind.", "description.",
+            "license.", "repository.", "dependency.", "path.", "glob.", "link.", "list.", "entry.",
+            "lock.", "pin.", "sha256.", "verified.", "resolve.", "release.", "archive.",
+            "attestation.", "native.",
+        ];
+
+        private static readonly string[] PassedOnCodes = ["compiler.invalid", "compiler.too-old", "package.not-found"];
+
+        private static readonly string[] CompilerCodes = ["build.compile-failed", "build.native-failed", "build.archive-failed", "build.link-failed"];
 
         private readonly ToolchainOptions _options = toolchainOptions.Value;
         private readonly PackageScopes _scopes = PackageScopes.Parse(packmojiOptions.Value.Scopes, PackageScopes.Any);
@@ -45,10 +62,15 @@ namespace Blazemoji.Toolchain.Local
         private readonly object _gate = new();
         private readonly Dictionary<string, BuiltSet> _sets = new(StringComparer.Ordinal);
         private readonly Dictionary<string, Task<DependencyAnswer>> _building = new(StringComparer.Ordinal);
+        private readonly CancellationTokenSource _shutdown = new();
         private long _uses;
+        private int _asking;
+        private bool _disposed;
 
         public async Task<DependencyAnswer> PrepareAsync(DependencyRequest request, CancellationToken cancellationToken = default)
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
+
             if (Encoding.UTF8.GetByteCount(request.Manifest) > MaxManifestBytes || Encoding.UTF8.GetByteCount(request.Lockfile) > MaxLockfileBytes)
             {
                 return Failed(
@@ -56,6 +78,14 @@ namespace Blazemoji.Toolchain.Local
                     "The project's package files are too large.",
                     "a manifest is at most 1 MiB and a lockfile at most 4 MiB",
                     "check that packmoji.json and packmoji.lock are the files pmj wrote");
+            }
+
+            lock (_gate)
+            {
+                if (_asking >= Math.Max(1, _options.MaxConcurrentDependencyRequests))
+                    return new DependencyAnswer.Busy();
+
+                _asking++;
             }
 
             IReadOnlyList<LockedPackage> packages;
@@ -71,6 +101,11 @@ namespace Blazemoji.Toolchain.Local
             {
                 logger.LogError(exception, "The folder for a set could not be written under {Root}", _root);
                 return Unreadable();
+            }
+            finally
+            {
+                lock (_gate)
+                    _asking--;
             }
 
             if (packages.Any(package => !package.IsWellFormed))
@@ -109,13 +144,15 @@ namespace Blazemoji.Toolchain.Local
 
             // The build is everyone's who asks for this set, so it is not the first asker's to
             // stop. Someone who gives up stops waiting; the build goes on, stays in the table
-            // above, and is what the next asker waits for. It ends by itself: pmj has a time
-            // limit, and nothing it does is left unhandled.
+            // above, and is what the next asker waits for. What ends a build nobody is waiting
+            // for is pmj's own time limit, or this class being disposed.
             return await build.WaitAsync(cancellationToken);
         }
 
         public async Task<ArchiveOutcome> AddArchiveAsync(LockedPackage package, Stream content, CancellationToken cancellationToken = default)
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
+
             if (PackmojiCache.ArchivePath(_home, package) is not { } path)
                 return ArchiveOutcome.Malformed;
 
@@ -165,6 +202,8 @@ namespace Blazemoji.Toolchain.Local
 
         public async Task<string?> GetDocumentationAsync(string dependencies, string package, CancellationToken cancellationToken = default)
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
+
             string? path;
             lock (_gate)
             {
@@ -189,6 +228,8 @@ namespace Blazemoji.Toolchain.Local
 
         public DependencySetLease? Lease(string id)
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
+
             lock (_gate)
             {
                 if (!_sets.TryGetValue(id, out var set))
@@ -200,7 +241,23 @@ namespace Blazemoji.Toolchain.Local
             }
         }
 
-        public void Dispose() => DeleteDirectory(_root);
+        public async ValueTask DisposeAsync()
+        {
+            Task<DependencyAnswer>[] running;
+            lock (_gate)
+            {
+                if (_disposed)
+                    return;
+
+                _disposed = true;
+                running = [.. _building.Values];
+            }
+
+            await _shutdown.CancelAsync();
+            await Task.WhenAll(running);
+            DeleteDirectory(_root);
+            _shutdown.Dispose();
+        }
 
         private void Release(BuiltSet set)
         {
@@ -249,7 +306,11 @@ namespace Blazemoji.Toolchain.Local
             catch (Exception exception)
             {
                 // Whatever went wrong, everyone waiting gets an answer and the next asker a fresh build.
-                logger.LogError(exception, "Building set {Id} failed", id);
+                if (Volatile.Read(ref _disposed))
+                    logger.LogInformation("Building set {Id} was ended because the toolchain is shutting down", id);
+                else
+                    logger.LogError(exception, "Building set {Id} failed", id);
+
                 return Unreadable();
             }
             finally
@@ -261,16 +322,16 @@ namespace Blazemoji.Toolchain.Local
 
         private async Task<DependencyAnswer> BuildAsync(string id, DependencyRequest request)
         {
-            var folder = Path.Combine(_root, id);
+            var folder = Path.Combine(_root, $"{id}-{Guid.NewGuid():N}");
             var kept = false;
             try
             {
-                DeleteDirectory(folder);
-                await WriteProjectAsync(folder, request, CancellationToken.None);
+                var token = _shutdown.Token;
+                await WriteProjectAsync(folder, request, token);
 
                 var result = await pmj.RunAsync(
                     new PmjCommand(folder, ["build", "--dependencies-only", "--json"], _options.DependencyBuildTimeout, BuildSettings()),
-                    CancellationToken.None);
+                    token);
                 if (NotRun(result) is { } answer)
                     return answer;
 
@@ -409,8 +470,39 @@ namespace Blazemoji.Toolchain.Local
             _ => null,
         };
 
-        private static DependencyAnswer FailedWith(IReadOnlyList<PackageProblem> problems) =>
-            problems.Any(problem => problem.IsError) ? new DependencyAnswer.Failed(problems) : Unreadable();
+        private DependencyAnswer FailedWith(IReadOnlyList<PackageProblem> problems)
+        {
+            var passedOn = new List<PackageProblem>();
+            var withheldError = false;
+            foreach (var problem in problems)
+            {
+                if (!IsPassedOn(problem))
+                {
+                    logger.LogError("pmj reported {Code}: {Message} ({Reason})", problem.Code, problem.Message, problem.Reason);
+                    withheldError |= problem.IsError;
+                    continue;
+                }
+
+                passedOn.Add(CompilerCodes.Contains(problem.Code) ? problem with { Reason = CompilerSaidReason } : problem);
+            }
+
+            return withheldError || !passedOn.Any(problem => problem.IsError) ? Unreadable() : new DependencyAnswer.Failed(passedOn);
+        }
+
+        private bool IsPassedOn(PackageProblem problem)
+        {
+            var known = PassedOnCodes.Contains(problem.Code)
+                || CompilerCodes.Contains(problem.Code)
+                || PassedOnPrefixes.Any(prefix => problem.Code.StartsWith(prefix, StringComparison.Ordinal));
+            if (!known)
+                return false;
+
+            var places = new[] { _options.WorkRoot, _root, _home }.Where(place => !string.IsNullOrEmpty(place));
+            return !places.Any(place =>
+                problem.Message.Contains(place, StringComparison.Ordinal)
+                || problem.Reason.Contains(place, StringComparison.Ordinal)
+                || problem.Fix.Contains(place, StringComparison.Ordinal));
+        }
 
         private static DependencyAnswer Unreadable() => Failed(
             PackageProblemCodes.Unreadable,
