@@ -114,5 +114,26 @@ namespace Blazemoji.Test.Projects
                 template.Description.ShouldNotBeNullOrWhiteSpace(template.Id);
             }
         }
+
+        [Fact]
+        public void The_Grapevine_template_is_a_server_project_that_locks_the_release_it_was_written_for()
+        {
+            var shipped = new FileProjectTemplates(Options.Create(new ProjectTemplateOptions()), NullLogger<FileProjectTemplates>.Instance).All;
+            var template = shipped.Single(template => template.Id == "grapevine-todo");
+
+            template.Kind.ShouldBe(ProjectKind.Server);
+            template.Entry.ShouldBe("main.🍇");
+            template.Files.Select(file => file.Path).Order(StringComparer.Ordinal)
+                .ShouldBe(new[] { "main.🍇", "packmoji.json", "packmoji.lock", "startup.🍇", "todos.🍇" }.Order(StringComparer.Ordinal));
+
+            var manifest = template.Files.Single(file => file.Path == "packmoji.json").Content;
+            manifest.ShouldContain("\"@thatplatypus/grapevine\": \"0.2.0\"");
+            var lockfile = template.Files.Single(file => file.Path == "packmoji.lock").Content;
+            lockfile.ShouldContain("\"asset\": \"grapevine-0.2.0.pmj.tar.gz\"");
+            lockfile.ShouldContain("\"sha256\": \"899b0fd5c6eb445d3dd1daac006a1a0dea254928b695cc64aa1b74289b89f634\"");
+
+            // It runs with no environment and nobody to sign in: nothing of it asks for either.
+            template.Files.ShouldAllBe(file => !file.Content.Contains("/login") && !file.Content.Contains("📦 crypto"));
+        }
     }
 }

@@ -1,0 +1,293 @@
+📗
+  A todo item. It never changes once made: a change produces a new one, so a
+  todo that has been handed to another thread cannot change underneath it.
+📗
+🐇 🗒 🍇
+  🖍🆕 id 🔢
+  🖍🆕 title 🔡
+  🖍🆕 done 👌
+
+  🆕 anId 🔢 aTitle 🔡 isDone 👌 🍇
+    anId ➡️ 🖍id
+    aTitle ➡️ 🖍title
+    isDone ➡️ 🖍done
+  🍉
+
+  ❗️ 🆔 ➡️ 🔢 🍇
+    ↩️ id
+  🍉
+
+  ❗️ 🏷 ➡️ 🔡 🍇
+    ↩️ title
+  🍉
+
+  ❗️ ✔️ ➡️ 👌 🍇
+    ↩️ done
+  🍉
+
+  📗 A copy with a new title. 📗
+  ❗️ ✍️ text 🔡 ➡️ 🗒 🍇
+    ↩️ 🆕🗒 id text done❗️
+  🍉
+
+  📗 A copy with a new done flag. 📗
+  ❗️ ☑️ value 👌 ➡️ 🗒 🍇
+    ↩️ 🆕🗒 id title value❗️
+  🍉
+
+  ❗️ 🌸 ➡️ 🔡 🍇
+    🆕🧾❗️ ➡️ json
+    🔢 json 🔤id🔤 id❗️
+    🔡 json 🔤title🔤 title❗️
+    👌 json 🔤done🔤 done❗️
+    ↩️ 📤 json❗️
+  🍉
+🍉
+
+📗
+  What the store raises when it is asked to hold more than it has room for.
+  An error of the application's own: the app maps it to a 409 in startup.🍇.
+📗
+🐇 🚧🔸🈵 🚧 🍇
+  🆕 room 🔢 🍇
+    ⤴️🆕 🆕🔡 🍿 🔤The list is full: it holds 🔤 🔡🐇🧰 room❗️ 🔤 todos🔤 🍆 🔤🔤❗️❗️
+  🍉
+🍉
+
+📗
+  In-memory todo storage: the "service" a controller depends on. Requests are
+  served on several threads at once, so every method takes the lock, and the
+  todos it hands out are snapshots that never change. It holds *room* todos
+  and no more.
+📗
+🐇 🏪 🍇
+  🖍🆕 todos 🍨🐚🗒🍆
+  🖍🆕 nextId 🔢
+  🖍🆕 room 🔢
+  🖍🆕 lock 🔐
+
+  🆕 🍼room 🔢 🍇
+    🆕🍨🐚🗒🍆❗️ ➡️ 🖍todos
+    1 ➡️ 🖍nextId
+    🆕🔐❗️ ➡️ 🖍lock
+  🍉
+
+  ❗️ 📋 ➡️ 🍨🐚🗒🍆 🍇
+    🔒 lock❗️
+    todos ➡️ snapshot
+    🔓 lock❗️
+    ↩️ snapshot
+  🍉
+
+  📗 Adds a todo, or raises 🚧🔸🈵 when there is no room for one. 📗
+  ❗️ 🌱 title 🔡 ➡️ 🗒 🚧🚧 🍇
+    🔒 lock❗️
+    ↪️ 📏 todos❓ ▶️🙌 room 🍇
+      🔓 lock❗️
+      🚨 🆕🚧🔸🈵 room❗️
+    🍉
+    🆕🗒 nextId title 👎❗️ ➡️ todo
+    🐻 todos todo❗️
+    nextId ➕ 1 ➡️ 🖍nextId
+    🔓 lock❗️
+    ↩️ todo
+  🍉
+
+  ❗️ 🔍 id 🔢 ➡️ 🍬🗒 🍇
+    🖍🆕 found 🍬🗒
+    🤷‍♀️ ➡️ 🖍found
+    🔂 todo 📋 👇❗️ 🍇
+      ↪️ 🆔 todo❗️ 🙌 id 🍇
+        todo ➡️ 🖍found
+      🍉
+    🍉
+    ↩️ found
+  🍉
+
+  📗
+    Changes the todo with *id*: a new title, a new done flag, or both. The
+    stored todo is replaced under the lock. Returns the changed todo, or
+    nothing when there is no such todo.
+  📗
+  ❗️ ✏️ id 🔢 title 🍬🔡 done 🍬👌 ➡️ 🍬🗒 🍇
+    🖍🆕 changed 🍬🗒
+    🤷‍♀️ ➡️ 🖍changed
+    🔒 lock❗️
+    🔂 i 🆕⏩ 0 📏 todos❓❗️ 🍇
+      🐽 todos i❗️ ➡️ 🖍🆕todo
+      ↪️ 🆔 todo❗️ 🙌 id 🍇
+        ↪️ title ➡️ newTitle 🍇
+          ✍️ todo newTitle❗️ ➡️ 🖍todo
+        🍉
+        ↪️ done ➡️ newDone 🍇
+          ☑️ todo newDone❗️ ➡️ 🖍todo
+        🍉
+        todo ➡️ 🐽todos i❗️
+        todo ➡️ 🖍changed
+      🍉
+    🍉
+    🔓 lock❗️
+    ↩️ changed
+  🍉
+
+  ❗️ 🔥 id 🔢 ➡️ 👌 🍇
+    🔒 lock❗️
+    -1 ➡️ 🖍🆕index
+    🔂 i 🆕⏩ 0 📏 todos❓❗️ 🍇
+      ↪️ 🆔 🐽 todos i❗️❗️ 🙌 id 🍇
+        i ➡️ 🖍index
+      🍉
+    🍉
+    ↪️ index ▶️🙌 0 🍇
+      🐨 todos index❗️
+    🍉
+    🔓 lock❗️
+    ↩️ index ▶️🙌 0
+  🍉
+🍉
+
+📗
+  /todos: the Nest-style controller.
+
+    GET    /todos           list (optional ?done=true|false)
+    GET    /todos/:id:int   one todo or 404
+    POST   /todos           {"title": "..."} → 201
+    PUT    /todos/:id:int   {"title"?: "...", "done"?: bool}
+    DELETE /todos/:id:int   204 or 404
+
+  What a route takes and gives is said once, as a shape. A handler reads what
+  it was sent through a binder, which goes by its route's shape, checks each
+  field and lists everything that is wrong in one 400. It answers with a
+  response or raises: the binder's error, an error that carries a problem of
+  its own, and whatever the store raised for what the store refused.
+📗
+🐇 📒 🍇
+  🐊 🎛
+  🖍🆕 store 🏪
+
+  🆕 aStore 🏪 🍇
+    aStore ➡️ 🖍store
+  🍉
+
+  📗 The error for a todo that is not there. 📗
+  🐇❗️ 📭 id 🔢 ➡️ 🚧🔸🌐 🍇
+    ↩️ 🆕🚧🔸🌐 404 🆕🔡 🍿 🔤Todo 🔤 🔡🐇🧰 id❗️ 🔤 not found🔤 🍆 🔤🔤❗️❗️
+  🍉
+
+  📗 What a todo is, as it is answered. The document shows it, and the tests hold every answer to it. 📗
+  🐇❗️ 🧬 ➡️ 🧬 🍇
+    ↩️ 👌 🔡 🔢 🆕🧬 🔤Todo🔤❗️ 🔤id🔤 1 9223372036854775807❗️ 🔤title🔤 1 200❗️ 🔤done🔤❗️
+  🍉
+
+  📗 What a todo is made from. The bound on a title is here and nowhere else. 📗
+  🐇❗️ 🧬🔸🌱 ➡️ 🧬 🍇
+    ↩️ 🔡 🆕🧬 🔤NewTodo🔤❗️ 🔤title🔤 1 200❗️
+  🍉
+
+  📗 What a change may say: a new title, whether it is done, or both. 📗
+  🐇❗️ 🧬🔸✏️ ➡️ 🧬 🍇
+    ↩️ 👌🔸🍬 🔡🔸🍬 🆕🧬 🔤TodoChange🔤❗️ 🔤title🔤 1 200❗️ 🔤done🔤❗️
+  🍉
+
+  📗 What the list may be asked for: the todos that are done, or those that are not. 📗
+  🐇❗️ 🧬🔸🔎 ➡️ 🧬 🍇
+    ↩️ 👌🔸🍬 🆕🧬 🔤TodoFilter🔤❗️ 🔤done🔤❗️
+  🍉
+
+  ❗️ 🗺 group 🗂 🍇
+    🧬🐇📒❗️ ➡️ whole
+    💭 The group's note is every one of its routes'.
+    🔖 group 🔤tag🔤 🔤Todos🔤❗️
+
+    📥 group 🔤🔤 🍇🎍🥡 r 📨 ➡️ 📬 🚧🚧
+      🆕🧷 r❗️ ➡️ input
+      🔎🔸🧬 input❗️ ➡️ asked
+      ↪️ 🚩 input❗️ 🍇
+        🚨 🧨 input❗️
+      🍉
+      👌🔸🍬 asked 🔤done🔤❗️ ➡️ done
+      ↩️ 📋 👇 done❗️
+    🍉❗️ ➡️ list
+    🔎 list 🧬🔸🔎🐇📒❗️❗️
+    📤🔸🍨 list 200 🔤The todos: all of them, or those that are done, or those that are not🔤 whole❗️
+    🔖 list 🔤summary🔤 🔤Lists the todos🔤❗️
+
+    💭 The route takes nothing but an integer, so the fallback is never what comes back.
+    📥 group 🔤/:id:int🔤 🍇🎍🥡 r 📨 ➡️ 📬 🚧🚧
+      📍 r 🔤id🔤 0❗️ ➡️ id
+      ↪️ 🔍 store id❗️ ➡️ todo 🍇
+        ↩️ 🌸🐇📬 🌸 todo❗️❗️
+      🍉
+      🚨 📭🐇📒 id❗️
+    🍉❗️ ➡️ one
+    📤 one 200 🔤The todo🔤 whole❗️
+    📤 one 404 🔤There is no todo of that number🔤❗️
+    🔖 one 🔤summary🔤 🔤Gives one todo🔤❗️
+
+    📮 group 🔤🔤 🍇🎍🥡 r 📨 ➡️ 📬 🚧🚧
+      🆕🧷 r❗️ ➡️ input
+      🌸🔸🧬 input❗️ ➡️ sent
+      ↪️ 🚩 input❗️ 🍇
+        🚨 🧨 input❗️
+      🍉
+      🔡 sent 🔤title🔤❗️ ➡️ title
+      💭 What the store raises is raised again here, for the app's mappers to answer.
+      🆗 todo 🌱 store title❗️ 🍇
+        ↩️ 🔖 🐣🐇📬 🌸 todo❗️❗️ 🔤Location🔤 🆕🔡 🍿 🔤/todos/🔤 🔡🐇🧰 🆔 todo❗️❗️ 🍆 🔤🔤❗️❗️
+      🍉
+      🙅‍♀️ error 🍇
+        🚨 🔄🐇🧰 error❗️
+      🍉
+    🍉❗️ ➡️ create
+    🌸 create 🧬🔸🌱🐇📒❗️❗️
+    📤 create 201 🔤The todo that was made. Location says where it is🔤 whole❗️
+    📤 create 409 🔤The list is full🔤❗️
+    🔖 create 🔤summary🔤 🔤Adds a todo🔤❗️
+
+    ✏️ group 🔤/:id:int🔤 🍇🎍🥡 r 📨 ➡️ 📬 🚧🚧
+      📍 r 🔤id🔤 0❗️ ➡️ id
+      🆕🧷 r❗️ ➡️ input
+      🌸🔸🧬 input❗️ ➡️ sent
+      ↪️ 🚩 input❗️ 🍇
+        🚨 🧨 input❗️
+      🍉
+      🔡🔸🍬 sent 🔤title🔤❗️ ➡️ title
+      👌🔸🍬 sent 🔤done🔤❗️ ➡️ done
+      ↪️ ✏️ store id title done❗️ ➡️ todo 🍇
+        ↩️ 🌸🐇📬 🌸 todo❗️❗️
+      🍉
+      🚨 📭🐇📒 id❗️
+    🍉❗️ ➡️ change
+    🌸 change 🧬🔸✏️🐇📒❗️❗️
+    📤 change 200 🔤The todo as it is now🔤 whole❗️
+    📤 change 404 🔤There is no todo of that number🔤❗️
+    🔖 change 🔤summary🔤 🔤Changes a todo's title, whether it is done, or both🔤❗️
+
+    🗑 group 🔤/:id:int🔤 🍇🎍🥡 r 📨 ➡️ 📬 🚧🚧
+      📍 r 🔤id🔤 0❗️ ➡️ id
+      ↪️ 🔥 store id❗️ 🍇
+        ↩️ 🕳🐇📬❗️
+      🍉
+      🚨 📭🐇📒 id❗️
+    🍉❗️ ➡️ remove
+    📤 remove 204 🔤The todo is gone🔤❗️
+    📤 remove 404 🔤There is no todo of that number🔤❗️
+    🔖 remove 🔤summary🔤 🔤Deletes a todo🔤❗️
+  🍉
+
+  📗 The todos as a JSON list: all of them, or the ones whose done flag is *done*. 📗
+  ❗️ 📋 done 🍬👌 ➡️ 📬 🍇
+    🆕🍨🐚🔡🍆❗️ ➡️ 🖍🆕items
+    🔂 todo 📋 store❗️ 🍇
+      ↪️ done ➡️ wanted 🍇
+        ↪️ wanted 🙌 ✔️ todo❗️ 🍇
+          🐻 items 🌸 todo❗️❗️
+        🍉
+      🍉
+      🙅 🍇
+        🐻 items 🌸 todo❗️❗️
+      🍉
+    🍉
+    ↩️ 🌸🐇📬 📚🐇🧾 items❗️❗️
+  🍉
+🍉

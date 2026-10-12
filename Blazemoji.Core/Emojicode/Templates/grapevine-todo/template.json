@@ -1,0 +1,7 @@
+{
+  "name": "Grapevine Todo API",
+  "description": "A small HTTP API on Grapevine, from its own Todo sample: routes, middleware and a controller. Run it, then send it requests from the Requests tab.",
+  "kind": "server",
+  "entry": "main.🍇",
+  "order": 30
+}

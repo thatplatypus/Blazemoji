@@ -1,0 +1,80 @@
+📜 🔤todos.🍇🔤
+
+📗
+  Builds the app, in two steps with the settings between them, as ASP.NET has
+  a builder and then an app:
+
+    🌱🐇🏗❗️ ➡️ app      a new app, with the sample's settings declared
+    📂 app❗️             the config file and the environment over them
+    🍷🐇🏗 app❗️          middleware and routes, from the settings as they now are
+📗
+🐇 🏗 🍇
+  📗 A new app that knows the sample's own settings, and has nothing else yet. 📗
+  🐇❗️ 🌱 ➡️ 🍷 🍇
+    🆕🍷❗️ ➡️ app
+
+    💭 Bodies here are small JSON documents, so there is no reason to accept a megabyte.
+    🎚 app 🔤limits.bodyBytes🔤 16384❗️
+
+    💭 How many todos the list holds.
+    🌱 app 🔤todo.capacity🔤 1000 1 1000000❗️
+    ↩️ app
+  🍉
+
+  📗 Gives *app* the sample's middleware and routes. What they are made from is read from the settings here and now, so it comes after 📂. 📗
+  🐇❗️ 🍷 app 🍷 🍇
+    💭 Middleware runs in registration order, wrapping everything after it. The logger is
+    💭 first, so that it sees every answer, the refusals of the layers behind it included.
+    🧱 app 📝 app❗️❗️
+
+    💭 Long answers that are text go out as gzip to a client that takes it. Second, so
+    💭 that whatever the layers and routes behind it answer is seen by it.
+    🧱 app 🤐 app 🆕🤐❗️❗️❗️
+
+    💭 The headers that make a browser careful with what it is given.
+    🆕🍨🐚🔡🍆❗️ ➡️ 🖍🆕csp
+    🐻 csp 🔤default-src 'self'; connect-src 'self'🔤❗️
+    🐻 csp 🔤; base-uri 'none'; form-action 'none'; frame-ancestors 'none'🔤❗️
+    🧱 app 🛡 app 🔖 🆕🛡❗️ 🔤Content-Security-Policy🔤 🆕🔡 csp 🔤🔤❗️❗️❗️❗️
+
+    🧱 app 🍇🎍🥡 r 📨 next 🍇📨➡️📬🍉 ➡️ 📬 🚧🚧
+      ↩️ 🔖 ⁉️ next r❗️ 🔤X-Powered-By🔤 🔤Grapevine🔤❗️
+    🍉❗️
+
+    💭 The store raises an error of its own when the list is full. That is the client
+    💭 asking for more than there is room for, not the server failing: a 409, not a 500.
+    🚑 app 🍇🎍🥡 error 🚧 r 📨 ➡️ 🍬📬
+      ↪️ 🔲 error 🚧🔸🈵 ➡️ full 🍇
+        ↩️ 📛🐇📬 409 💬 full❗️❗️
+      🍉
+      ↩️ 🤷‍♀️
+    🍉❗️
+
+    🔖 🔖 💓 app 🔤/health🔤❗️ 🔤summary🔤 🔤Says whether the server is well🔤❗️ 🔤tag🔤 🔤The server🔤❗️
+
+    💭 Says hello at the root, and is no part of the API.
+    🔖 📥 app 🔤/🔤 🍇🎍🥡 r 📨 ➡️ 📬 🚧🚧
+      ↩️ ✅🐇📬 🔤Hello from Grapevine 🍇🔤❗️
+    🍉❗️ 🔤openapi🔤 🔤hidden🔤❗️
+
+    💭 Minimal-API style routes.
+    🔖 🔖 📥 app 🔤/hello/:name🔤 🍇🎍🥡 r 📨 ➡️ 📬 🚧🚧
+      🆕🧾❗️ ➡️ json
+      🔡 json 🔤message🔤 🆕🔡 🍿 🔎 r 🔤greeting🔤 🔤Hello🔤❗️ 🔤, 🔤 📌 r 🔤name🔤 🔤🔤❗️ 🔤!🔤 🍆 🔤🔤❗️❗️
+      ↩️ 🌸🐇📬 📤 json❗️❗️
+    🍉❗️ 🔤summary🔤 🔤Greets whoever the path names🔤❗️ 🔤tag🔤 🔤Samples🔤❗️
+
+    🔖 🔖 📮 app 🔤/echo🔤 🍇🎍🥡 r 📨 ➡️ 📬 🚧🚧
+      ↩️ 🔖 ✅🐇📬 📄 r❗️❗️ 🔤Content-Type🔤 🔤text/plain🔤❗️
+    🍉❗️ 🔤summary🔤 🔤Answers with what it was sent🔤❗️ 🔤tag🔤 🔤Samples🔤❗️
+
+    💭 Nest-style controller with an injected service.
+    🆕🏪 🔧 app 🔤todo.capacity🔤❗️❗️ ➡️ store
+    🎛 app 🔤/todos🔤 🆕📒 store❗️❗️
+
+    💭 What all of the above says of itself, for whoever writes a client: the paths, what
+    💭 each takes and gives, and who may call. Last, though the order does not matter:
+    💭 the document is written when the first request comes.
+    📖 app 🔤/openapi.json🔤 🔤Todo API🔤 🔤1.0.0🔤❗️
+  🍉
+🍉
