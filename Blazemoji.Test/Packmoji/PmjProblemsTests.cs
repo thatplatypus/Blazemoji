@@ -66,6 +66,22 @@ namespace Blazemoji.Test.Packmoji
             shown.Message.ShouldBe("The message.");
         }
 
+        [Theory]
+        [InlineData("registry.unreachable")]
+        [InlineData("registry.mismatch")]
+        public void A_problem_with_the_registry_is_news_only_where_pmj_may_ask_and_never_in_pmjs_own_words(string code)
+        {
+            var reported = Problem(code, "the request for http://10.0.0.7/registry/v1/packages/a/b.json failed: Connection refused (10.0.0.7:80)")
+                with { Fix = "check the network and the address of the registry, and try again; to ask GitHub itself in the meantime, run the command again with --direct" };
+
+            PmjProblems.ForAVisitor(reported, Places, asksGitHub: false).ShouldBeNull();
+            var shown = PmjProblems.ForAVisitor(reported, Places, asksGitHub: true).ShouldNotBeNull();
+            shown.Code.ShouldBe(code);
+            shown.Message.ShouldBe(reported.Message);
+            shown.Reason.ShouldBe(PmjProblems.RegistrySaidReason);
+            shown.Fix.ShouldBe(PmjProblems.RegistryFix);
+        }
+
         [Fact]
         public void A_problem_that_names_a_folder_of_this_machine_is_not_passed_on_whatever_its_code()
         {

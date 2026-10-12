@@ -26,8 +26,8 @@ namespace Blazemoji.Test.Packages
                 Directory.Delete(_home, recursive: true);
         }
 
-        private PmjPackageManager Manager(string? scopes = "thatplatypus,emojicode", int atOnce = 4) =>
-            new(_pmj, Options.Create(new PackmojiOptions { Scopes = scopes, Home = _home, MaxAtOnce = atOnce }), NullLogger<PmjPackageManager>.Instance);
+        private PmjPackageManager Manager(string? scopes = "thatplatypus,emojicode", int atOnce = 4, string? registry = null) =>
+            new(_pmj, Options.Create(new PackmojiOptions { Scopes = scopes, Home = _home, MaxAtOnce = atOnce, Registry = registry }), NullLogger<PmjPackageManager>.Instance);
 
         private static PmjResult Answered(bool written, IEnumerable<LockedPackage> packages) =>
             new(PmjOutcome.Ran, 0, Json(true, written, packages, []), string.Empty);
@@ -80,6 +80,31 @@ namespace Blazemoji.Test.Packages
             told.Keys.Order().ShouldBe([PmjVariables.Home, PmjVariables.Scopes]);
             told[PmjVariables.Home].ShouldBe(_home);
             told[PmjVariables.Scopes].ShouldBe("emojicode,thatplatypus");
+        }
+
+        [Fact]
+        public async Task A_host_told_a_registry_tells_pmj_where_it_is_for_a_restore_and_for_a_resolve()
+        {
+            _pmj.Answer = _ => Answered(written: false, []);
+
+            await Manager(registry: " https://registry.example/packmoji ").RestoreAsync(Manifest, Lockfile, Cancellation);
+            await Manager(registry: "https://registry.example/packmoji").ResolveAsync(Manifest, null, Cancellation);
+
+            _pmj.Commands.Count.ShouldBe(2);
+            _pmj.Commands.ShouldAllBe(command => command.Environment![PmjVariables.Registry] == "https://registry.example/packmoji");
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("  ")]
+        public async Task A_host_told_no_registry_leaves_pmj_to_find_packages_on_GitHub_itself(string? registry)
+        {
+            _pmj.Answer = _ => Answered(written: false, []);
+
+            await Manager(registry: registry).RestoreAsync(Manifest, Lockfile, Cancellation);
+
+            _pmj.Commands.Single().Environment.ShouldNotBeNull().ShouldNotContainKey(PmjVariables.Registry);
         }
 
         [Fact]

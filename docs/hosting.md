@@ -162,6 +162,7 @@ What a host can set, under `"Packmoji"`:
 | Setting | What it is | Without it |
 | --- | --- | --- |
 | `Scopes` | Whose packages are taken: scopes with commas between them, or `*` for anyone's | No one's. The web host makes `thatplatypus,emojicode` its own default and the desktop host `*`, each in its `Program.cs` |
+| `Registry` | The address of a Packmoji registry for the host to find packages in: what its `v1` is under. The toolchain service never asks one | Packages are found on GitHub itself. The web host makes Packmoji's own registry its default, in its `Program.cs`, and the desktop host names none. Set to nothing, a host finds packages on GitHub itself |
 | `Path` | Where `pmj` is | `pmj/pmj` beside the app |
 | `Home` | The folder `pmj` keeps what it fetched in | `pmj`'s own, `.packmoji` in the home directory, which a desktop then shares with `pmj` on the command line |
 | `Timeout` | How long one `pmj` command may take | Two minutes |

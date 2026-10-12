@@ -506,11 +506,12 @@ namespace Blazemoji.Shared.State
                 return new Outcome(PackagesStatus.Unavailable, problems, null, Remember: true);
 
             // A problem with the two files is the same until they change. One about this
-            // moment (too much going on, out of time, GitHub out of reach, an answer nobody
-            // could read) is worth asking about again for the same files.
+            // moment (too much going on, out of time, GitHub or a registry out of reach, an
+            // answer nobody could read) is worth asking about again for the same files.
             var aboutTheMoment = problems.Any(problem =>
                 problem.Code is PackageProblemCodes.Busy or PackageProblemCodes.TimedOut or PackageProblemCodes.Unreadable or PackageProblemCodes.Toolchain
-                || problem.Code.StartsWith("github.", StringComparison.Ordinal));
+                || problem.Code.StartsWith("github.", StringComparison.Ordinal)
+                || problem.Code.StartsWith("registry.", StringComparison.Ordinal));
             return new Outcome(PackagesStatus.Failed, problems, null, Remember: !aboutTheMoment);
         }
 

@@ -391,6 +391,7 @@ namespace Blazemoji.Test.State
         [InlineData(PackageProblemCodes.TimedOut)]
         [InlineData(PackageProblemCodes.Unreadable)]
         [InlineData("github.unreachable")]
+        [InlineData("registry.unreachable")]
         public async Task A_failure_that_is_about_the_moment_and_not_the_files_is_asked_about_again(string code)
         {
             var projects = await ProjectsAsync(Stored());
