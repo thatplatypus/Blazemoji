@@ -13,6 +13,14 @@ namespace Blazemoji.Toolchain.Packmoji
 
     public sealed record PmjBuild(PmjReport Report, IReadOnlyList<BuiltPackage> Packages);
 
+    /// <summary>What <c>pmj install --json</c> answers, and <c>add</c>, <c>remove</c> and <c>update</c> with it.</summary>
+    /// <param name="Written">
+    /// Whether pmj wrote the project's files. False when the lockfile already answered the
+    /// manifest, and when pmj could not do what it was asked.
+    /// </param>
+    /// <param name="Packages">Every package the lockfile holds now. Empty when pmj could not do what it was asked.</param>
+    public sealed record PmjInstall(PmjReport Report, bool Written, IReadOnlyList<LockedPackage> Packages);
+
     /// <summary>
     /// Reads the one JSON object pmj puts on standard output when it is given <c>--json</c>.
     /// The text is another program's. A problem with a part missing or of the wrong kind is
@@ -22,22 +30,15 @@ namespace Blazemoji.Toolchain.Packmoji
     public static class PmjJson
     {
         public static PmjTree? ReadTree(string stdout) =>
-            Read(stdout, (report, packages) =>
-            {
-                var locked = new List<LockedPackage>();
-                foreach (var package in packages)
-                {
-                    var (name, version, sha256) = (Required(package, "name"), Required(package, "version"), Required(package, "sha256"));
-                    if (name is null || version is null || sha256 is null)
-                        return null;
-                    locked.Add(new LockedPackage(name, version, sha256));
-                }
+            Read(stdout, (root, report, packages) => Locked(packages) is { } locked ? new PmjTree(report, locked) : null);
 
-                return new PmjTree(report, locked);
-            });
+        public static PmjInstall? ReadInstall(string stdout) =>
+            Read(stdout, (root, report, packages) => Locked(packages) is { } locked
+                ? new PmjInstall(report, root.TryGetProperty("written", out var written) && written.ValueKind == JsonValueKind.True, locked)
+                : null);
 
         public static PmjBuild? ReadBuild(string stdout) =>
-            Read(stdout, (report, packages) =>
+            Read(stdout, (root, report, packages) =>
             {
                 var built = new List<BuiltPackage>();
                 foreach (var package in packages)
@@ -51,7 +52,22 @@ namespace Blazemoji.Toolchain.Packmoji
                 return new PmjBuild(report, built);
             });
 
-        private static T? Read<T>(string stdout, Func<PmjReport, IReadOnlyList<JsonElement>, T?> read)
+        /// <summary>The packages as a lockfile names them, or null when one lacks what names it.</summary>
+        private static List<LockedPackage>? Locked(IReadOnlyList<JsonElement> packages)
+        {
+            var locked = new List<LockedPackage>();
+            foreach (var package in packages)
+            {
+                var (name, version, sha256) = (Required(package, "name"), Required(package, "version"), Required(package, "sha256"));
+                if (name is null || version is null || sha256 is null)
+                    return null;
+                locked.Add(new LockedPackage(name, version, sha256));
+            }
+
+            return locked;
+        }
+
+        private static T? Read<T>(string stdout, Func<JsonElement, PmjReport, IReadOnlyList<JsonElement>, T?> read)
             where T : class
         {
             try
@@ -70,7 +86,7 @@ namespace Blazemoji.Toolchain.Packmoji
                     return null;
 
                 var problems = Objects(root, "diagnostics").Select(Problem).ToList();
-                return read(new PmjReport(ok.GetBoolean(), problems), packages);
+                return read(root, new PmjReport(ok.GetBoolean(), problems), packages);
             }
             catch (Exception exception) when (exception is JsonException or ArgumentException or InvalidOperationException)
             {

@@ -26,7 +26,9 @@ namespace Blazemoji.Services.Projects
     /// control, and edit its files elsewhere. So a project's files are the text files in it
     /// that the compiler would take by name, read afresh each time the project is opened.
     /// Everything else is left alone and left out: what is hidden, what is a link to somewhere
-    /// else, what is not text, and what cannot be read.
+    /// else, what is not text, and what cannot be read. In a project that has a
+    /// <c>packmoji.json</c>, the folders <c>packages</c> and <c>target</c> at its top are left
+    /// out as well: they are where pmj builds.
     /// </para>
     /// <para>
     /// Nothing is ever destroyed. A file that leaves a project, a file that something else put
@@ -44,6 +46,12 @@ namespace Blazemoji.Services.Projects
     {
         /// <summary>The file in a project's folder that makes it a project.</summary>
         public const string DescriptionFile = "blazemoji.json";
+
+        private const string ManifestFile = "packmoji.json";
+
+        // What pmj builds into when it is run in a project's folder: the packages the project
+        // depends on, and the project itself.
+        private static readonly string[] BuiltByPmj = ["packages", "target"];
 
         /// <summary>A file larger than this many bytes is not source, and is left out.</summary>
         public const int LargestFile = 1024 * 1024;
@@ -278,6 +286,11 @@ namespace Blazemoji.Services.Projects
         /// <summary>One entry that cannot be read is left out. It does not take the project with it.</summary>
         private async Task ReadFilesAsync(string folder, string prefix, Dictionary<string, string> into)
         {
+            // Someone may run pmj in a Packmoji project's folder themselves. What it builds
+            // there, at the top, is interface files and programs, not the project's text: taken
+            // in, they would be shown as its files and sent to the compiler with them.
+            var leaveOutWhatPmjBuilt = prefix.Length == 0 && File.Exists(Path.Combine(folder, ManifestFile));
+
             foreach (var path in Directory.GetFiles(folder))
             {
                 var name = Path.GetFileName(path);
@@ -299,7 +312,7 @@ namespace Blazemoji.Services.Projects
             foreach (var inner in Directory.GetDirectories(folder))
             {
                 var name = Path.GetFileName(inner);
-                if (name.StartsWith('.'))
+                if (name.StartsWith('.') || (leaveOutWhatPmjBuilt && BuiltByPmj.Any(built => ProjectsFolder.SameName(name, built))))
                     continue;
 
                 try

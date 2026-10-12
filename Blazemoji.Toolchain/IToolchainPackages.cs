@@ -16,7 +16,11 @@ namespace Blazemoji.Toolchain
         /// </summary>
         Task<DependencyAnswer> PrepareAsync(DependencyRequest request, CancellationToken cancellationToken = default);
 
-        /// <summary>Hands over one archive. It is kept only if its bytes are the digest it came under.</summary>
+        /// <summary>
+        /// Hands over one archive. It is kept only if its bytes are the digest it came under.
+        /// The stream is the caller's to dispose. It is read from where it stands, and may
+        /// have been closed by the time this returns.
+        /// </summary>
         Task<ArchiveOutcome> AddArchiveAsync(LockedPackage package, Stream content, CancellationToken cancellationToken = default);
 
         /// <returns>

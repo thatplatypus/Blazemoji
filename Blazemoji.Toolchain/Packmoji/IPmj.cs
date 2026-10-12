@@ -46,6 +46,7 @@ namespace Blazemoji.Toolchain.Packmoji
         public const string CompilerPackages = "EMOJICODE_PACKAGES_PATH";
         public const string CompilerInclude = "EMOJICODE_INCLUDE";
         public const string Cxx = "CXX";
+        public const string Scopes = "PACKMOJI_SCOPES";
 
         public static IReadOnlyList<string> Tokens { get; } = ["GITHUB_TOKEN", "GH_TOKEN"];
     }

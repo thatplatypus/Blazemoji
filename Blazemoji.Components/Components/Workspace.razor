@@ -4,6 +4,7 @@
 @using Blazemoji.Services.Projects
 @using Blazemoji.Shared.Models.Layout
 @using Blazemoji.Toolchain
+@using Blazemoji.Toolchain.Packmoji
 @using System.Text.Json
 @implements IDisposable
 
@@ -14,6 +15,7 @@
 @inject LocalStorageFiles _localStorageFiles
 @inject RunState _runState
 @inject ProjectState _projectState
+@inject PackagesState _packagesState
 @inject LayoutState _layoutState
 
 
@@ -60,7 +62,7 @@
                                     <MudIconButton Icon="@BlazemojiIcons.Save" OnClick="SaveEmojicode" data-testid="save-to-library" />
                                 </MudTooltip>
 
-                                <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle)" Color="Color.Success" data-testid="run-button">
+                                <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle || _preparingARunOf.Contains(_projectState.Current.Id))" Color="Color.Success" data-testid="run-button">
                                     Run Code
                                 </MudButton>
 
@@ -76,7 +78,7 @@
                 </First>
                 <Second>
                     <MudPaper Elevation="0" Outlined="true" Height="100%" Class="pa-2">
-                        <OutputPanel ProblemSelected="@RevealProblemAsync" ShowProblemFiles="@(_projectState.Current.Files.Count > 1)" />
+                        <OutputPanel ProblemSelected="@RevealProblemAsync" PackageProblemSelected="@RevealPackageProblemAsync" ShowProblemFiles="@(_projectState.Current.Files.Count > 1)" />
                     </MudPaper>
                 </Second>
             </SplitView>
@@ -99,6 +101,27 @@
     private string? _tabWanted;
     private bool _takeKeysWhenShown;
 
+    // The project and its two package files as they were when the packages were last asked
+    // for from here. They are asked for again when any of the three is another: a project
+    // is opened, or a manifest or a lockfile is added, deleted, renamed or written from
+    // outside the editor. What is typed into either is seen when typing pauses.
+    private (string ProjectId, string? Manifest, string? Lockfile)? _packagesAskedFor;
+
+    // Files whose text the project was given by something other than the editor, which the
+    // editor has not been told of yet.
+    private readonly HashSet<string> _rewritten = [];
+
+    private (int Line, int Column)? _placeToReveal;
+
+    // The projects a run is being prepared for, while any is. Preparing can take minutes when
+    // packages have to be built, and someone may open another project meanwhile and run that
+    // one too: Run is held for each project being prepared and for no other.
+    private readonly HashSet<string> _preparingARunOf = [];
+
+    // Each pause of typing takes the next number. Several can be waiting on one restore, and
+    // when it ends only the latest asks the compiler.
+    private int _settles;
+
     // Bringing the editor into line is several round trips to the browser, and another
     // render can arrive between two of them. A second pass beside the first would act on a
     // half-switched editor, so a render that arrives during a pass asks for one more.
@@ -119,6 +142,7 @@
         _runState.DiagnosticsChanged += OnDiagnosticsChanged;
         _projectState.StateChanged += OnProjectChanged;
         _layoutState.StateChanged += OnLayoutChanged;
+        _projectState.FileTextChanged += OnFileTextChanged;
     }
 
     private void OnRunStateChanged()
@@ -147,6 +171,12 @@
         InvokeAsync(StateHasChanged);
     }
 
+    private void OnFileTextChanged(string path)
+    {
+        _rewritten.Add(path);
+        InvokeAsync(StateHasChanged);
+    }
+
     private void OnEditorReady()
     {
         _editorReady = true;
@@ -167,6 +197,16 @@
             return;
 
         await _editorInLine.RunAsync();
+
+        // Last, and after the editor is in line: this waits for packages to be fetched and
+        // built, which can take minutes, and nothing else here should wait behind it.
+        var project = _projectState.Current;
+        var asking = PackageFilesOf(project);
+        if (_projectState.Loaded && _packagesAskedFor != asking)
+        {
+            _packagesAskedFor = asking;
+            await _packagesState.EnsureRestoredAsync(project);
+        }
     }
 
     /// <summary>
@@ -175,6 +215,16 @@
     /// </summary>
     private async Task BringEditorInLineAsync()
     {
+        // A path stays in the list until the editor has the new text, so that nothing in
+        // between takes the editor's older text for the file's.
+        foreach (var path in _rewritten.ToList())
+        {
+            if (_projectState.Current.Find(path) is { } rewritten)
+                await _editor.ReplaceTextAsync(Key(_projectState.Current.Id, path), rewritten.Content);
+
+            _rewritten.Remove(path);
+        }
+
         await ShowOpenFileAsync();
 
         if (!ReferenceEquals(_markedDiagnostics, _runState.Diagnostics))
@@ -189,9 +239,20 @@
             if (DiagnosticPositions.ToEditorRange(problem, _runState.SourceOf(problem)) is { } range)
                 await _editor.RevealAsync(range.StartLine, range.StartColumn);
         }
+
+        if (_placeToReveal is { } place)
+        {
+            _placeToReveal = null;
+            await _editor.RevealAsync(place.Line, place.Column);
+        }
     }
 
     private static string Key(string projectId, string path) => projectId + "/" + path;
+
+    private static (string ProjectId, string? Manifest, string? Lockfile) PackageFilesOf(Project project) => (
+        project.Id,
+        project.Find(PackagesState.ManifestPath)?.Content,
+        project.Find(PackagesState.LockfilePath)?.Content);
 
     private string PathOf(Diagnostic diagnostic) => diagnostic.File.Length > 0 ? diagnostic.File : _runState.DiagnosticsEntry;
 
@@ -235,30 +296,84 @@
         if (!_editorReady || _shown is not { } shown || shown.ProjectId != _projectState.Current.Id)
             return;
 
+        // The project was given this file's text by something other than the editor, and
+        // the editor has not been told yet. What it holds is the older text.
+        if (_rewritten.Contains(shown.Path))
+            return;
+
         // Read from the file's own model, which is the same whatever the editor is in the
         // middle of showing, so this takes no turn and waits for nothing.
         if (await _editor.GetCodeAsync(Key(shown.ProjectId, shown.Path)) is not { } text)
             return;
 
         // Another project may have been opened while the browser was answering, and it can
-        // have a file of the same name.
-        if (shown.ProjectId == _projectState.Current.Id)
+        // have a file of the same name. And the file may have been rewritten from outside in
+        // that time, in which case what the browser answered with is the older text.
+        if (shown.ProjectId == _projectState.Current.Id && !_rewritten.Contains(shown.Path))
             await _projectState.UpdateContentAsync(shown.Path, text);
     }
 
     protected async Task RunEmojiCodeClicked()
     {
-        await SyncOpenFileAsync();
+        var projectId = _projectState.Current.Id;
+        if (!_preparingARunOf.Add(projectId))
+            return;
+
+        try
+        {
+            await SyncOpenFileAsync();
+
+            // Another project may have been opened while the browser was answering.
+            if (_projectState.Current.Id != projectId)
+                return;
+
+            // The preparing asks about the project's two files as they now are, and that is
+            // said here for the reason a pause of typing says it.
+            _packagesAskedFor = PackageFilesOf(_projectState.Current);
+
+            // This is where versions are chosen and the lockfile written, when it has to be.
+            // A run whose packages are not ready is not started: the compiler would only
+            // say that it cannot find what the project imports.
+            if (!await _packagesState.PrepareForRunAsync(_projectState.Current))
+                return;
+        }
+        finally
+        {
+            // Each press holds its own project and nothing else, so another project's run,
+            // started since, is not let go of here.
+            _preparingARunOf.Remove(projectId);
+        }
+
         await _runState.RunAsync(CurrentTarget());
     }
 
     /// <summary>
-    /// Typing has paused: keep what was typed, and ask the compiler what it makes of it.
+    /// Typing has paused: keep what was typed, have the project's packages restored if its
+    /// two files are not the pair last restored, and ask the compiler what it makes of it.
     /// </summary>
     private async Task OnContentSettledAsync()
     {
+        var settle = ++_settles;
         await SyncOpenFileAsync();
-        await _runState.CheckAsync(CurrentTarget());
+
+        var project = _projectState.Current;
+
+        // Said before asking: the render that follows this would otherwise find the typed
+        // text is not what was last asked about and ask again, and an answer of the moment
+        // (busy, out of time) is not remembered, so that would be a second whole restore.
+        _packagesAskedFor = PackageFilesOf(project);
+        await _packagesState.EnsureRestoredAsync(project);
+
+        // Packages can take minutes, and every pause in that time waits here on the same
+        // restore. When it ends each would send a compile, all but one for nothing, and the
+        // toolchain takes only so many at once from everyone using it.
+        if (settle != _settles)
+            return;
+
+        // While packages are missing a check would only mark every import as not found.
+        // Another project may have been opened while these were being fetched.
+        if (_packagesState.AllowsACheck && project.Id == _projectState.Current.Id)
+            await _runState.CheckAsync(CurrentTarget());
     }
 
     private RunTarget CurrentTarget()
@@ -266,7 +381,7 @@
         var project = _projectState.Current;
         _compiledProjectId = project.Id;
         var files = project.Files.ToDictionary(file => file.Path, file => file.Content);
-        return new RunTarget(files, project.Entry, project.Kind == ProjectKind.Server);
+        return new RunTarget(files, project.Entry, project.Kind == ProjectKind.Server, _packagesState.Dependencies);
     }
 
     // What was typed in the file on show reaches the project when typing pauses. A tab can
@@ -318,6 +433,19 @@
 
         await SyncOpenFileAsync();
         _problemToReveal = diagnostic;
+        _projectState.SelectFile(path);
+        StateHasChanged();
+    }
+
+    private async Task RevealPackageProblemAsync(PackageProblem problem)
+    {
+        if (problem.File is not { } path || _projectState.Current.Find(path) is null)
+            return;
+
+        await SyncOpenFileAsync();
+        if (problem.Line > 0)
+            _placeToReveal = (problem.Line, Math.Max(1, problem.Column));
+
         _projectState.SelectFile(path);
         StateHasChanged();
     }
@@ -392,6 +520,7 @@
         _runState.DiagnosticsChanged -= OnDiagnosticsChanged;
         _projectState.StateChanged -= OnProjectChanged;
         _layoutState.StateChanged -= OnLayoutChanged;
+        _projectState.FileTextChanged -= OnFileTextChanged;
     }
 
 }

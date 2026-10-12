@@ -131,6 +131,49 @@ namespace Blazemoji.Test.Packmoji
         }
 
         [Fact]
+        public async Task pmj_is_told_the_scopes_when_it_builds_so_that_it_refuses_what_this_class_would()
+        {
+            await ReadyAsync(Sets(scopes: "thatplatypus,emojicode"));
+
+            var build = _pmj.Commands.Single(command => command.Arguments[0] == "build");
+            build.Environment.ShouldNotBeNull()[PmjVariables.Scopes].ShouldBe("emojicode,thatplatypus");
+        }
+
+        [Fact]
+        public async Task With_any_scope_allowed_pmj_is_told_no_scopes_which_is_how_it_is_told_any()
+        {
+            await ReadyAsync(Sets(scopes: PackageScopes.Any));
+
+            var build = _pmj.Commands.Single(command => command.Arguments[0] == "build");
+            build.Environment.ShouldNotBeNull().ShouldNotContainKey(PmjVariables.Scopes);
+        }
+
+        [Fact]
+        public async Task What_pmj_says_it_built_is_believed_only_when_it_is_what_the_lockfile_locks()
+        {
+            var sets = Sets();
+            Lock(Greeter, Words);
+            await StoreAsync(sets, Words, WordsBytes);
+            await StoreAsync(sets, Greeter, GreeterBytes);
+            var tree = JsonSerializer.Serialize(new
+            {
+                ok = true,
+                diagnostics = Array.Empty<object>(),
+                packages = new[] { Greeter, Words }.Select(package => new { name = package.Name, version = package.Version, sha256 = package.Sha256 }),
+            });
+            _pmj.Instead = command => new PmjResult(
+                PmjOutcome.Ran,
+                0,
+                command.Arguments[0] == "tree" ? tree : """{"ok":true,"diagnostics":[],"omittedDiagnostics":0,"packages":[]}""",
+                string.Empty);
+
+            var answer = await sets.PrepareAsync(Request, Cancellation);
+
+            answer.ShouldBeOfType<DependencyAnswer.Failed>().Problems.ShouldHaveSingleItem().Code.ShouldBe(PackageProblemCodes.Unreadable);
+            (await sets.PrepareAsync(Request, Cancellation)).ShouldBeOfType<DependencyAnswer.Failed>();
+        }
+
+        [Fact]
         public async Task The_same_packages_asked_for_again_are_ready_without_a_second_build()
         {
             var sets = Sets();

@@ -17,5 +17,16 @@ namespace Blazemoji.Test.Toolchain
             result.ExitCode.ShouldBe(0, result.Stderr);
             result.Stdout.Trim().ShouldMatch(@"^\d+\.\d+\.\d+");
         }
+
+        [Fact]
+        [Trait("Requires", "Packmoji")]
+        public void The_image_says_which_commit_of_Packmoji_its_pmj_was_built_from()
+        {
+            Assert.SkipUnless(PmjFixture.Available, PmjFixture.SkipReason);
+
+            var commit = File.ReadAllText(Path.Combine(Path.GetDirectoryName(PmjFixture.Path!)!, "packmoji.commit")).Trim();
+
+            commit.ShouldMatch("^[0-9a-f]{40}$");
+        }
     }
 }

@@ -65,5 +65,13 @@ namespace Blazemoji.Test.Packmoji
             PackageScopes.Parse("thatplatypus,emojicode").ToString().ShouldBe("emojicode, thatplatypus");
             PackageScopes.Parse("*").ToString().ShouldBe("*");
         }
+
+        [Fact]
+        public void pmj_is_given_the_list_in_order_and_is_given_nothing_for_any_scope_or_for_none()
+        {
+            PackageScopes.Parse("thatplatypus, emojicode").ForPmj.ShouldBe("emojicode,thatplatypus");
+            PackageScopes.Parse("*").ForPmj.ShouldBeNull();
+            PackageScopes.Parse(null).ForPmj.ShouldBeNull();
+        }
     }
 }

@@ -1167,5 +1167,110 @@ namespace Blazemoji.Test.State
             _run.Disposed.ShouldBeTrue();
             state.Status.ShouldBe(RunStatus.Idle);
         }
+
+        private static readonly CompileResult SetNotHeld = new(
+            false,
+            [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, "The project's packages are not built on the toolchain service.")],
+            null,
+            ReachedCompiler: false,
+            DependenciesMissing: true);
+
+        private readonly IPackageSets _packages = Substitute.For<IPackageSets>();
+
+        private RunState CreateStateWithPackages() => new(_toolchain, NullLogger<RunState>.Instance, _time, _packages);
+
+        private static RunTarget TargetOnSet(string? dependencies) =>
+            new(new Dictionary<string, string> { ["main.🍇"] = Code }, "main.🍇", Server: false, dependencies);
+
+        private void Compiling(string? dependencies, CompileResult result) =>
+            _toolchain.CompileAsync(Arg.Is<CompileRequest>(request => request.Dependencies == dependencies), Arg.Any<CancellationToken>()).Returns(result);
+
+        [Fact]
+        public async Task A_run_and_a_check_compile_against_the_set_the_target_names()
+        {
+            var error = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 1, 1, "Something is wrong.");
+            Compiling("set-1", new CompileResult(false, [error], null));
+            await using var state = CreateStateWithPackages();
+
+            await state.RunAsync(TargetOnSet("set-1"));
+            await state.CheckAsync(TargetOnSet("set-1"));
+
+            await _toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.Dependencies == "set-1" && !request.CheckOnly), Arg.Any<CancellationToken>());
+            await _toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.Dependencies == "set-1" && request.CheckOnly), Arg.Any<CancellationToken>());
+            await _packages.DidNotReceive().RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_set_the_toolchain_no_longer_holds_is_restored_once_and_compiled_again()
+        {
+            var error = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Variable \"nope\" not defined.");
+            Compiling("set-1", SetNotHeld);
+            Compiling("set-2", new CompileResult(false, [error], null));
+            _packages.RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("set-2");
+            await using var state = CreateStateWithPackages();
+
+            await state.RunAsync(TargetOnSet("set-1"));
+
+            state.Diagnostics.ShouldBe([error]);
+            await _packages.Received(1).RestoreAgainAsync("set-1", Arg.Any<CancellationToken>());
+            await _toolchain.Received(2).CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_second_refusal_is_reported_and_not_retried()
+        {
+            Compiling("set-1", SetNotHeld);
+            Compiling("set-2", SetNotHeld);
+            _packages.RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("set-2");
+            await using var state = CreateStateWithPackages();
+
+            await state.RunAsync(TargetOnSet("set-1"));
+
+            state.Status.ShouldBe(RunStatus.Idle);
+            state.Diagnostics.ShouldBe(SetNotHeld.Diagnostics);
+            await _packages.Received(1).RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            await _toolchain.Received(2).CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
+            await _toolchain.DidNotReceive().StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_set_that_cannot_be_restored_leaves_the_refusal_as_the_answer_and_compiles_no_more()
+        {
+            Compiling("set-1", SetNotHeld);
+            _packages.RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((string?)null);
+            await using var state = CreateStateWithPackages();
+
+            await state.RunAsync(TargetOnSet("set-1"));
+
+            state.Diagnostics.ShouldBe(SetNotHeld.Diagnostics);
+            await _toolchain.Received(1).CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_check_of_the_typing_restores_a_lost_set_too_and_shows_what_the_compiler_then_says()
+        {
+            var warning = new Diagnostic(DiagnosticSeverity.Warning, "main.🍇", 1, 1, "Something to know.");
+            Compiling("set-1", SetNotHeld);
+            Compiling("set-2", new CompileResult(true, [warning], null));
+            _packages.RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("set-2");
+            await using var state = CreateStateWithPackages();
+
+            await state.CheckAsync(TargetOnSet("set-1"));
+
+            state.Diagnostics.ShouldBe([warning]);
+            await _toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.Dependencies == "set-2" && request.CheckOnly), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task With_nobody_to_restore_it_a_lost_set_is_reported_as_it_is()
+        {
+            Compiling("set-1", SetNotHeld);
+            await using var state = CreateState();
+
+            await state.RunAsync(TargetOnSet("set-1"));
+
+            state.Diagnostics.ShouldBe(SetNotHeld.Diagnostics);
+            await _toolchain.Received(1).CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
+        }
     }
 }

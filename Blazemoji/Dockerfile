@@ -20,7 +20,7 @@ RUN /tmp/install-toolchain-deps.sh
 FROM sdk-deps AS pmj
 COPY packmoji.pin /tmp/packmoji.pin
 COPY docker/build-pmj.sh /tmp/build-pmj.sh
-RUN /tmp/build-pmj.sh /tmp/packmoji.pin /pmj
+RUN /tmp/build-pmj.sh /tmp/packmoji.pin /pmj linux-x64
 
 # What the tests need: the SDK, the compiler's needs, and pmj. scripts/test-in-docker.sh runs
 # the tests in a container made from this stage alone. The variable is the one the toolchain
@@ -94,6 +94,11 @@ ENTRYPOINT ["dotnet", "Blazemoji.Toolchain.Service.dll"]
 FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/aspnet:10.0 AS web
 WORKDIR /app
 COPY --from=publish-web /app/publish .
+# Beside the web app, which fetches a project's packages itself: the toolchain it hands them
+# to has no way to GitHub. What pmj fetches is kept under the temp directory, like everything
+# else a container of this image writes.
+COPY --from=pmj /pmj ./pmj
+ENV Packmoji__Home=/tmp/packmoji
 USER $APP_UID
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "Blazemoji.dll"]
@@ -112,5 +117,9 @@ ENV ToolchainClient__BaseUrl=http://127.0.0.1:5290
 # This image is what the public site runs. Both processes in it read this, and build
 # packages of these scopes and no others.
 ENV Packmoji__Scopes=thatplatypus,emojicode
+# One pmj for both processes, and one folder for what it keeps. The service then finds every
+# archive the web app fetched already there, and none has to be handed over.
+ENV Packmoji__Path=/app/pmj/pmj
+ENV Packmoji__Home=/tmp/packmoji
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/blazemoji-all-in-one"]

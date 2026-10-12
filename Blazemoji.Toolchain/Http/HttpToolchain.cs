@@ -25,12 +25,29 @@ namespace Blazemoji.Toolchain.Http
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var result = await response.Content.ReadFromJsonAsync<CompileResponseBody>(ToolchainJson.Options, cancellationToken);
-                    if (result is not null)
+                    CompileResponseBody? result;
+                    try
+                    {
+                        result = await response.Content.ReadFromJsonAsync<CompileResponseBody>(ToolchainJson.Options, cancellationToken);
+                    }
+                    catch (Exception exception) when (exception is JsonException or NotSupportedException)
+                    {
+                        // A page from something in between, or half an answer. It is not the
+                        // service's word about the program, and it is not an exception either.
+                        logger.LogError(exception, "The toolchain service answered a compile request with what could not be read");
+                        return Failed("The toolchain service gave an answer that could not be read.");
+                    }
+
+                    if (result is { Diagnostics: not null })
                         return new CompileResult(result.Ok, result.Diagnostics.Select(diagnostic => diagnostic.ToDiagnostic()).ToList(), result.BuildId);
+
+                    logger.LogError("The toolchain service answered a compile request with an answer that has no diagnostics");
+                    return Failed("The toolchain service gave an answer that could not be read.");
                 }
 
-                if (response.StatusCode == HttpStatusCode.Conflict)
+                // The service says this of a set it does not hold. A request that named no
+                // set cannot mean that, whatever it was that answered.
+                if (response.StatusCode == HttpStatusCode.Conflict && request.Dependencies is not null)
                 {
                     return new CompileResult(
                         false,

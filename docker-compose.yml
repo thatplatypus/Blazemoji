@@ -45,6 +45,9 @@ services:
     platform: linux/amd64
     environment:
       ToolchainClient__BaseUrl: http://toolchain:8080
+      # The same list the toolchain is given. The web app has it as its own default as well;
+      # this says it where the two containers can be seen side by side.
+      Packmoji__Scopes: thatplatypus,emojicode
     ports:
       - "127.0.0.1:${BLAZEMOJI_PORT:-5080}:8080"
     networks:

@@ -6,7 +6,7 @@ namespace Blazemoji.Shared.State
     /// Owns everything about the current compile and run: status, output, diagnostics and the
     /// outcome. Components render from it and ask it to run or stop; nothing else talks to the toolchain.
     /// </summary>
-    public sealed class RunState(IToolchain toolchain, ILogger<RunState> logger, TimeProvider timeProvider) : IAsyncDisposable
+    public sealed class RunState(IToolchain toolchain, ILogger<RunState> logger, TimeProvider timeProvider, IPackageSets? packages = null) : IAsyncDisposable
     {
         public const int MaxLines = 5000;
         public const int MaxLineLength = 4000;
@@ -131,7 +131,7 @@ namespace Blazemoji.Shared.State
 
             try
             {
-                var build = await toolchain.CompileAsync(new CompileRequest(files, target.Entry), compileCancellation.Token);
+                var build = await CompileAsync(files, target, checkOnly: false, compileCancellation.Token);
 
                 Diagnostics = build.Diagnostics;
                 DiagnosticsEntry = target.Entry;
@@ -210,7 +210,7 @@ namespace Blazemoji.Shared.State
             CompileResult result;
             try
             {
-                result = await toolchain.CompileAsync(new CompileRequest(files, target.Entry, CheckOnly: true), _disposal.Token);
+                result = await CompileAsync(files, target, checkOnly: true, _disposal.Token);
             }
             catch (OperationCanceledException)
             {
@@ -232,6 +232,25 @@ namespace Blazemoji.Shared.State
             _sources = files;
             if (changed)
                 DiagnosticsChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Compiles against the project's set of packages. A toolchain that was restarted
+        /// holds no sets, and says so. The set is then restored, once, and the compile asked
+        /// for again. A second refusal is the answer: asking for ever would hide a toolchain
+        /// that cannot keep a set at all.
+        /// </summary>
+        private async Task<CompileResult> CompileAsync(IReadOnlyDictionary<string, string> files, RunTarget target, bool checkOnly, CancellationToken cancellationToken)
+        {
+            var result = await toolchain.CompileAsync(new CompileRequest(files, target.Entry, checkOnly, target.Dependencies), cancellationToken);
+            // Only a compile that named a set can have lost one.
+            if (!result.DependenciesMissing || packages is null || target.Dependencies is not { } lost)
+                return result;
+
+            if (await packages.RestoreAgainAsync(lost, cancellationToken) is not { } restored)
+                return result;
+
+            return await toolchain.CompileAsync(new CompileRequest(files, target.Entry, checkOnly, restored), cancellationToken);
         }
 
         /// <summary>

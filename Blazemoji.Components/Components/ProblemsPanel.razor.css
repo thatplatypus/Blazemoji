@@ -8,3 +8,11 @@
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
 }
+
+/* Why a package problem happened and what to do about it, each on a line of its own under
+   its message. A digest or an address in them must not push the panel wider. */
+.problem-more {
+    display: block;
+    color: var(--mud-palette-text-secondary);
+    overflow-wrap: anywhere;
+}

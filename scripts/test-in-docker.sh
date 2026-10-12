@@ -34,7 +34,7 @@ docker run --rm --platform linux/amd64 \
     set -e
     mkdir /src
     cd /host
-    tar -cf - --exclude=./.git --exclude=bin --exclude=obj --exclude=./.superpowers --exclude=./.cerberus . | tar -xf - -C /src
+    tar -cf - --exclude=./.git --exclude=bin --exclude=obj --exclude=./.superpowers --exclude=./.cerberus --exclude=./Blazemoji.Toolchain/pmj . | tar -xf - -C /src
     cd /src
     extra="$*"
 

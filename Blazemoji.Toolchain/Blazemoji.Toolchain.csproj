@@ -16,4 +16,11 @@
     <InternalsVisibleTo Include="Blazemoji.Test" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- pmj for a desk, when scripts/get-pmj.sh has built one. It travels to the output of
+         whatever references this library, which is where each app looks for it. The images
+         are given theirs by the Dockerfile, and a packed desktop app has none yet. -->
+    <None Update="pmj\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

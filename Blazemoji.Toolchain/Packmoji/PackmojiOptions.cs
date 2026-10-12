@@ -23,5 +23,15 @@ namespace Blazemoji.Toolchain.Packmoji
 
         /// <summary>How long one pmj command that builds nothing may take.</summary>
         public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(2);
+
+        /// <summary>
+        /// The most pmj may print, in characters, on each of its two streams. What it prints
+        /// beyond that is read and thrown away, so that a project written to make pmj talk
+        /// cannot fill this process's memory. An answer that was cut short is not used.
+        /// </summary>
+        public int MaxOutput { get; set; } = 4 * 1024 * 1024;
+
+        /// <summary>How many pmj commands a host runs at once for the people using it. One beyond that is told to ask again.</summary>
+        public int MaxAtOnce { get; set; } = 4;
     }
 }

@@ -1,7 +1,10 @@
 #!/bin/sh
 # Runs inside an image that has the .NET SDK and curl. Builds pmj, Packmoji's command, from
 # the commit a pin file names, into a folder.
-#   docker/build-pmj.sh <pin file> <output folder>
+#   docker/build-pmj.sh <pin file> <output folder> [machine]
+#
+# The machine is a .NET runtime identifier, such as linux-x64. Without one, pmj is built for
+# the machine this runs on, which is what scripts/get-pmj.sh wants at a desk.
 #
 # Packmoji publishes no binary yet. Its own build makes a native program for one machine;
 # this one makes a program that runs on the .NET runtime, which every image here already has
@@ -14,6 +17,7 @@ set -eu
 
 pin="$1"
 out="$2"
+machine="${3:-}"
 
 commit="$(tr -d '[:space:]' < "$pin")"
 case "$commit" in
@@ -29,9 +33,13 @@ fi
 
 src="$(mktemp -d)"
 curl -fsSL "https://github.com/thatplatypus/Packmoji/archive/$commit.tar.gz" | tar -xz -C "$src" --strip-components=1
-dotnet publish "$src/src/Packmoji.Cli" -c Release -r linux-x64 --self-contained false \
+dotnet publish "$src/src/Packmoji.Cli" -c Release ${machine:+-r "$machine"} --self-contained false \
   -p:PublishAot=false -p:TreatWarningsAsErrors=false -o "$out"
 rm -rf "$src"
+
+# pmj built from an archive of a commit cannot say which commit it is. This says it for it,
+# so that an image can be asked.
+printf '%s\n' "$commit" > "$out/packmoji.commit"
 
 # Fails the build here, and not at the first compile, if what was built cannot start.
 "$out/pmj" --version

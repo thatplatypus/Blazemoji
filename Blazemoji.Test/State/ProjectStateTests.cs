@@ -827,5 +827,80 @@ namespace Blazemoji.Test.State
             state.OpenPaths.ShouldBe([Main]);
             state.OpenPath.ShouldBe(Main);
         }
+
+        [Fact]
+        public async Task A_file_written_for_the_project_is_added_saved_and_told_to_whoever_listens()
+        {
+            var state = await LoadedAsync();
+            var told = new List<string>();
+            var changes = 0;
+            state.FileTextChanged += told.Add;
+            state.StateChanged += () => changes++;
+
+            var written = await state.WriteFileAsync(state.Current.Id, "packmoji.lock", "the lockfile");
+
+            written.ShouldBeTrue();
+            state.Current.Find("packmoji.lock").ShouldNotBeNull().Content.ShouldBe("the lockfile");
+            state.Current.Files.Select(file => file.Path).ShouldBe(["main.🍇", "packmoji.lock"]);
+            (await _store.LoadAsync(state.Current.Id)).ShouldNotBeNull().Find("packmoji.lock").ShouldNotBeNull().Content.ShouldBe("the lockfile");
+            told.ShouldBe(["packmoji.lock"]);
+            changes.ShouldBe(1);
+            state.OpenPath.ShouldBe("main.🍇");
+        }
+
+        [Fact]
+        public async Task A_file_written_for_the_project_replaces_the_text_it_had_and_leaves_its_tab_alone()
+        {
+            var state = await LoadedAsync();
+            await state.WriteFileAsync(state.Current.Id, "packmoji.lock", "old");
+            state.SelectFile("packmoji.lock");
+            var told = new List<string>();
+            state.FileTextChanged += told.Add;
+
+            (await state.WriteFileAsync(state.Current.Id, "packmoji.lock", "new")).ShouldBeTrue();
+
+            state.OpenFile.Content.ShouldBe("new");
+            state.OpenPaths.ShouldBe(["main.🍇", "packmoji.lock"]);
+            told.ShouldBe(["packmoji.lock"]);
+        }
+
+        [Fact]
+        public async Task Writing_the_text_a_file_already_has_saves_nothing_and_tells_no_one()
+        {
+            var state = await LoadedAsync();
+            await state.WriteFileAsync(state.Current.Id, "packmoji.lock", "the same");
+            var told = new List<string>();
+            state.FileTextChanged += told.Add;
+
+            (await state.WriteFileAsync(state.Current.Id, "packmoji.lock", "the same")).ShouldBeTrue();
+
+            told.ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task A_file_written_for_a_project_that_is_no_longer_the_open_one_is_refused()
+        {
+            var state = await LoadedAsync();
+            var first = state.Current.Id;
+            (await state.CreateAsync("Another", "hello-world")).ShouldBeNull();
+
+            (await state.WriteFileAsync(first, "packmoji.lock", "for the first")).ShouldBeFalse();
+
+            state.Current.Find("packmoji.lock").ShouldBeNull();
+            (await _store.LoadAsync(first)).ShouldNotBeNull().Find("packmoji.lock").ShouldBeNull();
+        }
+
+        [Theory]
+        [InlineData("../packmoji.lock")]
+        [InlineData("")]
+        [InlineData("blazemoji.json")]
+        public async Task A_file_that_could_not_be_one_of_a_projects_is_refused(string path)
+        {
+            var state = await LoadedAsync();
+
+            (await state.WriteFileAsync(state.Current.Id, path, "text")).ShouldBeFalse();
+
+            state.Current.Files.Count.ShouldBe(1);
+        }
     }
 }

@@ -1,8 +1,10 @@
 @using System.Globalization
 @using Blazemoji.Toolchain
 @using Blazemoji.Interop
+@using Blazemoji.Toolchain.Packmoji
 @implements IAsyncDisposable
 @inject RunState State
+@inject PackagesState Packages
 @inject ProgramInputInterop InputScript
 
 <SegmentedTabs @bind-Active="_activeTab" AriaLabel="Output, problems and requests" CompactBelow="240" Class="fills-height" PanelClass="pt-2 scrolls-inside">
@@ -48,8 +50,8 @@
             </div>
         </div>
     </SegmentedTab>
-    <SegmentedTab Id="@ProblemsTab" Text="Problems" Count="@State.Diagnostics.Count" CountColor="@ProblemBadgeColor">
-        <ProblemsPanel Diagnostics="@State.Diagnostics" ShowFiles="@ShowProblemFiles" ProblemSelected="@ProblemSelected" />
+    <SegmentedTab Id="@ProblemsTab" Text="Problems" Count="@(State.Diagnostics.Count + Packages.Problems.Count)" CountColor="@ProblemBadgeColor">
+        <ProblemsPanel Diagnostics="@State.Diagnostics" PackageProblems="@Packages.Problems" ShowFiles="@ShowProblemFiles" ProblemSelected="@ProblemSelected" PackageProblemSelected="@PackageProblemSelected" />
     </SegmentedTab>
     <SegmentedTab Id="requests" Text="Requests">
         <RequestPanel />
@@ -74,22 +76,36 @@
     [Parameter]
     public EventCallback<Diagnostic> ProblemSelected { get; set; }
 
+    [Parameter]
+    public EventCallback<PackageProblem> PackageProblemSelected { get; set; }
+
     /// <summary>Say which file each problem is in. Wanted once a project has more than one.</summary>
     [Parameter]
     public bool ShowProblemFiles { get; set; }
 
-    private bool HasErrors => State.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    private bool HasCompilerErrors => State.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+
+    private bool HasPackageErrors => Packages.Problems.Any(problem => problem.IsError);
+
+    private bool HasErrors => HasCompilerErrors || HasPackageErrors;
 
     private Color ProblemBadgeColor => HasErrors ? Color.Error : Color.Warning;
 
-    private string ProgressClass => State.Status == RunStatus.Idle ? "output-progress output-progress-idle" : "output-progress";
+    // The packages stopped a run. It never reached the compiler, so the run state has nothing to say of it.
+    private bool PackagesStoppedARun => Packages.ProblemsAreFromARun && HasPackageErrors;
+
+    private bool GettingPackages => Packages.Status == PackagesStatus.Restoring;
+
+    private string ProgressClass => State.Status == RunStatus.Idle && !GettingPackages ? "output-progress output-progress-idle" : "output-progress";
 
     private string StatusText => State.Status switch
     {
         RunStatus.Compiling => "Compiling",
         RunStatus.Running => "Running",
+        _ when GettingPackages => "Getting packages",
+        _ when PackagesStoppedARun => "Packages failed",
         _ when State.LastRun is { } run => Describe(run),
-        _ when HasErrors && State.DiagnosticsAreFromARun => "Build failed",
+        _ when HasCompilerErrors && State.DiagnosticsAreFromARun => "Build failed",
         _ => "Ready",
     };
 
@@ -97,6 +113,7 @@
     {
         State.StateChanged += OnStateChanged;
         State.DiagnosticsChanged += OnDiagnosticsChanged;
+        Packages.StateChanged += OnPackagesChanged;
     }
 
     private void OnStateChanged()
@@ -128,7 +145,17 @@
     {
         // A run that failed has nothing else to show. A mistake noticed while someone is still
         // typing only updates the count on the tab, and leaves them looking at what they chose.
-        if (HasErrors && State.DiagnosticsAreFromARun)
+        if (HasCompilerErrors && State.DiagnosticsAreFromARun)
+            _activeTab = ProblemsTab;
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnPackagesChanged()
+    {
+        // As with the compiler's problems: what stopped a run is shown, and what was noticed
+        // while someone was typing only changes the count on the tab.
+        if (PackagesStoppedARun)
             _activeTab = ProblemsTab;
 
         InvokeAsync(StateHasChanged);
@@ -160,6 +187,7 @@
     {
         State.StateChanged -= OnStateChanged;
         State.DiagnosticsChanged -= OnDiagnosticsChanged;
+        Packages.StateChanged -= OnPackagesChanged;
 
         if (_self is null)
             return;

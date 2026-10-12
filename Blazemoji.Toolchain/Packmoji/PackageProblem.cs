@@ -31,5 +31,7 @@ namespace Blazemoji.Toolchain.Packmoji
         public const string Unreadable = "blazemoji.unreadable";
         public const string Scope = "blazemoji.scope";
         public const string TooLarge = "blazemoji.too-large";
+        public const string Busy = "blazemoji.busy";
+        public const string Toolchain = "blazemoji.toolchain";
     }
 }

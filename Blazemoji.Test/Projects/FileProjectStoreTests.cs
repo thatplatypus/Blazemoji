@@ -663,5 +663,38 @@ namespace Blazemoji.Test.Projects
         {
             new FileProjectStoreOptions().Root.ShouldBe(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Blazemoji"));
         }
+
+        [Fact]
+        public async Task What_pmj_built_in_a_Packmoji_projects_folder_is_no_part_of_the_project_and_stays_where_it_is()
+        {
+            await CreateStore().SaveAsync(Todo with { Files = [.. Todo.Files, new ProjectFile("packmoji.json", "{}")] });
+            Directory.CreateDirectory(InRoot("Todo API", "packages", "grapevine"));
+            File.WriteAllText(InRoot("Todo API", "packages", "grapevine", "🏛"), "an interface pmj built");
+            Directory.CreateDirectory(InRoot("Todo API", "target", "debug"));
+            File.WriteAllText(InRoot("Todo API", "target", "debug", "notes.txt"), "what pmj built");
+            Directory.CreateDirectory(InRoot("Todo API", "app", "packages"));
+            File.WriteAllText(InRoot("Todo API", "app", "packages", "mine.🍇"), "the project's own, deeper down");
+            var store = CreateStore();
+
+            var loaded = (await store.LoadAsync("abc123")).ShouldNotBeNull();
+            await store.SaveAsync(loaded with { Files = loaded.Files.Where(file => file.Path != "app/todos.🍇").ToList() });
+
+            loaded.Files.Select(file => file.Path).ShouldBe(["app/main.🍇", "app/packages/mine.🍇", "app/todos.🍇", "packmoji.json"]);
+            File.ReadAllText(InRoot("Todo API", "packages", "grapevine", "🏛")).ShouldBe("an interface pmj built");
+            File.Exists(InRoot("Todo API", "target", "debug", "notes.txt")).ShouldBeTrue();
+            Trashed().ShouldNotContain(path => path.Contains("🏛") || path.Contains("notes.txt"));
+        }
+
+        [Fact]
+        public async Task Without_a_manifest_a_folder_named_packages_is_the_projects_like_any_other()
+        {
+            await CreateStore().SaveAsync(Todo);
+            Directory.CreateDirectory(InRoot("Todo API", "packages"));
+            File.WriteAllText(InRoot("Todo API", "packages", "helper.🍇"), "a file of the project's");
+
+            var loaded = (await CreateStore().LoadAsync("abc123")).ShouldNotBeNull();
+
+            loaded.Files.Select(file => file.Path).ShouldContain("packages/helper.🍇");
+        }
     }
 }

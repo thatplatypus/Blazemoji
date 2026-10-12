@@ -2,10 +2,12 @@ using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Interop;
 using Blazemoji.Services.Layout;
 using Blazemoji.Services.Library;
+using Blazemoji.Services.Packages;
 using Blazemoji.Services.Projects;
 using Blazemoji.Services.Settings;
 using Blazemoji.Settings;
 using Blazemoji.Shared.State;
+using Blazemoji.Toolchain.Packmoji;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -16,14 +18,15 @@ namespace Blazemoji
     {
         /// <summary>
         /// Registers what the editor's components need that does not depend on the host: the
-        /// keyword catalog, the code intelligence, the project templates, the sample programs
-        /// and the state.
+        /// keyword catalog, the code intelligence, the project templates, the sample programs,
+        /// the package manager and the state.
         /// The host adds the rest: MudBlazor, the toolchain client, and its own
         /// <see cref="IProjectStore"/> and <c>ILibraryService</c>. docs/hosting.md has the list.
         /// </summary>
         /// <param name="configuration">
-        /// Where <see cref="ProjectTemplateOptions"/> and <see cref="SampleOptions"/> are read
-        /// from, each under its own <c>SectionName</c>. Without it the defaults apply.
+        /// Where <see cref="ProjectTemplateOptions"/>, <see cref="SampleOptions"/> and
+        /// <see cref="PackmojiOptions"/> are read from, each under its own <c>SectionName</c>.
+        /// Without it the defaults apply.
         /// </param>
         /// <remarks>
         /// Anything the host registered before this call is kept. That is how a host supplies
@@ -38,6 +41,7 @@ namespace Blazemoji
             {
                 services.Configure<ProjectTemplateOptions>(configuration.GetSection(ProjectTemplateOptions.SectionName));
                 services.Configure<SampleOptions>(configuration.GetSection(SampleOptions.SectionName));
+                services.Configure<PackmojiOptions>(configuration.GetSection(PackmojiOptions.SectionName));
             }
 
             foreach (var keyword in EmojicodeCatalog.All())
@@ -49,6 +53,12 @@ namespace Blazemoji
             services.TryAddSingleton<IProjectTemplates, FileProjectTemplates>();
             services.TryAddSingleton<ISamples, FileSamples>();
 
+            // One for the host: every visitor's packages are fetched into the same cache, and
+            // no more than a set number of pmj commands run at once for all of them.
+            services.TryAddSingleton<IPmj, PmjProcess>();
+            services.TryAddSingleton<IPackageManager, PmjPackageManager>();
+            services.TryAddSingleton<PackageUploads>();
+
             // One of each per session: per circuit on a server, per window on a desktop.
             services.TryAddScoped<IPackageLibrary, PackageLibrary>();
             services.TryAddScoped<EmojicodeLanguageInterop>();
@@ -56,6 +66,8 @@ namespace Blazemoji
             services.TryAddScoped<SplitViewInterop>();
             services.TryAddScoped<ProgramInputInterop>();
             services.TryAddScoped<RunState>();
+            services.TryAddScoped<PackagesState>();
+            services.TryAddScoped<IPackageSets>(provider => provider.GetRequiredService<PackagesState>());
             services.TryAddScoped<ProjectState>();
             services.TryAddScoped<RequestState>();
             services.TryAddScoped<LayoutState>();

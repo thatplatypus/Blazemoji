@@ -3,12 +3,14 @@ using Blazemoji.Emojicode;
 using Blazemoji.Emojicode.Intelligence;
 using Blazemoji.Interop;
 using Blazemoji.Services.Library;
+using Blazemoji.Services.Packages;
 using Blazemoji.Services.Projects;
 using Blazemoji.Services.Settings;
 using Blazemoji.Shared.Models.Projects;
 using Blazemoji.Shared.State;
 using Blazemoji.Toolchain;
 using Blazemoji.Toolchain.Http;
+using Blazemoji.Toolchain.Packmoji;
 using System.Text.RegularExpressions;
 using Bunit;
 using Microsoft.Extensions.Configuration;
@@ -40,6 +42,28 @@ namespace Blazemoji.Test
             Services.AddBlazemojiEditor();
             Services.AddSingleton(Substitute.For<IProjectStore>());
             Services.AddSingleton(Substitute.For<ILibraryService>());
+        }
+
+        [Fact]
+        public async Task The_editors_call_brings_the_packages_state_and_one_package_manager_for_everyone()
+        {
+            var services = new ServiceCollection();
+            services.AddToolchainClient(new ConfigurationBuilder().AddInMemoryCollection([]).Build());
+            services.AddBlazemojiEditor(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { [PackmojiOptions.SectionName + ":Scopes"] = "emojicode" })
+                .Build());
+            services.AddSingleton(Substitute.For<IProjectStore>());
+
+            // Disposed as a host disposes them: the state can only be disposed without blocking.
+            await using var provider = services.BuildServiceProvider(validateScopes: true);
+            await using var one = provider.CreateAsyncScope();
+            await using var two = provider.CreateAsyncScope();
+
+            provider.GetRequiredService<IOptions<PackmojiOptions>>().Value.Scopes.ShouldBe("emojicode");
+            provider.GetRequiredService<IPackageManager>().ShouldBeOfType<PmjPackageManager>();
+            one.ServiceProvider.GetRequiredService<IPackageManager>().ShouldBeSameAs(two.ServiceProvider.GetRequiredService<IPackageManager>());
+            one.ServiceProvider.GetRequiredService<PackagesState>().ShouldNotBeSameAs(two.ServiceProvider.GetRequiredService<PackagesState>());
+            one.ServiceProvider.GetRequiredService<IPackageSets>().ShouldBeSameAs(one.ServiceProvider.GetRequiredService<PackagesState>());
         }
 
         [Fact]
@@ -294,6 +318,74 @@ namespace Blazemoji.Test
             classes.Where(name => Regex.IsMatch(name, "^[pm]-(\\d+|auto)$")).ShouldBeEmpty();
             foreach (var bootstraps in new[] { "text-nowrap", "text-md-center" }.Where(classes.Contains))
                 styles.ShouldContain("." + bootstraps);
+        }
+
+        private static string? ScopesOfTheWebsite(string? told)
+        {
+            var settings = new Dictionary<string, string?>();
+            if (told is not null)
+                settings[PackmojiOptions.SectionName + ":Scopes"] = told;
+
+            return ScopesOfTheWebsite(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+        }
+
+        private static string? ScopesOfTheWebsite(IConfiguration configuration)
+        {
+            var services = new ServiceCollection();
+            services.AddBlazemojiEditor(configuration);
+            services.AddWebsitePackageScopes();
+            using var provider = services.BuildServiceProvider();
+            return provider.GetRequiredService<IOptions<PackmojiOptions>>().Value.Scopes;
+        }
+
+        private static string Said(string? scopes) => scopes is null ? "null" : $"\"{scopes}\"";
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("  ")]
+        public void A_website_told_an_empty_list_in_its_settings_takes_no_ones_packages(string told)
+        {
+            var scopes = ScopesOfTheWebsite(told);
+
+            PackageScopes.Parse(scopes).AllowsNothing.ShouldBeTrue($"the binder gave {Said(scopes)}");
+        }
+
+        [Fact]
+        public void A_website_whose_variable_is_set_to_nothing_takes_no_ones_packages()
+        {
+            const string Variable = "HOSTINGTESTS_Packmoji__Scopes";
+            Environment.SetEnvironmentVariable(Variable, string.Empty);
+            try
+            {
+                // On Unix a variable set to nothing exists; on Windows setting one to nothing removes it.
+                var exists = Environment.GetEnvironmentVariable(Variable) is not null;
+                Assert.SkipUnless(exists, "Here a variable set to nothing does not exist, so there is nothing to show.");
+                var scopes = ScopesOfTheWebsite(new ConfigurationBuilder().AddEnvironmentVariables("HOSTINGTESTS_").Build());
+
+                var allowsNothing = PackageScopes.Parse(scopes).AllowsNothing;
+                var wider = PackageScopes.Parse(scopes).Allows("@someone/thing");
+                wider.ShouldBeFalse($"the binder gave {Said(scopes)}");
+                allowsNothing.ShouldBeTrue($"the variable exists, empty, and the binder gave {Said(scopes)}");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(Variable, null);
+            }
+        }
+
+        [Fact]
+        public void The_website_takes_packages_of_two_scopes_without_being_told_and_of_others_only_when_it_is()
+        {
+            ScopesOfTheWebsite(told: null).ShouldBe("thatplatypus,emojicode");
+            ScopesOfTheWebsite(told: "emojicode").ShouldBe("emojicode");
+            PackageScopes.Parse(ScopesOfTheWebsite(told: null)).Allows("@someone/thing").ShouldBeFalse();
+        }
+
+        [Fact]
+        public void The_document_says_where_packages_are_configured()
+        {
+            Document().ShouldContain($"\"{PackmojiOptions.SectionName}\"");
+            Document().ShouldContain("scripts/get-pmj.sh");
         }
 
         private static string Document() => File.ReadAllText(Path.Combine(RepositoryRoot(), "docs", "hosting.md"));

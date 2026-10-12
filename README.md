@@ -50,7 +50,7 @@ The Emojicode compiler bundled in this repo is the x86_64 Linux build of 1.0 bet
 | `Blazemoji.Desktop` | The desktop host: the same editor in a window of its own, with projects kept as folders on disk. |
 | `Blazemoji.Components` | The editor as Razor components, with the state behind them: projects, editor, toolbox, output, problems and requests. |
 | `Blazemoji.Core` | The keyword catalog, the code intelligence, the project model and keeping projects on disk. No UI. |
-| `Blazemoji.Toolchain` | The toolchain contract (`IToolchain`) and `HttpToolchain`, its client. |
+| `Blazemoji.Toolchain` | The toolchain contract (`IToolchain`) and `HttpToolchain`, its client. It also holds what the hosts and the service both need to run `pmj`. |
 | `Blazemoji.Toolchain.Local` | Compiles and runs programs as local processes. Holds the compiler and stock packages. |
 | `Blazemoji.Toolchain.Service` | A small HTTP service in front of the local toolchain. |
 
@@ -83,6 +83,7 @@ docker run -p 5000:8080 blazemoji
 
 ```bash
 scripts/dev-toolchain.sh        # start; "scripts/dev-toolchain.sh stop" stops it
+scripts/get-pmj.sh              # once: pmj, for projects that have packages
 ```
 
 Either way the programs you run can reach the network, which `docker compose up` does not allow, so keep both to your own machine. For Grapevine to be there, run `scripts/build-grapevine.sh` once in this checkout first.
@@ -91,6 +92,7 @@ Either way the programs you run can reach the network, which `docker compose up`
 
 ```bash
 scripts/dev-toolchain.sh                    # the compiler, in its container
+scripts/get-pmj.sh                          # once: pmj, for projects that have packages
 dotnet run --project Blazemoji.Desktop
 ```
 
@@ -105,6 +107,8 @@ The sidebar (Files, Toolbox, Library) is beside the editor, and Output, Problems
 A project is a set of files that are compiled together, a name, and one file marked as the entry: the file handed to the compiler. Other files join in when a file includes them with `📜`, by a path from the including file. The **Files** tab lists them as a tree, and each file has a menu to rename it, make it the entry, or delete it. A file opened from the list gets a tab above the editor; a click on a tab brings its file back with the cursor where it was left, and the cross on a tab closes the tab and leaves the file in the project. A name with slashes puts a file in folders (`lib/greeter.🍇`).
 
 In the web app projects are kept in the browser's local storage, so they are still there after a reload and are not shared between browsers. In the desktop app they are folders on disk. New projects start from a template: a folder under `Blazemoji.Core/Emojicode/Templates` with a `template.json` and the files.
+
+A project that has a `packmoji.json` is a [Packmoji](https://github.com/thatplatypus/Packmoji) project. Its `packmoji.lock` says exactly which packages it uses, and those are fetched and built when the project is opened, with no click. Running the project is what chooses versions: a lockfile that is missing, or that no longer answers the manifest, is written then, as a file of the project. On the website a project may depend on packages of the scopes `thatplatypus` and `emojicode`; the desktop app takes any.
 
 A project runs either as a **Program**, which runs to the end and stops, or as a **Web server**, which keeps running until it is stopped or has had no request for ten minutes. While either runs, the line under the output sends it a line of input when Enter is pressed, and **End input** tells it there is no more. A program that reads input and is given none waits, until it is stopped or reaches its time limit of thirty seconds. A web server is told which port to listen on through the `PORT` environment variable. While it runs, the **Requests** tab sends it HTTP requests (method, path, headers, body) and shows the status, headers and body that come back.
 

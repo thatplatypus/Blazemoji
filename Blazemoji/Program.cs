@@ -22,6 +22,7 @@ builder.Services.AddRazorComponents()
 builder.Services.AddMudServices();
 builder.Services.AddToolchainClient(builder.Configuration);
 builder.Services.AddBlazemojiEditor(builder.Configuration);
+builder.Services.AddWebsitePackageScopes();
 
 // What this host supplies because it runs in a browser: projects, snippets, the layout and settings in local storage.
 builder.Services.AddBlazoredLocalStorage();
