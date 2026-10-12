@@ -733,5 +733,210 @@ namespace Blazemoji.Test.Components
 
             atOnce.ShouldBe(1, $"pmj was asked {asked} times and {atOnce} of those commands were still going at once");
         }
+
+        // Run on A while its packages are being built, open B and run it, come back to A
+        // while A's first preparation is still going.
+        [Fact]
+        public async Task A_run_of_another_project_does_not_let_go_of_the_first_and_the_first_is_run_once()
+        {
+            TheProjectHasPackages();
+            var other = new Project("p2", "Other", ProjectKind.Program, "a.🍇", [new ProjectFile("a.🍇", "the other project's own text")]);
+            _store.ListAsync().Returns([new ProjectSummary(Stored.Id, Stored.Name), new ProjectSummary(other.Id, other.Name)]);
+            _store.LoadAsync(other.Id).Returns(other);
+            var firstBuild = new TaskCompletionSource<DependencyAnswer>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var secondBuild = new TaskCompletionSource<DependencyAnswer>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _toolchainPackages.PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>()).Returns(firstBuild.Task, secondBuild.Task);
+            ModelHolds(1, "text of a");
+            ModelCreation(2).SetResult(Model(2));
+            ModelHolds(2, "the other project's own text");
+            ModelCreation(3).SetResult(Model(3));
+            ModelHolds(3, "text of a");
+            var click = new Microsoft.AspNetCore.Components.Web.MouseEventArgs();
+            var cut = RenderShowingTheFirstFile();
+
+            var firstPress = cut.InvokeAsync(() => cut.Find(RunButton).ClickAsync(click));
+            cut.WaitForAssertion(() => cut.Find(RunButton).HasAttribute("disabled").ShouldBeTrue());
+
+            await cut.InvokeAsync(() => Project.OpenAsync(other.Id));
+            cut.WaitForAssertion(() => cut.Find("[data-testid=open-file]").TextContent.ShouldContain("Other"));
+            cut.WaitForAssertion(() => JSInterop.Invocations[CreateModel].Count.ShouldBe(2));
+            await cut.InvokeAsync(() => cut.Find(RunButton).ClickAsync(click));
+            cut.WaitForAssertion(() => RunsOf(file: "b.🍇", has: false).ShouldBe(1));
+
+            await cut.InvokeAsync(() => Project.OpenAsync(Stored.Id));
+            cut.WaitForAssertion(() => cut.Find("[data-testid=open-file]").TextContent.ShouldContain("Two"));
+            cut.WaitForAssertion(() => JSInterop.Invocations[CreateModel].Count.ShouldBe(3));
+            cut.WaitForAssertion(() => _toolchainPackages.Received(2).PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>()));
+
+            firstPress.IsCompleted.ShouldBeFalse("the first press is still waiting for the packages");
+            var heldOnReturn = cut.Find(RunButton).HasAttribute("disabled");
+
+            Task secondPress = Task.CompletedTask;
+            if (!heldOnReturn)
+                secondPress = cut.InvokeAsync(() => cut.Find(RunButton).ClickAsync(click));
+
+            // The newer restore hears first that the set is built, and the older one a poll later.
+            secondBuild.SetResult(new DependencyAnswer.Ready("set-1", ["hello_words"]));
+            await secondPress.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken);
+            cut.WaitForAssertion(() => Services.GetRequiredService<PackagesState>().Status.ShouldBe(PackagesStatus.Ready));
+            var runsBeforeTheOlderRestoreEnded = RunsOf(file: "b.🍇", has: true);
+            firstBuild.SetResult(new DependencyAnswer.Ready("set-1", ["hello_words"]));
+            await firstPress.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken);
+
+            (heldOnReturn, runsBeforeTheOlderRestoreEnded, RunsOf(file: "b.🍇", has: true)).ShouldBe((true, 0, 1));
+        }
+
+        private int RunsOf(string file, bool has) => _toolchain.ReceivedCalls().Count(call =>
+            call.GetMethodInfo().Name == nameof(IToolchain.CompileAsync)
+            && call.GetArguments()[0] is CompileRequest { CheckOnly: false } request
+            && request.Files.ContainsKey(file) == has);
+
+        // A manifest typed in the editor, whose restore fails for a reason of the moment
+        // (which is not remembered): one pause is one ask of pmj.
+        [Fact]
+        public async Task A_typed_manifest_whose_restore_fails_for_the_moment_is_asked_of_pmj_once_for_one_pause()
+        {
+            TheProjectHasPackages();
+            var busy = new PackageProblem(PackageProblem.Error, PackageProblemCodes.Busy, "Too much is being built.", "the toolchain is busy", "try again");
+            _packageManager.RestoreAsync("the manifest, typed", Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new PackageRestore.Failed([busy]));
+            ModelHolds(1, "text of a");
+            ModelCreation(2).SetResult(Model(2));
+            ModelHolds(2, "the manifest, typed");
+            var cut = RenderShowingTheFirstFile();
+            var packages = Services.GetRequiredService<PackagesState>();
+            cut.WaitForAssertion(() => packages.Status.ShouldBe(PackagesStatus.Ready));
+            await cut.InvokeAsync(() => Project.SelectFile(PackagesState.ManifestPath));
+            cut.WaitForAssertion(() => JSInterop.Invocations[CreateModel].Count.ShouldBe(2));
+            cut.WaitForAssertion(() => cut.Find("[data-testid=open-file]").TextContent.ShouldContain(PackagesState.ManifestPath));
+            var editor = cut.FindComponent<EmojiCodeEditor>();
+
+            await cut.InvokeAsync(() => editor.Instance.ContentSettled.InvokeAsync());
+            cut.WaitForAssertion(() => packages.Status.ShouldBe(PackagesStatus.Failed));
+            Project.Current.Find(PackagesState.ManifestPath).ShouldNotBeNull().Content.ShouldBe("the manifest, typed");
+            await Task.Delay(TimeSpan.FromMilliseconds(500), Xunit.TestContext.Current.CancellationToken);
+
+            await _packageManager.Received(1).RestoreAsync("the manifest, typed", Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        }
+
+        // The project has the new text and its save is still on its way. A sync in that time
+        // must not take the editor's older text for the file's.
+        [Fact]
+        public async Task A_file_rewritten_whose_save_is_still_on_its_way_is_not_overwritten_by_what_the_editor_holds()
+        {
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [], null));
+            ModelHolds(1, "what the editor still holds");
+            var telling = JSInterop.SetupVoid(SetValue, invocation => (string?)invocation.Arguments[0] == Uri(1));
+            var cut = RenderShowingTheFirstFile();
+            var editor = cut.FindComponent<EmojiCodeEditor>();
+            var saving = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _store.SaveAsync(Arg.Any<Project>()).Returns(saving.Task);
+
+            var writing = cut.InvokeAsync(() => Project.WriteFileAsync(Stored.Id, "a.🍇", "rewritten for the project"));
+            var pause = cut.InvokeAsync(() => editor.Instance.ContentSettled.InvokeAsync());
+
+            var whileSaving = Project.Current.Find("a.🍇").ShouldNotBeNull().Content;
+            saving.SetResult();
+            telling.SetVoidResult();
+            await Task.WhenAll(writing, pause).WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken);
+            (whileSaving, Project.Current.Find("a.🍇").ShouldNotBeNull().Content).ShouldBe(("rewritten for the project", "rewritten for the project"));
+        }
+
+        // The rewrite lands while the browser is answering a sync.
+        [Fact]
+        public async Task A_file_rewritten_while_the_browser_was_answering_is_not_overwritten_by_the_answer()
+        {
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [], null));
+            var reading = JSInterop.Setup<string>("blazorMonaco.editor.model.getValue", invocation => (string?)invocation.Arguments[0] == Uri(1));
+            var telling = JSInterop.SetupVoid(SetValue, invocation => (string?)invocation.Arguments[0] == Uri(1));
+            var cut = RenderShowingTheFirstFile();
+            var editor = cut.FindComponent<EmojiCodeEditor>();
+
+            var pause = cut.InvokeAsync(() => editor.Instance.ContentSettled.InvokeAsync());
+            cut.WaitForAssertion(() => reading.Invocations.Count.ShouldBe(1));
+            await cut.InvokeAsync(() => Project.WriteFileAsync(Stored.Id, "a.🍇", "rewritten for the project"));
+            reading.SetResult("what the editor still holds");
+            await pause.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken);
+
+            Project.Current.Find("a.🍇").ShouldNotBeNull().Content.ShouldBe("rewritten for the project");
+            telling.SetVoidResult();
+        }
+
+        // Run pressed on one project, another opened while the browser was answering.
+        [Fact]
+        public async Task A_run_pressed_just_before_another_project_was_opened_runs_nothing()
+        {
+            var other = new Project("p2", "Other", ProjectKind.Program, "a.🍇", [new ProjectFile("a.🍇", "the other project's own text")]);
+            _store.LoadAsync(other.Id).Returns(other);
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [], null));
+            var reading = JSInterop.Setup<string>("blazorMonaco.editor.model.getValue", invocation => (string?)invocation.Arguments[0] == Uri(1));
+            ModelCreation(2).SetResult(Model(2));
+            var cut = RenderShowingTheFirstFile();
+            var running = cut.Find(RunButton).ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+            cut.WaitForAssertion(() => reading.Invocations.Count.ShouldBe(1));
+
+            await cut.InvokeAsync(() => Project.OpenAsync(other.Id));
+            reading.SetResult("typed into the first project");
+            await running.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken);
+
+            await _toolchain.DidNotReceive().CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
+            cut.WaitForAssertion(() => cut.Find(RunButton).HasAttribute("disabled").ShouldBeFalse());
+        }
+
+        // A run that has to lock: pmj chooses, the lockfile is written into the project, the
+        // page is drawn again because of the write and asks about the new pair itself.
+        [Fact]
+        public async Task A_run_that_locks_asks_pmj_and_the_toolchain_once_for_the_pair_it_wrote_and_runs_once()
+        {
+            TheProjectHasPackages();
+            _store.LoadAsync(Stored.Id).Returns(Stored with { Files = [.. Stored.Files, new ProjectFile(PackagesState.ManifestPath, "the manifest")] });
+            _packageManager.RestoreAsync(Arg.Any<string>(), Arg.Is<string?>(lockfile => lockfile == null), Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            var choosing = new TaskCompletionSource<PackageResolve>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _packageManager.ResolveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(choosing.Task);
+            var restoring = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _packageManager.RestoreAsync("the manifest", "chosen", Arg.Any<CancellationToken>()).Returns(restoring.Task);
+            ModelHolds(1, "text of a");
+            var cut = RenderShowingTheFirstFile();
+            var packages = Services.GetRequiredService<PackagesState>();
+            cut.WaitForAssertion(() => packages.Status.ShouldBe(PackagesStatus.OutOfDate));
+
+            var running = cut.InvokeAsync(() => cut.Find(RunButton).ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs()));
+            cut.WaitForAssertion(() => _packageManager.Received(1).ResolveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()));
+            choosing.SetResult(new PackageResolve.Resolved("chosen", [Words]));
+            cut.WaitForAssertion(() => _packageManager.Received(1).RestoreAsync("the manifest", "chosen", Arg.Any<CancellationToken>()));
+            running.IsCompleted.ShouldBeFalse("the run waits for what was locked to be restored");
+            restoring.SetResult(new PackageRestore.Restored([Words]));
+            await running.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken);
+
+            await _packageManager.Received(1).ResolveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+            await _packageManager.Received(1).RestoreAsync("the manifest", "chosen", Arg.Any<CancellationToken>());
+            await _toolchainPackages.Received(1).PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>());
+            await _toolchain.Received(1).CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
+            await _toolchain.Received(1).CompileAsync(
+                Arg.Is<CompileRequest>(request => !request.CheckOnly && request.Dependencies == "set-1" && request.Files[PackagesState.LockfilePath] == "chosen"),
+                Arg.Any<CancellationToken>());
+        }
+
+        // The rule that a project with no packmoji.json behaves as it did and costs no pmj,
+        // held at the page, where the three callers of the packages' state are.
+        [Fact]
+        public async Task A_project_with_no_manifest_asks_nothing_about_packages_when_opened_typed_in_and_run()
+        {
+            _toolchain.CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>()).Returns(new CompileResult(false, [], null));
+            ModelHolds(1, "text of a");
+            var cut = RenderShowingTheFirstFile();
+            var editor = cut.FindComponent<EmojiCodeEditor>();
+
+            await cut.InvokeAsync(() => editor.Instance.ContentSettled.InvokeAsync());
+            cut.WaitForAssertion(() => _toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly && request.Dependencies == null), Arg.Any<CancellationToken>()));
+            await cut.Find(RunButton).ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+
+            cut.WaitForAssertion(() => _toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => !request.CheckOnly && request.Dependencies == null), Arg.Any<CancellationToken>()));
+            _packageManager.ReceivedCalls().ShouldBeEmpty();
+            _toolchainPackages.ReceivedCalls().ShouldBeEmpty();
+            var packages = Services.GetRequiredService<PackagesState>();
+            packages.Status.ShouldBe(PackagesStatus.None);
+            packages.Problems.ShouldBeEmpty();
+            cut.Find(RunButton).HasAttribute("disabled").ShouldBeFalse();
+        }
     }
 }

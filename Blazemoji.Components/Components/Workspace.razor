@@ -62,7 +62,7 @@
                                     <MudIconButton Icon="@BlazemojiIcons.Save" OnClick="SaveEmojicode" data-testid="save-to-library" />
                                 </MudTooltip>
 
-                                <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle || _preparingARunOf == _projectState.Current.Id)" Color="Color.Success" data-testid="run-button">
+                                <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle || _preparingARunOf.Contains(_projectState.Current.Id))" Color="Color.Success" data-testid="run-button">
                                     Run Code
                                 </MudButton>
 
@@ -112,10 +112,11 @@
     private readonly HashSet<string> _rewritten = [];
 
     private (int Line, int Column)? _placeToReveal;
-    // The project a run is being prepared for, while one is. Preparing can take minutes when
-    // packages have to be built, and someone may open another project meanwhile: Run is held
-    // for the project being prepared and for no other.
-    private string? _preparingARunOf;
+
+    // The projects a run is being prepared for, while any is. Preparing can take minutes when
+    // packages have to be built, and someone may open another project meanwhile and run that
+    // one too: Run is held for each project being prepared and for no other.
+    private readonly HashSet<string> _preparingARunOf = [];
 
     // Each pause of typing takes the next number. Several can be waiting on one restore, and
     // when it ends only the latest asks the compiler.
@@ -200,10 +201,7 @@
         // Last, and after the editor is in line: this waits for packages to be fetched and
         // built, which can take minutes, and nothing else here should wait behind it.
         var project = _projectState.Current;
-        var asking = (
-            project.Id,
-            project.Find(PackagesState.ManifestPath)?.Content,
-            project.Find(PackagesState.LockfilePath)?.Content);
+        var asking = PackageFilesOf(project);
         if (_projectState.Loaded && _packagesAskedFor != asking)
         {
             _packagesAskedFor = asking;
@@ -250,6 +248,11 @@
     }
 
     private static string Key(string projectId, string path) => projectId + "/" + path;
+
+    private static (string ProjectId, string? Manifest, string? Lockfile) PackageFilesOf(Project project) => (
+        project.Id,
+        project.Find(PackagesState.ManifestPath)?.Content,
+        project.Find(PackagesState.LockfilePath)?.Content);
 
     private string PathOf(Diagnostic diagnostic) => diagnostic.File.Length > 0 ? diagnostic.File : _runState.DiagnosticsEntry;
 
@@ -313,10 +316,9 @@
     protected async Task RunEmojiCodeClicked()
     {
         var projectId = _projectState.Current.Id;
-        if (_preparingARunOf == projectId)
+        if (!_preparingARunOf.Add(projectId))
             return;
 
-        _preparingARunOf = projectId;
         try
         {
             await SyncOpenFileAsync();
@@ -324,6 +326,10 @@
             // Another project may have been opened while the browser was answering.
             if (_projectState.Current.Id != projectId)
                 return;
+
+            // The preparing asks about the project's two files as they now are, and that is
+            // said here for the reason a pause of typing says it.
+            _packagesAskedFor = PackageFilesOf(_projectState.Current);
 
             // This is where versions are chosen and the lockfile written, when it has to be.
             // A run whose packages are not ready is not started: the compiler would only
@@ -333,10 +339,9 @@
         }
         finally
         {
-            // Only if it is still this run that is being prepared: another may have been
-            // started, for another project, since.
-            if (_preparingARunOf == projectId)
-                _preparingARunOf = null;
+            // Each press holds its own project and nothing else, so another project's run,
+            // started since, is not let go of here.
+            _preparingARunOf.Remove(projectId);
         }
 
         await _runState.RunAsync(CurrentTarget());
@@ -352,6 +357,11 @@
         await SyncOpenFileAsync();
 
         var project = _projectState.Current;
+
+        // Said before asking: the render that follows this would otherwise find the typed
+        // text is not what was last asked about and ask again, and an answer of the moment
+        // (busy, out of time) is not remembered, so that would be a second whole restore.
+        _packagesAskedFor = PackageFilesOf(project);
         await _packagesState.EnsureRestoredAsync(project);
 
         // Packages can take minutes, and every pause in that time waits here on the same
