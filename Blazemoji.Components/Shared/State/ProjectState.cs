@@ -418,8 +418,10 @@ namespace Blazemoji.Shared.State
                 Current = Current with { Files = Sorted([.. Current.Files, new ProjectFile(path, content)]) };
             }
 
-            await SaveAsync();
+            // Told before the save, which can take a turn: until the editor has heard, it
+            // would hand its own older text back as the file's.
             FileTextChanged?.Invoke(path);
+            await SaveAsync();
             NotifyStateChanged();
             return true;
         }

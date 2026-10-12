@@ -28,11 +28,11 @@ else
                     }
                     @if (problem.Reason.Length > 0)
                     {
-                        <div class="problem-more" data-testid="problem-why">Why: @problem.Reason</div>
+                        <span class="problem-more" data-testid="problem-why">Why: @problem.Reason</span>
                     }
                     @if (problem.Fix.Length > 0)
                     {
-                        <div class="problem-more" data-testid="problem-fix">Fix: @problem.Fix</div>
+                        <span class="problem-more" data-testid="problem-fix">Fix: @problem.Fix</span>
                     }
                 </MudListItem>
             }

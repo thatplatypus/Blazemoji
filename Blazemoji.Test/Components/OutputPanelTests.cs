@@ -431,7 +431,7 @@ namespace Blazemoji.Test.Components
 
             await cut.InvokeAsync(() => _packages.EnsureRestoredAsync(WithAManifest));
 
-            cut.WaitForAssertion(() => cut.Markup.ShouldContain("Problems"));
+            cut.WaitForAssertion(() => cut.Find(".mud-badge").TextContent.Trim().ShouldBe("1"));
             cut.FindAll("[data-testid=package-problem]").ShouldBeEmpty();
             cut.Find("[data-testid=run-status]").TextContent.ShouldBe("Ready");
             _packages.Problems.Count.ShouldBe(1);

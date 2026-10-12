@@ -623,5 +623,73 @@ namespace Blazemoji.Test.Components
             Project.Current.Find("a.🍇").ShouldNotBeNull().Content.ShouldBe("rewritten for the project");
             telling.SetVoidResult();
         }
+
+        [Fact]
+        public async Task Run_is_held_for_the_project_being_prepared_and_for_no_other()
+        {
+            TheProjectHasPackages();
+            var other = new Project("p2", "Other", ProjectKind.Program, "a.🍇", [new ProjectFile("a.🍇", "the other project's own text")]);
+            _store.ListAsync().Returns([new ProjectSummary(Stored.Id, Stored.Name), new ProjectSummary(other.Id, other.Name)]);
+            _store.LoadAsync(other.Id).Returns(other);
+            var preparing = new TaskCompletionSource<DependencyAnswer>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _toolchainPackages.PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>()).Returns(preparing.Task);
+            ModelHolds(1, "text of a");
+            ModelCreation(2).SetResult(Model(2));
+            var cut = RenderShowingTheFirstFile();
+
+            var running = cut.InvokeAsync(() => cut.Find(RunButton).ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs()));
+
+            cut.WaitForAssertion(() => cut.Find(RunButton).HasAttribute("disabled").ShouldBeTrue());
+            await cut.InvokeAsync(() => Project.OpenAsync(other.Id));
+            cut.WaitForAssertion(() => cut.Find("[data-testid=open-file]").TextContent.ShouldContain("Other"));
+            cut.WaitForAssertion(() => cut.Find(RunButton).HasAttribute("disabled").ShouldBeFalse());
+
+            preparing.SetResult(new DependencyAnswer.Ready("set-1", ["hello_words"]));
+            await running.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken);
+        }
+
+        [Fact]
+        public async Task Only_the_latest_of_several_pauses_asks_the_compiler_when_the_packages_they_waited_for_are_ready()
+        {
+            TheProjectHasPackages();
+            var restoring = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _packageManager.RestoreAsync("the manifest", "a second lockfile", Arg.Any<CancellationToken>()).Returns(restoring.Task);
+            ModelHolds(1, "text of a");
+            var cut = RenderShowingTheFirstFile();
+            cut.WaitForAssertion(() => Services.GetRequiredService<PackagesState>().Status.ShouldBe(PackagesStatus.Ready));
+            var editor = cut.FindComponent<EmojiCodeEditor>();
+            await cut.InvokeAsync(() => Project.WriteFileAsync(Stored.Id, PackagesState.LockfilePath, "a second lockfile"));
+            cut.WaitForAssertion(() => _packageManager.Received(1).RestoreAsync("the manifest", "a second lockfile", Arg.Any<CancellationToken>()));
+
+            var pauses = new[]
+            {
+                cut.InvokeAsync(() => editor.Instance.ContentSettled.InvokeAsync()),
+                cut.InvokeAsync(() => editor.Instance.ContentSettled.InvokeAsync()),
+                cut.InvokeAsync(() => editor.Instance.ContentSettled.InvokeAsync()),
+            };
+            restoring.SetResult(new PackageRestore.Restored([Words]));
+            await Task.WhenAll(pauses).WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken);
+
+            await _toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task Deleting_the_manifest_in_the_file_panel_clears_the_package_problems_without_waiting_for_a_pause()
+        {
+            TheProjectHasPackages();
+            var problem = new PackageProblem(PackageProblem.Error, "release.invalid", "The release is not what was locked.", "its digest differs", "lock it again");
+            _packageManager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new PackageRestore.Failed([problem]));
+            var cut = RenderShowingTheFirstFile();
+            var packages = Services.GetRequiredService<PackagesState>();
+            cut.WaitForAssertion(() => packages.Status.ShouldBe(PackagesStatus.Failed));
+
+            await cut.InvokeAsync(() => Project.DeleteFileAsync(PackagesState.ManifestPath));
+
+            cut.WaitForAssertion(() =>
+            {
+                packages.Status.ShouldBe(PackagesStatus.None);
+                packages.Problems.ShouldBeEmpty();
+            });
+        }
     }
 }

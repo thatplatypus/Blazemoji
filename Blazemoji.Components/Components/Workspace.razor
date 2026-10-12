@@ -62,7 +62,7 @@
                                     <MudIconButton Icon="@BlazemojiIcons.Save" OnClick="SaveEmojicode" data-testid="save-to-library" />
                                 </MudTooltip>
 
-                                <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle || _preparingARun)" Color="Color.Success" data-testid="run-button">
+                                <MudButton Class="text-nowrap mr-2" Variant="@Variant.Filled" StartIcon="@BlazemojiIcons.Run" OnClick="RunEmojiCodeClicked" Disabled="@(!IsIdle || _preparingARunOf == _projectState.Current.Id)" Color="Color.Success" data-testid="run-button">
                                     Run Code
                                 </MudButton>
 
@@ -101,16 +101,25 @@
     private string? _tabWanted;
     private bool _takeKeysWhenShown;
 
-    // The project whose packages have been asked for. Each project is asked about once as
-    // it is opened; after that its two files are looked at when typing pauses.
-    private string? _packagesAskedFor;
+    // The project and its two package files as they were when the packages were last asked
+    // for from here. They are asked for again when any of the three is another: a project
+    // is opened, or a manifest or a lockfile is added, deleted, renamed or written from
+    // outside the editor. What is typed into either is seen when typing pauses.
+    private (string ProjectId, string? Manifest, string? Lockfile)? _packagesAskedFor;
 
     // Files whose text the project was given by something other than the editor, which the
     // editor has not been told of yet.
     private readonly HashSet<string> _rewritten = [];
 
     private (int Line, int Column)? _placeToReveal;
-    private bool _preparingARun;
+    // The project a run is being prepared for, while one is. Preparing can take minutes when
+    // packages have to be built, and someone may open another project meanwhile: Run is held
+    // for the project being prepared and for no other.
+    private string? _preparingARunOf;
+
+    // Each pause of typing takes the next number. Several can be waiting on one restore, and
+    // when it ends only the latest asks the compiler.
+    private int _settles;
 
     // Bringing the editor into line is several round trips to the browser, and another
     // render can arrive between two of them. A second pass beside the first would act on a
@@ -191,9 +200,13 @@
         // Last, and after the editor is in line: this waits for packages to be fetched and
         // built, which can take minutes, and nothing else here should wait behind it.
         var project = _projectState.Current;
-        if (_projectState.Loaded && _packagesAskedFor != project.Id)
+        var asking = (
+            project.Id,
+            project.Find(PackagesState.ManifestPath)?.Content,
+            project.Find(PackagesState.LockfilePath)?.Content);
+        if (_projectState.Loaded && _packagesAskedFor != asking)
         {
-            _packagesAskedFor = project.Id;
+            _packagesAskedFor = asking;
             await _packagesState.EnsureRestoredAsync(project);
         }
     }
@@ -291,20 +304,26 @@
             return;
 
         // Another project may have been opened while the browser was answering, and it can
-        // have a file of the same name.
-        if (shown.ProjectId == _projectState.Current.Id)
+        // have a file of the same name. And the file may have been rewritten from outside in
+        // that time, in which case what the browser answered with is the older text.
+        if (shown.ProjectId == _projectState.Current.Id && !_rewritten.Contains(shown.Path))
             await _projectState.UpdateContentAsync(shown.Path, text);
     }
 
     protected async Task RunEmojiCodeClicked()
     {
-        if (_preparingARun)
+        var projectId = _projectState.Current.Id;
+        if (_preparingARunOf == projectId)
             return;
 
-        _preparingARun = true;
+        _preparingARunOf = projectId;
         try
         {
             await SyncOpenFileAsync();
+
+            // Another project may have been opened while the browser was answering.
+            if (_projectState.Current.Id != projectId)
+                return;
 
             // This is where versions are chosen and the lockfile written, when it has to be.
             // A run whose packages are not ready is not started: the compiler would only
@@ -314,7 +333,10 @@
         }
         finally
         {
-            _preparingARun = false;
+            // Only if it is still this run that is being prepared: another may have been
+            // started, for another project, since.
+            if (_preparingARunOf == projectId)
+                _preparingARunOf = null;
         }
 
         await _runState.RunAsync(CurrentTarget());
@@ -326,10 +348,17 @@
     /// </summary>
     private async Task OnContentSettledAsync()
     {
+        var settle = ++_settles;
         await SyncOpenFileAsync();
 
         var project = _projectState.Current;
         await _packagesState.EnsureRestoredAsync(project);
+
+        // Packages can take minutes, and every pause in that time waits here on the same
+        // restore. When it ends each would send a compile, all but one for nothing, and the
+        // toolchain takes only so many at once from everyone using it.
+        if (settle != _settles)
+            return;
 
         // While packages are missing a check would only mark every import as not found.
         // Another project may have been opened while these were being fetched.
