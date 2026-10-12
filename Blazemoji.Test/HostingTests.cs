@@ -359,12 +359,13 @@ namespace Blazemoji.Test
             {
                 // On Unix a variable set to nothing exists; on Windows setting one to nothing removes it.
                 var exists = Environment.GetEnvironmentVariable(Variable) is not null;
+                Assert.SkipUnless(exists, "Here a variable set to nothing does not exist, so there is nothing to show.");
                 var scopes = ScopesOfTheWebsite(new ConfigurationBuilder().AddEnvironmentVariables("HOSTINGTESTS_").Build());
 
                 var allowsNothing = PackageScopes.Parse(scopes).AllowsNothing;
                 var wider = PackageScopes.Parse(scopes).Allows("@someone/thing");
                 wider.ShouldBeFalse($"the binder gave {Said(scopes)}");
-                allowsNothing.ShouldBeTrue($"the variable {(exists ? "exists, empty" : "does not exist")}, and the binder gave {Said(scopes)}");
+                allowsNothing.ShouldBeTrue($"the variable exists, empty, and the binder gave {Said(scopes)}");
             }
             finally
             {

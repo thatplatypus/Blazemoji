@@ -76,6 +76,11 @@ namespace Blazemoji.Shared.State
         private Pair? _about;
         private bool _remembered;
 
+        // The last set that was ready, and the two texts it was built from. A compile that
+        // names it was a compile of those texts, whatever the status has become since: this
+        // is how a compile that lost its set is known to be of what is open.
+        private (string Id, Pair Pair)? _lastReady;
+
         // The work going on for a pair, if any is: a restore, or a run's resolve with the
         // restore that follows it. It carries the number of its ask, and only the latest
         // ask's work may be joined: an older one's answer will be thrown away. A restore is
@@ -228,10 +233,15 @@ namespace Blazemoji.Shared.State
             // what was built into the set it named is there anything to give it: another
             // project's set would have its files compiled against packages that are not theirs.
             var pair = PairOf(projects.Current);
-            if (pair is null || pair != _about || Dependencies != lost)
+            if (pair is null || pair != _about || _lastReady != (lost, pair))
                 return null;
 
-            _remembered = false;
+            // While the status still names the lost set, nobody has asked for it again, and
+            // this does. Otherwise another compile that lost the same set already has, since
+            // a check and a run can both be with the toolchain, and that restore is joined.
+            if (Dependencies == lost)
+                _remembered = false;
+
             await EnsureRestoredAsync(projects.Current).WaitAsync(cancellationToken);
             return Status == PackagesStatus.Ready && pair == _about && PairOf(projects.Current) == pair ? Dependencies : null;
         }
@@ -513,6 +523,9 @@ namespace Blazemoji.Shared.State
 
             _about = about;
             _remembered = remembered;
+
+            if (status == PackagesStatus.Ready && dependencies is not null && about is not null)
+                _lastReady = (dependencies, about);
 
             if (Status == status && Dependencies == dependencies && ProblemsAreFromARun == fromARun && Problems.SequenceEqual(problems))
                 return;

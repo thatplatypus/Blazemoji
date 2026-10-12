@@ -105,6 +105,33 @@ namespace Blazemoji.Test.State
             }
         }
 
+        private static readonly CompileResult SetNotHeld = new(
+            false,
+            [new Diagnostic(DiagnosticSeverity.Error, string.Empty, 0, 0, "The project's packages are not built on the toolchain service.")],
+            null,
+            ReachedCompiler: false,
+            DependenciesMissing: true);
+
+        private static async Task<string> GotAsync(Task<string?> task)
+        {
+            try
+            {
+                return await task.WaitAsync(TimeSpan.FromSeconds(10), Cancellation) ?? "(nothing)";
+            }
+            catch (TimeoutException)
+            {
+                return "NEVER ENDED";
+            }
+        }
+
+        /// <summary>A pmj that ends inside the call that tells it to stop: a plain source, completed from the token's own callback.</summary>
+        private static Task<PackageRestore> EndsInsideCancel(CancellationToken token)
+        {
+            var source = new TaskCompletionSource<PackageRestore>();
+            token.Register(() => source.TrySetCanceled(token));
+            return source.Task;
+        }
+
         private static async Task<bool?> AnswerOf(Task<bool> task) => task.IsCompletedSuccessfully ? await task : null;
 
         /// <summary>Lets the state's own waits pass: each turn moves the clock on by one ask.</summary>
@@ -560,6 +587,7 @@ namespace Blazemoji.Test.State
             await state.EnsureRestoredAsync(projects.Current);
 
             (await state.RestoreAgainAsync("set-1", Cancellation)).ShouldBeNull();
+            await _manager.Received(2).RestoreAsync(Manifest, Lockfile, Arg.Any<CancellationToken>());
         }
 
         [Fact]
@@ -1126,6 +1154,165 @@ namespace Blazemoji.Test.State
             secondMayRun.ShouldBe(true, summary);
             ResolveCalls().ShouldBe(2, summary);
         }
+
+        // Two compiles named the same set and both come back "not held": the toolchain was
+        // restarted, or dropped the set for room. The second arrives while the first's restore
+        // is going on, for the same open, unchanged project, and joins it.
+        [Fact]
+        public async Task A_second_compile_that_lost_the_same_set_while_it_is_being_restored_again_is_given_it_too()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            Restores(Words);
+            var rebuilding = new TaskCompletionSource<DependencyAnswer>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _toolchain.PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<DependencyAnswer>(new DependencyAnswer.Ready("set-1", ["hello_words"])), rebuilding.Task);
+            await state.EnsureRestoredAsync(projects.Current);
+            state.Dependencies.ShouldBe("set-1");
+
+            var first = state.RestoreAgainAsync("set-1", Cancellation);
+            var statusWhileTheFirstRestores = state.Status;
+            var second = state.RestoreAgainAsync("set-1", Cancellation);
+            var secondWasAnsweredAtOnce = second.IsCompleted;
+            rebuilding.SetResult(new DependencyAnswer.Ready("set-1", ["hello_words"]));
+            var firstGot = await GotAsync(first);
+            var secondGot = await GotAsync(second);
+
+            var summary = $"status while the first restores {statusWhileTheFirstRestores}, the second was answered at once {secondWasAnsweredAtOnce}, the first got {firstGot}, the second got {secondGot}, restores {RestoreCalls()}";
+            firstGot.ShouldBe("set-1", summary);
+            secondGot.ShouldBe("set-1", summary);
+            RestoreCalls().ShouldBe(2, summary);
+        }
+
+        // Typing pauses and a check is sent; Run is pressed while the check is still with the
+        // toolchain, so both compiles name the set, and the toolchain has lost it. The run
+        // hears while the check's restore is going on, and waits for the set as a run that
+        // hears first does.
+        [Fact]
+        public async Task A_run_sent_while_a_check_was_with_the_toolchain_is_compiled_again_when_both_lost_the_set()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            Restores(Words);
+            var rebuilding = new TaskCompletionSource<DependencyAnswer>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _toolchain.PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<DependencyAnswer>(new DependencyAnswer.Ready("set-1", ["hello_words"])), rebuilding.Task);
+            await state.EnsureRestoredAsync(projects.Current);
+
+            var compiler = Substitute.For<IToolchain>();
+            var checking = new TaskCompletionSource<CompileResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var building = new TaskCompletionSource<CompileResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var theCompilersOwnWord = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 1, 1, "What the compiler says of the program.");
+            compiler.CompileAsync(Arg.Is<CompileRequest>(request => request.CheckOnly), Arg.Any<CancellationToken>())
+                .Returns(checking.Task, Task.FromResult(new CompileResult(false, [theCompilersOwnWord], null)));
+            compiler.CompileAsync(Arg.Is<CompileRequest>(request => !request.CheckOnly), Arg.Any<CancellationToken>())
+                .Returns(building.Task, Task.FromResult(new CompileResult(false, [theCompilersOwnWord], null)));
+            await using var runs = new RunState(compiler, NullLogger<RunState>.Instance, _time, state);
+            var target = new RunTarget(new Dictionary<string, string> { ["main.🍇"] = "🏁 🍇 🍉" }, "main.🍇", Server: false, state.Dependencies);
+
+            var check = runs.CheckAsync(target);
+            var run = runs.RunAsync(target);
+            checking.SetResult(SetNotHeld);
+            await UntilAsync(() => state.Status == PackagesStatus.Restoring, "the check has the set restored again");
+            building.SetResult(SetNotHeld);
+            var runWasOverBeforeTheSetWasBack = await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(3), Cancellation)) == run;
+            var shownBeforeTheSetWasBack = string.Join(" | ", runs.Diagnostics.Select(diagnostic => diagnostic.Message));
+            rebuilding.SetResult(new DependencyAnswer.Ready("set-1", ["hello_words"]));
+            var ran = await EndsAsync(run);
+            var checkedIt = await EndsAsync(check);
+
+            var compilesOfTheRun = compiler.ReceivedCalls().Count(call =>
+                call.GetMethodInfo().Name == nameof(IToolchain.CompileAsync) && call.GetArguments()[0] is CompileRequest { CheckOnly: false });
+            var shown = string.Join(" | ", runs.Diagnostics.Select(diagnostic => diagnostic.Message));
+            var summary = $"run {ran}, check {checkedIt}, the run was over before the set was back {runWasOverBeforeTheSetWasBack}, shown then \"{shownBeforeTheSetWasBack}\", "
+                + $"compiles of the run {compilesOfTheRun}, shown at the end \"{shown}\", packages {state.Status} {state.Dependencies}";
+            ran.ShouldBe("ended", summary);
+            compilesOfTheRun.ShouldBe(2, summary);
+            shown.ShouldBe(theCompilersOwnWord.Message, summary);
+        }
+
+        // A run waits on a restore; newer text overtakes it; the stopped restore ends inside
+        // the call that stops it and the run goes round its loop there and then. It finds the
+        // newer restore in place and joins it, which holds only while the stop is the last
+        // thing the asking does.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void Seen_on_one_thread_a_run_waiting_on_a_restore_that_is_stopped_joins_the_newer_one_inside_the_stop(bool postsAtOnce) => OneThread.Run(async () =>
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            var theOlderEnded = Task.CompletedTask;
+            _manager.RestoreAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(call =>
+            {
+                var older = EndsInsideCancel(call.Arg<CancellationToken>());
+                theOlderEnded = older;
+                return older;
+            });
+            var restoringB = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.RestoreAsync("b", Lockfile, Arg.Any<CancellationToken>()).Returns(restoringB.Task);
+            Builds("set-B");
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            await projects.WriteFileAsync("p1", PackagesState.ManifestPath, "b");
+            var pause = state.EnsureRestoredAsync(projects.Current);
+            var theOlderHadEndedAsThePauseReturned = theOlderEnded.IsCompleted;
+            var restoresAsThePauseReturned = RestoreCalls();
+            var runWasOverBeforeTheNewerRestore = preparing.IsCompleted;
+            await Task.Delay(200, Cancellation);
+            var restoresAMomentLater = RestoreCalls();
+            restoringB.SetResult(new PackageRestore.Restored([Words]));
+            var run = await EndsAsync(preparing);
+            var paused = await EndsAsync(pause);
+            var mayRun = await AnswerOf(preparing);
+
+            var summary = $"run {run} {mayRun}, pause {paused}, the older had ended as the pause returned {theOlderHadEndedAsThePauseReturned}, restores as the pause returned {restoresAsThePauseReturned}, "
+                + $"a moment later {restoresAMomentLater}, in all {RestoreCalls()}, the run was over before the newer restore {runWasOverBeforeTheNewerRestore}, status {state.Status} {state.Dependencies}";
+            theOlderHadEndedAsThePauseReturned.ShouldBeTrue(summary);
+            run.ShouldBe("ended", summary);
+            paused.ShouldBe("ended", summary);
+            runWasOverBeforeTheNewerRestore.ShouldBeFalse(summary);
+            mayRun.ShouldBe(true, summary);
+            state.Dependencies.ShouldBe("set-B", summary);
+            restoresAsThePauseReturned.ShouldBe(2, summary);
+            restoresAMomentLater.ShouldBe(2, summary);
+            RestoreCalls().ShouldBe(2, summary);
+        }, postsAtOnce);
+
+        // Each change of the manifest stops the restore a waiting run is on, and that costs the
+        // run one of its three turns inside the call that made the change known.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void Seen_on_one_thread_a_run_that_is_waiting_gives_up_at_the_third_change_of_the_manifest_and_not_before(bool postsAtOnce) => OneThread.Run(async () =>
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            _manager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(call => EndsInsideCancel(call.Arg<CancellationToken>()));
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            var pauses = new List<Task>();
+            var overAsEachChangeWasMadeKnown = new List<bool>();
+            for (var change = 1; change <= 3; change++)
+            {
+                await projects.WriteFileAsync("p1", PackagesState.ManifestPath, "changed " + change);
+                pauses.Add(state.EnsureRestoredAsync(projects.Current));
+                overAsEachChangeWasMadeKnown.Add(preparing.IsCompleted);
+            }
+
+            var mayRun = await AnswerOf(preparing);
+            var statusAsItGaveUp = state.Status;
+            var fromARun = state.ProblemsAreFromARun;
+            var restores = RestoreCalls();
+            await state.DisposeAsync();
+            await Task.WhenAll(pauses).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            var summary = $"over as each change was made known [{string.Join(", ", overAsEachChangeWasMadeKnown)}], run {mayRun}, status as it gave up {statusAsItGaveUp}, from a run {fromARun}, restores {restores}";
+            string.Join(", ", overAsEachChangeWasMadeKnown).ShouldBe("False, False, True", summary);
+            mayRun.ShouldBe(false, summary);
+            statusAsItGaveUp.ShouldBe(PackagesStatus.Restoring, summary);
+            restores.ShouldBe(4, summary);
+        }, postsAtOnce);
 
         [Fact]
         public void No_more_than_two_archives_are_on_their_way_from_one_host_at_once()
