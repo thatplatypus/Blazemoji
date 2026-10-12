@@ -26,7 +26,8 @@ case "$machine" in
     ;;
 esac
 
-lines="$(grep -E "^[0-9a-f]{64}  pmj-[0-9A-Za-z.+-]+-$machine$suffix\$" "$pin" || true)"
+# A pin that a checkout or an editor gave Windows line endings is the same pin.
+lines="$(tr -d '\r' < "$pin" | grep -E "^[0-9a-f]{64}  pmj-[0-9A-Za-z.+-]+-$machine$suffix\$" || true)"
 if [ -z "$lines" ] || [ "$(printf '%s\n' "$lines" | wc -l)" -ne 1 ]; then
   echo "$pin must hold one line for $machine: a SHA-256, two spaces, and the name of pmj's file." >&2
   exit 1
@@ -57,7 +58,7 @@ chmod +x "$out/pmj$suffix"
 
 # Fails here, and not at the first project that has packages, if what was fetched cannot
 # start on this machine or is not the version its name says.
-said="$("$out/pmj$suffix" --version)"
+said="$("$out/pmj$suffix" --version | tr -d '\r')"
 case "$said" in
   "$version" | "$version+"*) ;;
   *)

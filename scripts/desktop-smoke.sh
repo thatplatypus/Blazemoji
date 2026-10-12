@@ -8,7 +8,7 @@
 #   scripts/desktop-smoke.sh                 the build `dotnet run` would start
 #   scripts/desktop-smoke.sh --published     publish for this machine first, and test that
 #                                            (fetches pmj for it first: scripts/get-pmj.sh)
-#   scripts/desktop-smoke.sh --compile      also compile and run a program (needs the
+#   scripts/desktop-smoke.sh --compile       also compile and run a program (needs the
 #                                            toolchain service: scripts/dev-toolchain.sh)
 #   scripts/desktop-smoke.sh --app <path>    test a copy that is already built: the program
 #                                            itself, such as the one inside an unpacked release
@@ -101,6 +101,15 @@ if [ -n "${SMOKE_OUTPUT:-}" ]; then
 fi
 
 grep '^HERMES_SMOKE_' "$work/app.log" || true
+
+# The app runs the pmj check only when it is asked to, and passes without it otherwise. A
+# run that asked and has no line for it did not check: the request did not reach the app.
+if [ "$pmj" -eq 1 ] && ! grep -q '^HERMES_SMOKE_CHECK_PASS: pmj-came-with-the-app' "$work/app.log" \
+  && ! grep -q '^HERMES_SMOKE_CHECK_FAIL: pmj-came-with-the-app' "$work/app.log"; then
+  echo "The run was asked to check that pmj came with the app, and the app did not run that check." >&2
+  status=1
+fi
+
 if [ "$status" -ne 0 ] || ! grep -q '^HERMES_SMOKE_RESULT: PASSED' "$work/app.log"; then
   keep=1
   echo "The smoke run failed (exit code $status). What the app said besides:" >&2
