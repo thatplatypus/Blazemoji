@@ -17,7 +17,7 @@ namespace Blazemoji.Services.Projects
 
     /// <summary>
     /// Project templates read from folders on disk, once. A template is data, so adding one
-    /// needs no code: the Grapevine sample is put there by a script and is offered when present.
+    /// needs no code: a folder with a template.json and the files, beside the others.
     /// </summary>
     public sealed class FileProjectTemplates(IOptions<ProjectTemplateOptions> options, ILogger<FileProjectTemplates> logger) : IProjectTemplates
     {

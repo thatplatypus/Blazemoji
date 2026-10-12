@@ -19,7 +19,9 @@ namespace Blazemoji.Test.Toolchain
             await using var toolchain = ToolchainFixture.Create();
             var templates = new FileProjectTemplates(Options.Create(new ProjectTemplateOptions()), NullLogger<FileProjectTemplates>.Instance).All;
 
-            foreach (var template in templates.Where(template => template.Id != "grapevine-todo"))
+            // A template with a manifest needs its packages fetched and built first, which
+            // touches the network. The browser tests run those.
+            foreach (var template in templates.Where(template => template.Files.All(file => file.Path != "packmoji.json")))
             {
                 var request = new CompileRequest(template.Files.ToDictionary(file => file.Path, file => file.Content), template.Entry);
                 var build = await toolchain.CompileAsync(request, TestContext.Current.CancellationToken);

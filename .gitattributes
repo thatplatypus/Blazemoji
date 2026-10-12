@@ -9,3 +9,8 @@ Blazemoji.Toolchain.ContractTests/Packages/** -text
 # The pin is the file of digests that Packmoji's release carries, to the byte, and
 # docker/get-pmj.sh reads it by lines. A checkout must not give it Windows line endings.
 packmoji.pin -text
+
+# A template's manifest and lockfile are what pmj is given, to the byte: a checkout must not
+# give them Windows line endings.
+Blazemoji.Core/Emojicode/Templates/**/packmoji.json -text
+Blazemoji.Core/Emojicode/Templates/**/packmoji.lock -text

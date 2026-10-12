@@ -7,51 +7,69 @@ namespace Blazemoji.E2E
     /// </summary>
     public class IntelligenceFlowsTests(BrowserFixture browser)
     {
-        private const string NoGrapevine = "The Grapevine package is not built into this stack. Run scripts/build-grapevine.sh.";
+        // Where the app is made in the template's startup.🍇. A line typed after it has the
+        // app to complete on.
+        private const string TheAppIsMade = "🆕🍷❗️ ➡️ app";
 
         private static async Task<EditorPage> OpenTodoStartupAsync(BrowserFixture browser)
         {
+            Assert.SkipUnless(await BrowserFixture.PackagesCanBeFetchedAsync(), BrowserFixture.NoPackages);
             var editor = await EditorPage.OpenAsync(browser);
-            if (!await editor.HasTemplateAsync("grapevine-todo"))
+            try
             {
-                await editor.DisposeAsync();
-                Assert.Skip(NoGrapevine);
-            }
+                await editor.CreateProjectAsync("Todo API", "grapevine-todo");
 
-            await editor.CreateProjectAsync("Todo API", "grapevine-todo");
-            await editor.OpenFileAsync("Todo API", "startup.🍇");
-            return editor;
+                // Grapevine is the project's locked package: it has completion once it is built.
+                await editor.WaitForPackagesAsync(PackagesFlowsTests.BuildPatience);
+                await editor.OpenFileAsync("Todo API", "startup.🍇");
+                return editor;
+            }
+            catch
+            {
+                // Whoever called has no page to dispose of yet.
+                await editor.DisposeAsync();
+                throw;
+            }
         }
 
         [Fact]
+        [Trait("Requires", "GitHub")]
         public async Task A_dot_after_the_app_offers_its_routing_methods_and_says_what_they_do()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await OpenTodoStartupAsync(browser);
 
-            await editor.StartLineAfterAsync("➡️ app");
+            await editor.StartLineAfterAsync(TheAppIsMade);
             await editor.TypeAsync("app.");
 
+            // The app has some forty methods and the list shows a dozen of them at a time, in
+            // the order the package declares them. Middleware comes first.
             var offered = await editor.SuggestionTextsAsync();
             offered.ShouldContain(text => text.StartsWith("🧱 layer") && text.Contains("🍷"));
-            offered.ShouldContain(text => text.StartsWith("📥 path handler"));
-            offered.ShouldContain(text => text.StartsWith("📮 path handler"));
-            offered.ShouldContain(text => text.StartsWith("✏ path handler"));
-            offered.ShouldContain(text => text.StartsWith("🗑 path handler"));
 
             await editor.ShowSuggestionDetailsAsync();
             await editor.SuggestionDetails.GetByText("Adds middleware to the pipeline").WaitForAsync();
             (await editor.SuggestionDetails.InnerTextAsync()).ShouldContain("🧱 app layer");
+
+            // Typing narrows the list. The routes all take a path, which brings them into view.
+            await editor.TypeAsync("pa");
+            await editor.WaitForSuggestionAsync("📥 path handler");
+            var routes = await editor.SuggestionTextsAsync();
+            routes.ShouldContain(text => text.StartsWith("📥 path handler"));
+            routes.ShouldContain(text => text.StartsWith("📮 path handler"));
+            routes.ShouldContain(text => text.StartsWith("✏ path handler"));
+            routes.ShouldContain(text => text.StartsWith("🗑 path handler"));
             editor.ConsoleErrors.ShouldBeEmpty();
             await editor.ScreenshotAsync("p4-01-methods-after-a-dot");
         }
 
         [Fact]
+        [Trait("Requires", "GitHub")]
         public async Task Accepting_a_method_writes_the_call_and_shows_its_parameters_one_at_a_time()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
             await using var editor = await OpenTodoStartupAsync(browser);
-            await editor.StartLineAfterAsync("➡️ app");
+            await editor.StartLineAfterAsync(TheAppIsMade);
 
             await editor.TypeAsync("app.inb");
             (await editor.SuggestionTextsAsync()).ShouldHaveSingleItem().ShouldStartWith("📥 path handler");

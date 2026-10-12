@@ -6,7 +6,7 @@
 #   scripts/deploy-azure.sh --registry <name> [--image blazemoji] [--tag latest]
 #                           [--point <web app> <resource group>]
 #                           [--restart <web app> <resource group>]
-#                           [--in-azure] [--with-grapevine] [--build-only] [--yes]
+#                           [--in-azure] [--build-only] [--yes]
 #
 # An App Service runs the image its settings name, tag and all. One that names a tag which
 # moves, such as "latest", takes a new image when it restarts (--restart). One that names a
@@ -19,13 +19,10 @@
 # lines, where a push sends every layer: the one that holds the C++ compiler is about
 # 250 MB, and a connection that drops during an upload fails the whole thing ("use of
 # closed network connection"). It needs no Docker here. The commit has to be pushed to
-# GitHub first, and it cannot be combined with --with-grapevine. With --build-only the
-# registry builds and pushes nothing.
+# GitHub first. With --build-only the registry builds and pushes nothing.
 #
 # It builds what is committed at HEAD, not what is in the working folder, so the image is
-# the same whoever builds it. That also leaves Grapevine out: its package is built into
-# folders git ignores, and the site is public while Grapevine is not. --with-grapevine
-# builds from the working folder instead, with whatever is in it.
+# the same whoever builds it.
 #
 # Needs Docker running, unless --in-azure, and for anything but --build-only the Azure CLI
 # signed in to the account that owns the registry (az login).
@@ -39,7 +36,6 @@ web_app=""
 resource_group=""
 point_app=""
 point_group=""
-with_grapevine=0
 build_only=0
 in_azure=0
 asked=1
@@ -51,7 +47,6 @@ while [ $# -gt 0 ]; do
     --tag) tag="$2"; shift 2 ;;
     --restart) web_app="$2"; resource_group="$3"; shift 3 ;;
     --point) point_app="$2"; point_group="$3"; shift 3 ;;
-    --with-grapevine) with_grapevine=1; shift ;;
     --build-only) build_only=1; shift ;;
     --in-azure) in_azure=1; shift ;;
     --yes) asked=0; shift ;;
@@ -61,11 +56,6 @@ done
 
 if [ -z "$registry" ] && { [ "$build_only" -eq 0 ] || [ "$in_azure" -eq 1 ]; }; then
   echo "Say which registry with --registry <name>, or build here without pushing with --build-only." >&2
-  exit 2
-fi
-
-if [ "$with_grapevine" -eq 1 ] && [ "$in_azure" -eq 1 ]; then
-  echo "--in-azure builds what is committed, and Grapevine is not. Leave out one of the two." >&2
   exit 2
 fi
 
@@ -143,17 +133,12 @@ if [ "$in_azure" -eq 1 ]; then
   exit 0
 fi
 
-if [ "$with_grapevine" -eq 1 ]; then
-  context="."
-  echo "Building from the working folder, with whatever is in it."
-else
-  context="$(mktemp -d)"
-  made="$made $context"
-  git archive HEAD | tar -x -C "$context"
-  changed="$(git status --porcelain | wc -l | tr -d ' ')"
-  [ "$changed" -eq 0 ] || echo "Note: $changed uncommitted change(s) in the working folder are not in this image."
-  echo "Building what is committed at $commit."
-fi
+context="$(mktemp -d)"
+made="$made $context"
+git archive HEAD | tar -x -C "$context"
+changed="$(git status --porcelain | wc -l | tr -d ' ')"
+[ "$changed" -eq 0 ] || echo "Note: $changed uncommitted change(s) in the working folder are not in this image."
+echo "Building what is committed at $commit."
 
 docker build --platform linux/amd64 -f "$context/Blazemoji/Dockerfile" -t "$name:$tag" -t "$name:$commit" "$context"
 

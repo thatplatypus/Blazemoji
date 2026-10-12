@@ -116,6 +116,15 @@ namespace Blazemoji.Test.Intelligence
         }
 
         [Fact]
+        public void A_variable_made_from_what_a_method_gives_back_is_known_by_that_type()
+        {
+            var entries = Complete(App + "🗂 app 🔤/admin🔤❗️ ➡️ admin\nadmin.‸");
+
+            entries.Select(entry => entry.Label).ShouldBe(["📥 path handler"]);
+            entries.ShouldAllBe(entry => entry.Detail.StartsWith("🗂"));
+        }
+
+        [Fact]
         public void A_closure_parameter_works_as_a_receiver()
         {
             var entries = Complete(App + "📥 app 🔤/🔤 🍇🎍🥡 r 📨 ➡️ 📬\n  r.‸\n🍉❗️");

@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "root": {
+    "dependencies": [
+      "@thatplatypus/grapevine@0.2.0"
+    ],
+    "devDependencies": []
+  },
+  "packages": [
+    {
+      "name": "@thatplatypus/crypto",
+      "version": "0.1.0",
+      "source": "github.com/thatplatypus/grapevine",
+      "releaseTag": "crypto-v0.1.0",
+      "asset": "crypto-0.1.0.pmj.tar.gz",
+      "sha256": "8150116d875b82482156009d92283a3f890e95e7ed129876a1aeff5fe389b604",
+      "verified": "checksum",
+      "dependencies": []
+    },
+    {
+      "name": "@thatplatypus/deflate",
+      "version": "0.1.0",
+      "source": "github.com/thatplatypus/grapevine",
+      "releaseTag": "deflate-v0.1.0",
+      "asset": "deflate-0.1.0.pmj.tar.gz",
+      "sha256": "a14085d358d43a0557861d8b41873d8487fc484446abf513835994d6078ddc41",
+      "verified": "checksum",
+      "dependencies": []
+    },
+    {
+      "name": "@thatplatypus/grapevine",
+      "version": "0.2.0",
+      "source": "github.com/thatplatypus/grapevine",
+      "releaseTag": "grapevine-v0.2.0",
+      "asset": "grapevine-0.2.0.pmj.tar.gz",
+      "sha256": "899b0fd5c6eb445d3dd1daac006a1a0dea254928b695cc64aa1b74289b89f634",
+      "verified": "checksum",
+      "dependencies": [
+        "@thatplatypus/crypto@0.1.0",
+        "@thatplatypus/deflate@0.1.0"
+      ]
+    }
+  ]
+}
