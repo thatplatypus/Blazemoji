@@ -7,7 +7,8 @@
 #
 #   scripts/desktop-smoke.sh                 the build `dotnet run` would start
 #   scripts/desktop-smoke.sh --published     publish for this machine first, and test that
-#   scripts/desktop-smoke.sh --compile       also compile and run a program (needs the
+#                                            (fetches pmj for it first: scripts/get-pmj.sh)
+#   scripts/desktop-smoke.sh --compile      also compile and run a program (needs the
 #                                            toolchain service: scripts/dev-toolchain.sh)
 #   scripts/desktop-smoke.sh --app <path>    test a copy that is already built: the program
 #                                            itself, such as the one inside an unpacked release
@@ -25,6 +26,7 @@ cd "$(dirname "$0")/.."
 
 published=0
 compile=0
+pmj=0
 app=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -45,7 +47,14 @@ if [ -n "$app" ]; then
     /* | ?:*) ;;
     *) app="$(pwd)/$app" ;;
   esac
+
+  # A copy that is already built is a release, and a release carries pmj.
+  pmj=1
 elif [ "$published" -eq 1 ]; then
+  # A published app is what a release packs, so it is given pmj as a release is.
+  scripts/get-pmj.sh
+  pmj=1
+
   rid="$(dotnet --info | tr -d '\r' | awk '/^ *RID:/ { print $2; exit }')"
   echo "Publishing for $rid..."
   dotnet publish Blazemoji.Desktop/Blazemoji.Desktop.csproj -c Release -r "$rid" --self-contained \
@@ -56,6 +65,11 @@ else
   dotnet build Blazemoji.Desktop/Blazemoji.Desktop.csproj > "$work/build.log" 2>&1 \
     || { tail -30 "$work/build.log"; exit 1; }
   app="$(pwd)/Blazemoji.Desktop/bin/Debug/net10.0/Blazemoji"
+
+  # A build for a desk has a pmj only where scripts/get-pmj.sh was run.
+  if [ -e Blazemoji.Toolchain/pmj/pmj ] || [ -e Blazemoji.Toolchain/pmj/pmj.exe ]; then
+    pmj=1
+  fi
 fi
 
 [ -f "$app" ] || app="$app.exe"
@@ -75,6 +89,7 @@ status=0
   HERMES_SMOKE_TEST_TIMEOUT="$limit" \
   HERMES_SMOKE_TEST_RESULT="$(native "$work/result.json")" \
   BLAZEMOJI_SMOKE_COMPILE="$compile" \
+  BLAZEMOJI_SMOKE_PMJ="$pmj" \
   BLAZEMOJI_SMOKE_PROJECTS="$(native "$work/projects")" \
     perl -e 'alarm shift; exec @ARGV or die "could not start $ARGV[0]: $!\n"' "$((limit + 60))" "$app" > "$work/app.log" 2>&1
 ) || status=$?

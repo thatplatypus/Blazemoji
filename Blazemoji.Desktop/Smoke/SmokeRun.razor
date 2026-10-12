@@ -4,12 +4,14 @@
 @using Blazemoji.Services.Projects
 @using Blazemoji.Services.Settings
 @using Blazemoji.Shared.Models.Layout
+@using Blazemoji.Toolchain.Packmoji
 @inject SmokeSession Session
 @inject SmokeInterop Interop
 @inject ISamples Samples
 @inject IProjectTemplates Templates
 @inject ILayoutStore LayoutStore
 @inject ISettingsStore SettingsStore
+@inject IPmj Pmj
 
 @* On the page only for a smoke run. Has the page check itself once it is up, adds what only
    this side can see, and hands the lot to the session, which reports it and closes the app. *@
@@ -22,6 +24,7 @@
     private const string IconShipped = "icon-came-with-the-app";
     private const string LayoutOnDisk = "layout-is-kept-on-disk";
     private const string SettingsOnDisk = "settings-are-kept-on-disk";
+    private const string PmjShipped = "pmj-came-with-the-app";
 
     // What FileProjectTemplates offers when it finds no templates beside the app.
     private const string TemplateWhenNoneAreFound = "hello-world";
@@ -48,6 +51,9 @@
         checks.Add(TheIconCameWithTheApp());
         checks.Add(await TheLayoutIsOnDiskAsync());
         checks.Add(await TheSettingsAreOnDiskAsync());
+        if (Session.AlsoPmj)
+            checks.Add(await PmjCameWithTheAppAsync());
+
         Session.Report(checks);
     }
 
@@ -121,6 +127,22 @@
         }
 
         return new SmokeCheckOutcome(SettingsOnDisk, problem is null, timer.ElapsedMilliseconds, problem);
+    }
+
+    /// <summary>
+    /// A packed app has no .NET beside it and nothing to build with: the pmj it carries is
+    /// the only one it will ever have, and one that lost its mark as a program in a copy or
+    /// a pack is found here and not by the first project that has packages.
+    /// </summary>
+    private async Task<SmokeCheckOutcome> PmjCameWithTheAppAsync()
+    {
+        var timer = Stopwatch.StartNew();
+        var answer = await Pmj.RunAsync(new PmjCommand(Path.GetTempPath(), ["--version"]), CancellationToken.None);
+        var problem = answer.Outcome != PmjOutcome.Ran ? "pmj was not found beside the app, or could not be started."
+            : answer.ExitCode != 0 ? "pmj started and did not say which version it is."
+            : null;
+
+        return new SmokeCheckOutcome(PmjShipped, problem is null, timer.ElapsedMilliseconds, problem);
     }
 
     private static SmokeCheckOutcome TheIconCameWithTheApp()

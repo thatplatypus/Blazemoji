@@ -27,6 +27,8 @@ public sealed class SmokeSession(SmokeSettings settings) : IDisposable
 
     public bool AlsoCompile => settings.AlsoCompile;
 
+    public bool AlsoPmj => settings.AlsoPmj;
+
     public string ProjectsRoot => settings.ProjectsRoot;
 
     /// <summary>
