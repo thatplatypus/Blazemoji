@@ -179,6 +179,13 @@ jobs:
     # ====================
     # BUILD AND PACKAGE
     # ====================
+    # pmj for this machine, held to the digest in packmoji.pin. The publish below copies it
+    # beside the app, which is where the app looks for it. On macOS the signing steps treat
+    # it as they treat every program in the bundle.
+    - name: Fetch pmj
+      shell: bash
+      run: scripts/get-pmj.sh
+
     - name: Publish
       shell: bash
       run: dotnet publish "$PROJECT_PATH" -c Release -r ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -p:PublishTrimmed=false -p:Version=${{ needs.test.outputs.version }} -o publish/${{ matrix.rid }}

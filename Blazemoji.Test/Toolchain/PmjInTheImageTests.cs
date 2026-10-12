@@ -20,13 +20,15 @@ namespace Blazemoji.Test.Toolchain
 
         [Fact]
         [Trait("Requires", "Packmoji")]
-        public void The_image_says_which_commit_of_Packmoji_its_pmj_was_built_from()
+        public async Task The_pmj_that_came_with_the_image_is_the_version_the_pin_names()
         {
             Assert.SkipUnless(PmjFixture.Available, PmjFixture.SkipReason);
 
-            var commit = File.ReadAllText(Path.Combine(Path.GetDirectoryName(PmjFixture.Path!)!, "packmoji.commit")).Trim();
+            var result = await PmjFixture.Create().RunAsync(
+                new PmjCommand(Path.GetTempPath(), ["--version"]), TestContext.Current.CancellationToken);
 
-            commit.ShouldMatch("^[0-9a-f]{40}$");
+            // pmj says its version and then the commit it was built from: "0.1.0+fbed38c...".
+            result.Stdout.Trim().Split('+')[0].ShouldBe(PackmojiPinTests.Version());
         }
     }
 }

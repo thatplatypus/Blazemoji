@@ -155,13 +155,14 @@ That is all it takes for the setting to be shown in the Settings panel, kept bet
 
 A project that has a `packmoji.json` is a [Packmoji](https://github.com/thatplatypus/Packmoji) project. `AddBlazemojiEditor` registers what fetches its packages: the host runs `pmj`, Packmoji's command, and the toolchain service builds what was fetched. A host registers nothing more for it.
 
-`pmj` is looked for beside the app, at `pmj/pmj` (`pmj/pmj.exe` on Windows). The web image is given one by the Dockerfile. At a desk, `scripts/get-pmj.sh` builds one from the commit in `packmoji.pin` into `Blazemoji.Toolchain/pmj`, and the next build copies it beside whichever app is built. A host with no `pmj` still edits, compiles and runs every project that has no `packmoji.json`, and says one thing about a project that has one. A packed desktop app has none yet: it has no .NET beside it for this `pmj` to run on, and gets one when Packmoji publishes its own programs.
+`pmj` is looked for beside the app, at `pmj/pmj` (`pmj/pmj.exe` on Windows). It is the program Packmoji releases, one file that needs no .NET, and `packmoji.pin` says which release and which bytes: what is fetched is held to the digest there. The images are given theirs by the Dockerfile. At a desk, `scripts/get-pmj.sh` fetches the one for the machine into `Blazemoji.Toolchain/pmj`, and the next build or publish copies it beside whichever app is built. A published desktop app is given one the same way, and its smoke run asks it its version. A host with no `pmj`, as on a machine Packmoji releases nothing for, still edits, compiles and runs every project that has no `packmoji.json`, and says one thing about a project that has one.
 
 What a host can set, under `"Packmoji"`:
 
 | Setting | What it is | Without it |
 | --- | --- | --- |
 | `Scopes` | Whose packages are taken: scopes with commas between them, or `*` for anyone's | No one's. The web host makes `thatplatypus,emojicode` its own default and the desktop host `*`, each in its `Program.cs` |
+| `Registry` | The address of a Packmoji registry for the host to find packages in: what its `v1` is under. The toolchain service never asks one | Packages are found on GitHub itself. The web host makes Packmoji's own registry its default, in its `Program.cs`, and the desktop host names none. Set to nothing, a host finds packages on GitHub itself |
 | `Path` | Where `pmj` is | `pmj/pmj` beside the app |
 | `Home` | The folder `pmj` keeps what it fetched in | `pmj`'s own, `.packmoji` in the home directory, which a desktop then shares with `pmj` on the command line |
 | `Timeout` | How long one `pmj` command may take | Two minutes |

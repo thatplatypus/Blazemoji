@@ -21,6 +21,13 @@ namespace Blazemoji.Toolchain.Packmoji
         /// </summary>
         public string? Scopes { get; set; }
 
+        /// <summary>
+        /// The address of a Packmoji registry for a host to find packages in: what its
+        /// <c>v1</c> is under. Null or empty, packages are found on GitHub itself. The
+        /// toolchain service never asks one: it builds from what it is handed.
+        /// </summary>
+        public string? Registry { get; set; }
+
         /// <summary>How long one pmj command that builds nothing may take.</summary>
         public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(2);
 

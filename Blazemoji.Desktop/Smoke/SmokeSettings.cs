@@ -7,18 +7,20 @@ namespace Blazemoji.Desktop.Smoke;
 /// <param name="ResultPath">Where to write the run's result as JSON, if anywhere.</param>
 /// <param name="ExitWhenDone">Close the app once the result is out. Off only for looking at a run by hand.</param>
 /// <param name="AlsoCompile">Compile and run a program as well. Needs a toolchain service, which a build machine may not have.</param>
+/// <param name="AlsoPmj">Check that pmj came with the app and answers. For a published or packed app, which is meant to carry one.</param>
 /// <param name="ProjectsRoot">
 /// Where the run keeps its projects. A run types into the editor and what is typed is saved,
 /// so it never uses the folder the app is otherwise set to use.
 /// </param>
 /// <param name="RemoveProjectsRoot">The run made the folder up, and removes it when it is done.</param>
-public sealed record SmokeSettings(bool IsEnabled, TimeSpan Timeout, string? ResultPath, bool ExitWhenDone, bool AlsoCompile, string ProjectsRoot, bool RemoveProjectsRoot)
+public sealed record SmokeSettings(bool IsEnabled, TimeSpan Timeout, string? ResultPath, bool ExitWhenDone, bool AlsoCompile, bool AlsoPmj, string ProjectsRoot, bool RemoveProjectsRoot)
 {
     public const string Enabled = "HERMES_SMOKE_TEST";
     public const string TimeoutSeconds = "HERMES_SMOKE_TEST_TIMEOUT";
     public const string Result = "HERMES_SMOKE_TEST_RESULT";
     public const string Exit = "HERMES_SMOKE_TEST_EXIT";
     public const string Compile = "BLAZEMOJI_SMOKE_COMPILE";
+    public const string Pmj = "BLAZEMOJI_SMOKE_PMJ";
     public const string Projects = "BLAZEMOJI_SMOKE_PROJECTS";
 
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(60);
@@ -40,6 +42,7 @@ public sealed record SmokeSettings(bool IsEnabled, TimeSpan Timeout, string? Res
             string.IsNullOrWhiteSpace(resultPath) ? null : resultPath,
             variable(Exit) != "0",
             variable(Compile) == "1",
+            variable(Pmj) == "1",
             Path.GetFullPath(madeUp ? Path.Combine(Path.GetTempPath(), "blazemoji-smoke-" + Guid.NewGuid().ToString("N")) : projects!),
             madeUp);
     }

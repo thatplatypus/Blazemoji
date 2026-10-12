@@ -66,6 +66,37 @@ namespace Blazemoji.Test.Packmoji
             shown.Message.ShouldBe("The message.");
         }
 
+        [Theory]
+        [InlineData("registry.unreachable")]
+        [InlineData("registry.mismatch")]
+        public void A_problem_with_the_registry_is_news_only_where_pmj_may_ask_one_and_never_in_a_sockets_words(string code)
+        {
+            var reported = Problem(code, "the request for http://10.0.0.7/registry/v1/packages/a/b.json failed: Connection refused (10.0.0.7:80)");
+
+            PmjProblems.ForAVisitor(reported, Places, asksGitHub: false).ShouldBeNull();
+            var shown = PmjProblems.ForAVisitor(reported, Places, asksGitHub: true).ShouldNotBeNull();
+            shown.Code.ShouldBe(code);
+            shown.Message.ShouldBe(reported.Message);
+            shown.Reason.ShouldBe(PmjProblems.RegistrySaidReason);
+        }
+
+        [Fact]
+        public void A_registry_out_of_reach_is_not_answered_with_advice_for_a_command_line()
+        {
+            var reported = Problem(PmjProblems.RegistryUnreachable)
+                with { Fix = "check the network and the address of the registry, and try again; to ask GitHub itself in the meantime, run the command again with --direct" };
+
+            PmjProblems.ForAVisitor(reported, Places, asksGitHub: true).ShouldNotBeNull().Fix.ShouldBe(PmjProblems.RegistryFix);
+        }
+
+        [Fact]
+        public void What_to_do_about_a_version_the_registry_does_not_vouch_for_is_pmjs_own_advice()
+        {
+            var reported = Problem("registry.mismatch") with { Fix = "use another version" };
+
+            PmjProblems.ForAVisitor(reported, Places, asksGitHub: true).ShouldNotBeNull().Fix.ShouldBe("use another version");
+        }
+
         [Fact]
         public void A_problem_that_names_a_folder_of_this_machine_is_not_passed_on_whatever_its_code()
         {

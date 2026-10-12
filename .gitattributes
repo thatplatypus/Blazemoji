@@ -5,3 +5,7 @@
 # Test data whose bytes are asserted (packed digests): a checkout must not convert its line endings.
 Blazemoji.Test/Toolchain/Packages/hello/** -text
 Blazemoji.Toolchain.ContractTests/Packages/** -text
+
+# The pin is the file of digests that Packmoji's release carries, to the byte, and
+# docker/get-pmj.sh reads it by lines. A checkout must not give it Windows line endings.
+packmoji.pin -text

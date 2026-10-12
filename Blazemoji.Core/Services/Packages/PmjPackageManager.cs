@@ -28,6 +28,7 @@ namespace Blazemoji.Services.Packages
         private readonly PackageScopes _scopes = PackageScopes.Parse(options.Value.Scopes);
         private readonly int _mostAtOnce = Math.Max(1, options.Value.MaxAtOnce);
         private readonly string _home = HomeOf(options.Value);
+        private readonly string? _registry = string.IsNullOrWhiteSpace(options.Value.Registry) ? null : options.Value.Registry.Trim();
         private readonly string _work = Path.Combine(Path.GetTempPath(), "blazemoji-packages");
         private int _running;
 
@@ -152,6 +153,10 @@ namespace Blazemoji.Services.Packages
             var settings = new Dictionary<string, string> { [PmjVariables.Home] = _home };
             if (_scopes.ForPmj is { } scopes)
                 settings[PmjVariables.Scopes] = scopes;
+
+            // With none named, pmj finds packages on GitHub itself.
+            if (_registry is not null)
+                settings[PmjVariables.Registry] = _registry;
 
             return settings;
         }

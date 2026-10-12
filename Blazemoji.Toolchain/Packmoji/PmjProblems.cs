@@ -20,8 +20,18 @@ namespace Blazemoji.Toolchain.Packmoji
 
         public const string GitHubSaidReason = "what was asked of GitHub, and how that went, is in the log";
 
+        /// <summary>pmj's code for a registry it could not read at all.</summary>
+        public const string RegistryUnreachable = "registry.unreachable";
+
+        public const string RegistrySaidReason = "what was asked of the registry, and how that went, is in the log";
+
+        // For a registry out of reach, pmj's own advice is for someone at a command line, who
+        // can ask GitHub itself. Its advice about a version is anyone's to follow, and is kept.
+        public const string RegistryFix = "try again later; if it goes on, the reason is in the log of whoever runs this";
+
         private const string CompilerTooOldCode = "compiler.too-old";
         private const string GitHubPrefix = "github.";
+        private const string RegistryPrefix = "registry.";
 
         // The codes of the problems pmj finds in a project's two files and in the packages
         // they name. A code that is not here is about the machine or is not known.
@@ -39,8 +49,8 @@ namespace Blazemoji.Toolchain.Packmoji
 
         /// <param name="places">Folders of this machine. A problem that names one is not passed on, whatever its code.</param>
         /// <param name="asksGitHub">
-        /// Whether the pmj that reported it may ask GitHub. Where it may not, a problem with
-        /// GitHub is this machine's fault and no news for the visitor.
+        /// Whether the pmj that reported it may ask GitHub, or a registry. Where it may not, a
+        /// problem with either is this machine's fault and no news for the visitor.
         /// </param>
         /// <returns>The problem as it may be shown, or null when it is the log's alone.</returns>
         public static PackageProblem? ForAVisitor(PackageProblem problem, IEnumerable<string> places, bool asksGitHub)
@@ -52,6 +62,8 @@ namespace Blazemoji.Toolchain.Packmoji
                 shown = problem with { Reason = CompilerTooOldReason };
             else if (asksGitHub && problem.Code.StartsWith(GitHubPrefix, StringComparison.Ordinal))
                 shown = problem with { Reason = GitHubSaidReason };
+            else if (asksGitHub && problem.Code.StartsWith(RegistryPrefix, StringComparison.Ordinal))
+                shown = problem with { Reason = RegistrySaidReason, Fix = problem.Code == RegistryUnreachable ? RegistryFix : problem.Fix };
             else if (ProjectCodes.Contains(problem.Code) || ProjectPrefixes.Any(prefix => problem.Code.StartsWith(prefix, StringComparison.Ordinal)))
                 shown = problem;
             else

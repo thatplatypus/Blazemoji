@@ -329,13 +329,44 @@ namespace Blazemoji.Test
             return ScopesOfTheWebsite(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
         }
 
-        private static string? ScopesOfTheWebsite(IConfiguration configuration)
+        private static string? ScopesOfTheWebsite(IConfiguration configuration) => PackagesOfTheWebsite(configuration).Scopes;
+
+        private static PackmojiOptions PackagesOfTheWebsite(IConfiguration configuration)
         {
             var services = new ServiceCollection();
             services.AddBlazemojiEditor(configuration);
-            services.AddWebsitePackageScopes();
+            services.AddWebsitePackages();
             using var provider = services.BuildServiceProvider();
-            return provider.GetRequiredService<IOptions<PackmojiOptions>>().Value.Scopes;
+            return provider.GetRequiredService<IOptions<PackmojiOptions>>().Value;
+        }
+
+        private static string? RegistryOfTheWebsite(string? told)
+        {
+            var settings = new Dictionary<string, string?>();
+            if (told is not null)
+                settings[PackmojiOptions.SectionName + ":Registry"] = told;
+
+            return PackagesOfTheWebsite(new ConfigurationBuilder().AddInMemoryCollection(settings).Build()).Registry;
+        }
+
+        [Fact]
+        public void The_website_finds_packages_in_Packmojis_registry_unless_it_is_told_otherwise()
+        {
+            RegistryOfTheWebsite(told: null).ShouldBe(WebsitePackages.Registry);
+            RegistryOfTheWebsite(told: "https://registry.example/packmoji").ShouldBe("https://registry.example/packmoji");
+
+            // Told an empty one, the website is told to find packages on GitHub itself.
+            RegistryOfTheWebsite(told: "").ShouldBe("");
+        }
+
+        [Fact]
+        public void A_host_that_is_not_the_website_names_no_registry()
+        {
+            var services = new ServiceCollection();
+            services.AddBlazemojiEditor(new ConfigurationBuilder().Build());
+            using var provider = services.BuildServiceProvider();
+
+            provider.GetRequiredService<IOptions<PackmojiOptions>>().Value.Registry.ShouldBeNull();
         }
 
         private static string Said(string? scopes) => scopes is null ? "null" : $"\"{scopes}\"";
@@ -386,6 +417,9 @@ namespace Blazemoji.Test
         {
             Document().ShouldContain($"\"{PackmojiOptions.SectionName}\"");
             Document().ShouldContain("scripts/get-pmj.sh");
+            Document().ShouldContain("packmoji.pin");
+            Document().ShouldContain("| `Registry` |");
+            Document().ShouldNotContain("has none yet");
         }
 
         private static string Document() => File.ReadAllText(Path.Combine(RepositoryRoot(), "docs", "hosting.md"));

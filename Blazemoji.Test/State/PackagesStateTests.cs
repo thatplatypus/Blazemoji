@@ -391,6 +391,7 @@ namespace Blazemoji.Test.State
         [InlineData(PackageProblemCodes.TimedOut)]
         [InlineData(PackageProblemCodes.Unreadable)]
         [InlineData("github.unreachable")]
+        [InlineData("registry.unreachable")]
         public async Task A_failure_that_is_about_the_moment_and_not_the_files_is_asked_about_again(string code)
         {
             var projects = await ProjectsAsync(Stored());
@@ -402,6 +403,22 @@ namespace Blazemoji.Test.State
 
             state.Status.ShouldBe(PackagesStatus.Failed);
             await _manager.Received(2).RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task A_version_the_registry_does_not_vouch_for_is_not_asked_about_again_until_the_files_change()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            _manager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new PackageRestore.Failed([Problem("registry.mismatch")]));
+
+            await state.EnsureRestoredAsync(projects.Current);
+            await state.EnsureRestoredAsync(projects.Current);
+
+            // It lasts until the registry or the release changes: asking at every pause of
+            // typing would fetch the same archive each time, for the same answer.
+            state.Status.ShouldBe(PackagesStatus.Failed);
+            await _manager.Received(1).RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
         }
 
         [Fact]

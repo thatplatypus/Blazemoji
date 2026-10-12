@@ -15,12 +15,12 @@ FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0 AS sdk-deps
 COPY docker/install-toolchain-deps.sh /tmp/install-toolchain-deps.sh
 RUN /tmp/install-toolchain-deps.sh
 
-# pmj, Packmoji's command, which builds the packages a project locks. It is built from the
-# commit in packmoji.pin: see docker/build-pmj.sh.
+# pmj, Packmoji's command, which builds the packages a project locks. It is the program
+# Packmoji released, fetched and held to the digest in packmoji.pin: see docker/get-pmj.sh.
 FROM sdk-deps AS pmj
 COPY packmoji.pin /tmp/packmoji.pin
-COPY docker/build-pmj.sh /tmp/build-pmj.sh
-RUN /tmp/build-pmj.sh /tmp/packmoji.pin /pmj linux-x64
+COPY docker/get-pmj.sh /tmp/get-pmj.sh
+RUN /tmp/get-pmj.sh /tmp/packmoji.pin /pmj linux-x64
 
 # What the tests need: the SDK, the compiler's needs, and pmj. scripts/test-in-docker.sh runs
 # the tests in a container made from this stage alone. The variable is the one the toolchain
@@ -33,6 +33,8 @@ FROM sdk-toolchain AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY global.json ./
+# The tests hold the pin's shape, and the image's pmj to the version it names.
+COPY packmoji.pin ./
 COPY Blazemoji/Blazemoji.csproj Blazemoji/
 COPY Blazemoji.Core/Blazemoji.Core.csproj Blazemoji.Core/
 COPY Blazemoji.Components/Blazemoji.Components.csproj Blazemoji.Components/
