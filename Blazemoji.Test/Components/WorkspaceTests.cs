@@ -691,5 +691,47 @@ namespace Blazemoji.Test.Components
                 packages.Problems.ShouldBeEmpty();
             });
         }
+
+        // pmj is slow, as it is when GitHub is, and the manifest is edited five times. Each
+        // pause begins a restore of the text as it then is, and one person is to have one
+        // pmj command going, for the text that is open.
+        [Fact]
+        public async Task One_person_typing_a_manifest_has_one_pmj_going_and_not_one_for_every_pause()
+        {
+            TheProjectHasPackages();
+            var going = 0;
+            var asked = 0;
+            _packageManager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(async call =>
+            {
+                var token = call.Arg<CancellationToken>();
+                Interlocked.Increment(ref asked);
+                Interlocked.Increment(ref going);
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, token);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref going);
+                }
+
+                return (PackageRestore)new PackageRestore.OutOfDate();
+            });
+            ModelHolds(1, "text of a");
+            var cut = RenderShowingTheFirstFile();
+            cut.WaitForAssertion(() => Volatile.Read(ref asked).ShouldBe(1));
+
+            for (var edit = 1; edit <= 4; edit++)
+            {
+                var expected = edit + 1;
+                await cut.InvokeAsync(() => Project.WriteFileAsync(Stored.Id, PackagesState.ManifestPath, "the manifest, edit " + edit));
+                cut.WaitForAssertion(() => Volatile.Read(ref asked).ShouldBe(expected));
+            }
+
+            var atOnce = Volatile.Read(ref going);
+            await Services.GetRequiredService<PackagesState>().DisposeAsync();
+
+            atOnce.ShouldBe(1, $"pmj was asked {asked} times and {atOnce} of those commands were still going at once");
+        }
     }
 }

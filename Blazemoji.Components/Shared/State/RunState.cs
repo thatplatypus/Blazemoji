@@ -243,10 +243,11 @@ namespace Blazemoji.Shared.State
         private async Task<CompileResult> CompileAsync(IReadOnlyDictionary<string, string> files, RunTarget target, bool checkOnly, CancellationToken cancellationToken)
         {
             var result = await toolchain.CompileAsync(new CompileRequest(files, target.Entry, checkOnly, target.Dependencies), cancellationToken);
-            if (!result.DependenciesMissing || packages is null)
+            // Only a compile that named a set can have lost one.
+            if (!result.DependenciesMissing || packages is null || target.Dependencies is not { } lost)
                 return result;
 
-            if (await packages.RestoreAgainAsync(cancellationToken) is not { } restored)
+            if (await packages.RestoreAgainAsync(lost, cancellationToken) is not { } restored)
                 return result;
 
             return await toolchain.CompileAsync(new CompileRequest(files, target.Entry, checkOnly, restored), cancellationToken);

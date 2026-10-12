@@ -1197,7 +1197,7 @@ namespace Blazemoji.Test.State
 
             await _toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.Dependencies == "set-1" && !request.CheckOnly), Arg.Any<CancellationToken>());
             await _toolchain.Received(1).CompileAsync(Arg.Is<CompileRequest>(request => request.Dependencies == "set-1" && request.CheckOnly), Arg.Any<CancellationToken>());
-            await _packages.DidNotReceive().RestoreAgainAsync(Arg.Any<CancellationToken>());
+            await _packages.DidNotReceive().RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
         }
 
         [Fact]
@@ -1206,13 +1206,13 @@ namespace Blazemoji.Test.State
             var error = new Diagnostic(DiagnosticSeverity.Error, "main.🍇", 2, 5, "Variable \"nope\" not defined.");
             Compiling("set-1", SetNotHeld);
             Compiling("set-2", new CompileResult(false, [error], null));
-            _packages.RestoreAgainAsync(Arg.Any<CancellationToken>()).Returns("set-2");
+            _packages.RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("set-2");
             await using var state = CreateStateWithPackages();
 
             await state.RunAsync(TargetOnSet("set-1"));
 
             state.Diagnostics.ShouldBe([error]);
-            await _packages.Received(1).RestoreAgainAsync(Arg.Any<CancellationToken>());
+            await _packages.Received(1).RestoreAgainAsync("set-1", Arg.Any<CancellationToken>());
             await _toolchain.Received(2).CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
         }
 
@@ -1221,14 +1221,14 @@ namespace Blazemoji.Test.State
         {
             Compiling("set-1", SetNotHeld);
             Compiling("set-2", SetNotHeld);
-            _packages.RestoreAgainAsync(Arg.Any<CancellationToken>()).Returns("set-2");
+            _packages.RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("set-2");
             await using var state = CreateStateWithPackages();
 
             await state.RunAsync(TargetOnSet("set-1"));
 
             state.Status.ShouldBe(RunStatus.Idle);
             state.Diagnostics.ShouldBe(SetNotHeld.Diagnostics);
-            await _packages.Received(1).RestoreAgainAsync(Arg.Any<CancellationToken>());
+            await _packages.Received(1).RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
             await _toolchain.Received(2).CompileAsync(Arg.Any<CompileRequest>(), Arg.Any<CancellationToken>());
             await _toolchain.DidNotReceive().StartRunAsync(Arg.Any<RunRequest>(), Arg.Any<CancellationToken>());
         }
@@ -1237,7 +1237,7 @@ namespace Blazemoji.Test.State
         public async Task A_set_that_cannot_be_restored_leaves_the_refusal_as_the_answer_and_compiles_no_more()
         {
             Compiling("set-1", SetNotHeld);
-            _packages.RestoreAgainAsync(Arg.Any<CancellationToken>()).Returns((string?)null);
+            _packages.RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((string?)null);
             await using var state = CreateStateWithPackages();
 
             await state.RunAsync(TargetOnSet("set-1"));
@@ -1252,7 +1252,7 @@ namespace Blazemoji.Test.State
             var warning = new Diagnostic(DiagnosticSeverity.Warning, "main.🍇", 1, 1, "Something to know.");
             Compiling("set-1", SetNotHeld);
             Compiling("set-2", new CompileResult(true, [warning], null));
-            _packages.RestoreAgainAsync(Arg.Any<CancellationToken>()).Returns("set-2");
+            _packages.RestoreAgainAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("set-2");
             await using var state = CreateStateWithPackages();
 
             await state.CheckAsync(TargetOnSet("set-1"));

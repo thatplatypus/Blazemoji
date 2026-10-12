@@ -7,9 +7,16 @@ namespace Blazemoji.Shared.State
     public interface IPackageSets
     {
         /// <summary>
-        /// Has the open project's set built again, though its two files have not changed.
+        /// Has the set a compile named built again, though the project's two files have not
+        /// changed.
         /// </summary>
-        /// <returns>The set's id, or null when the packages could not be made ready. What went wrong is then the packages' own problem to show.</returns>
-        Task<string?> RestoreAgainAsync(CancellationToken cancellationToken = default);
+        /// <param name="lost">The set the compile named, which the toolchain said it does not hold.</param>
+        /// <returns>
+        /// The set's id as the toolchain now gives it. Null when the packages could not be
+        /// made ready, whose problem is then the packages' own to show, and when the project
+        /// that is open is not built into the set the compile named: another project was
+        /// opened, or its two files changed, while the compile was with the toolchain.
+        /// </returns>
+        Task<string?> RestoreAgainAsync(string lost, CancellationToken cancellationToken = default);
     }
 }

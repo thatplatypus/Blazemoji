@@ -78,6 +78,35 @@ namespace Blazemoji.Test.State
 
         private int ResolveCalls() => _manager.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IPackageManager.ResolveAsync));
 
+        private int ToolchainAsks() => _toolchain.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IToolchainPackages.PrepareAsync));
+
+        private async Task UntilAsync(Func<bool> reached, string what)
+        {
+            for (var turn = 0; turn < 400 && !reached(); turn++)
+                await Task.Delay(5, Cancellation);
+
+            reached().ShouldBeTrue(what);
+        }
+
+        private static async Task<string> EndsAsync(Task task)
+        {
+            try
+            {
+                await task.WaitAsync(TimeSpan.FromSeconds(5), Cancellation);
+                return "ended";
+            }
+            catch (TimeoutException)
+            {
+                return "NEVER ENDED";
+            }
+            catch (Exception exception)
+            {
+                return "THREW " + exception.GetType().Name;
+            }
+        }
+
+        private static async Task<bool?> AnswerOf(Task<bool> task) => task.IsCompletedSuccessfully ? await task : null;
+
         /// <summary>Lets the state's own waits pass: each turn moves the clock on by one ask.</summary>
         private async Task<T> EventuallyAsync<T>(Task<T> work, TimeSpan? step = null)
         {
@@ -513,7 +542,7 @@ namespace Blazemoji.Test.State
                 .Returns(new DependencyAnswer.Ready("set-1", ["hello_words"]), new DependencyAnswer.Ready("set-2", ["hello_words"]));
             await state.EnsureRestoredAsync(projects.Current);
 
-            var again = await state.RestoreAgainAsync(Cancellation);
+            var again = await state.RestoreAgainAsync("set-1", Cancellation);
 
             again.ShouldBe("set-2");
             state.Dependencies.ShouldBe("set-2");
@@ -526,9 +555,50 @@ namespace Blazemoji.Test.State
             var projects = await ProjectsAsync(Stored());
             var state = State(projects);
             Restores(Words);
-            _toolchain.PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>()).Returns(new DependencyAnswer.Unavailable());
+            _toolchain.PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>())
+                .Returns(new DependencyAnswer.Ready("set-1", ["hello_words"]), new DependencyAnswer.Unavailable());
+            await state.EnsureRestoredAsync(projects.Current);
 
-            (await state.RestoreAgainAsync(Cancellation)).ShouldBeNull();
+            (await state.RestoreAgainAsync("set-1", Cancellation)).ShouldBeNull();
+        }
+
+        [Fact]
+        public async Task Restoring_again_gives_nothing_for_a_set_that_is_not_the_open_project_s()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            Restores(Words);
+            Builds("set-1");
+            await state.EnsureRestoredAsync(projects.Current);
+
+            (await state.RestoreAgainAsync("another-set", Cancellation)).ShouldBeNull();
+
+            RestoreCalls().ShouldBe(1);
+        }
+
+        // A compile of one project is on its way when the toolchain turns out to have lost
+        // its set, and the person has opened another project meanwhile. What the run state
+        // would compile the first project's files against must not be the other's set.
+        [Fact]
+        public async Task Restoring_again_for_a_compile_does_not_give_the_set_of_another_project_opened_since()
+        {
+            var first = Stored("p1");
+            var second = Stored("p2", manifest: "manifest of p2", lockfile: "lockfile of p2");
+            var projects = await ProjectsAsync(first, second);
+            var state = State(projects);
+            Restores(Words);
+            _toolchain.PrepareAsync(Arg.Is<DependencyRequest>(request => request.Manifest == Manifest), Arg.Any<CancellationToken>())
+                .Returns(new DependencyAnswer.Ready("set-of-p1", ["hello_words"]));
+            _toolchain.PrepareAsync(Arg.Is<DependencyRequest>(request => request.Manifest == "manifest of p2"), Arg.Any<CancellationToken>())
+                .Returns(new DependencyAnswer.Ready("set-of-p2", ["hello_words"]));
+
+            await state.EnsureRestoredAsync(projects.Current);
+            state.Dependencies.ShouldBe("set-of-p1");
+
+            await projects.OpenAsync("p2");
+            var again = await state.RestoreAgainAsync("set-of-p1", Cancellation);
+
+            again.ShouldBeNull("the compile that asked was of p1, and what came back is the set of p2");
         }
 
         [Fact]
@@ -904,6 +974,157 @@ namespace Blazemoji.Test.State
             LockOf(projects).ShouldBe("(none)", summary);
             mayRun.ShouldBeFalse(summary);
             state.Status.ShouldNotBe(PackagesStatus.Restoring, summary);
+        }
+
+        // Each pause of typing begins a restore for the text as it then is, and the ones that
+        // newer text overtook have nobody to answer to.
+        [Fact]
+        public async Task A_restore_that_newer_text_overtook_stops_asking_the_toolchain()
+        {
+            const int Edits = 20;
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            Restores(Words);
+            _toolchain.PrepareAsync(Arg.Any<DependencyRequest>(), Arg.Any<CancellationToken>()).Returns(new DependencyAnswer.Busy());
+
+            var restores = new List<Task>();
+            for (var edit = 0; edit < Edits; edit++)
+            {
+                await projects.WriteFileAsync("p1", PackagesState.ManifestPath, "manifest " + edit);
+                restores.Add(state.EnsureRestoredAsync(projects.Current));
+            }
+
+            await UntilAsync(() => ToolchainAsks() >= Edits, "each restore asks the toolchain once to begin with");
+            var askedAtFirst = ToolchainAsks();
+
+            // Only the restore of the text that is open has a reason to ask again.
+            _time.Advance(PackagesState.AskAgainAfter);
+            await Task.Delay(300, Cancellation);
+            var askedAfterOneWait = ToolchainAsks() - askedAtFirst;
+            var stillGoing = restores.Count(restore => !restore.IsCompleted);
+
+            await state.DisposeAsync();
+            await Task.WhenAll(restores).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            var summary = $"asks at first {askedAtFirst}, asks after one wait {askedAfterOneWait}, restores still going {stillGoing} of {Edits}";
+            askedAfterOneWait.ShouldBe(1, summary);
+            stillGoing.ShouldBe(1, summary);
+        }
+
+        // The host runs only so many pmj commands at once for everyone, so one person typing
+        // must not hold every place.
+        [Fact]
+        public async Task A_restore_that_newer_text_overtook_is_told_to_stop_its_pmj()
+        {
+            const int Edits = 5;
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            var told = new List<CancellationToken>();
+            _manager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(call =>
+            {
+                var token = call.Arg<CancellationToken>();
+                lock (told)
+                    told.Add(token);
+
+                return WhenCancelled(token);
+            });
+
+            var restores = new List<Task>();
+            for (var edit = 0; edit < Edits; edit++)
+            {
+                await projects.WriteFileAsync("p1", PackagesState.ManifestPath, "manifest " + edit);
+                restores.Add(state.EnsureRestoredAsync(projects.Current));
+            }
+
+            await UntilAsync(() => { lock (told) return told.Count == Edits; }, "pmj is asked once for each text");
+            await Task.Delay(100, Cancellation);
+            int stopped;
+            lock (told)
+                stopped = told.Take(Edits - 1).Count(token => token.IsCancellationRequested);
+
+            await state.DisposeAsync();
+            await Task.WhenAll(restores).WaitAsync(TimeSpan.FromSeconds(10), Cancellation);
+
+            stopped.ShouldBe(Edits - 1, $"of the {Edits - 1} pmj commands whose text is no longer the project's, {stopped} were told to stop");
+        }
+
+        // pmj chooses at once, and the restore of the new pair is slow. A typing pause while
+        // it is going on joins that restore and does not overtake it, so the run still goes ahead.
+        [Fact]
+        public async Task A_typing_pause_during_the_restore_that_follows_a_resolve_which_answered_at_once_does_not_cost_the_run()
+        {
+            var projects = await ProjectsAsync(Stored(lockfile: null));
+            var state = State(projects);
+            _manager.RestoreAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            _manager.ResolveAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(new PackageResolve.Resolved("a lock", [Words]));
+            var restoringNew = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.RestoreAsync(Manifest, "a lock", Arg.Any<CancellationToken>()).Returns(restoringNew.Task);
+            Builds("set-1");
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            var pause = state.EnsureRestoredAsync(projects.Current);
+            var restoresAfterThePause = RestoreCalls();
+            restoringNew.SetResult(new PackageRestore.Restored([Words]));
+            var run = await EndsAsync(preparing);
+            var paused = await EndsAsync(pause);
+
+            var mayRun = await AnswerOf(preparing);
+            var summary = $"run {run} {mayRun}, pause {paused}, status {state.Status}, restores after the pause {restoresAfterThePause}, in all {RestoreCalls()}";
+            run.ShouldBe("ended", summary);
+            paused.ShouldBe("ended", summary);
+            mayRun.ShouldBe(true, summary);
+            restoresAfterThePause.ShouldBe(2, summary);
+        }
+
+        // pmj takes a while to choose, and what it gives is the lockfile the project already
+        // has, so the write changes nothing. The restore that follows must not join the
+        // resolve it is part of.
+        [Fact]
+        public async Task A_resolve_that_took_a_while_and_whose_write_changes_nothing_does_not_have_its_restore_wait_on_the_resolve()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            _manager.RestoreAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            var resolving = new TaskCompletionSource<PackageResolve>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.ResolveAsync(Manifest, Lockfile, Arg.Any<CancellationToken>()).Returns(resolving.Task);
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            resolving.SetResult(new PackageResolve.Resolved(Lockfile, [Words]));
+            var run = await EndsAsync(preparing);
+
+            var mayRun = await AnswerOf(preparing);
+            var summary = $"run {run} {mayRun}, status {state.Status}, from a run {state.ProblemsAreFromARun}, restores {RestoreCalls()}, resolves {ResolveCalls()}";
+            run.ShouldBe("ended", summary);
+            mayRun.ShouldBe(false, summary);
+            state.Status.ShouldBe(PackagesStatus.OutOfDate, summary);
+        }
+
+        [Fact]
+        public async Task Run_pressed_again_after_a_resolve_that_took_a_while_and_failed_for_the_moment_asks_pmj_to_choose_again()
+        {
+            var projects = await ProjectsAsync(Stored(lockfile: null));
+            var state = State(projects);
+            _manager.RestoreAsync(Manifest, null, Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());
+            var resolving = new TaskCompletionSource<PackageResolve>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _manager.ResolveAsync(Manifest, null, Arg.Any<CancellationToken>())
+                .Returns(resolving.Task, Task.FromResult<PackageResolve>(new PackageResolve.Resolved("a lock", [Words])));
+            _manager.RestoreAsync(Manifest, "a lock", Arg.Any<CancellationToken>()).Returns(new PackageRestore.Restored([Words]));
+            Builds("set-1");
+
+            var preparing = state.PrepareForRunAsync(projects.Current);
+            resolving.SetResult(new PackageResolve.Failed([Problem("github.unreachable")]));
+            var first = await EndsAsync(preparing);
+            var again = state.PrepareForRunAsync(projects.Current);
+            var second = await EndsAsync(again);
+
+            var firstMayRun = await AnswerOf(preparing);
+            var secondMayRun = await AnswerOf(again);
+            var summary = $"first run {first} {firstMayRun}, second run {second} {secondMayRun}, status {state.Status}, restores {RestoreCalls()}, resolves {ResolveCalls()}";
+            first.ShouldBe("ended", summary);
+            second.ShouldBe("ended", summary);
+            firstMayRun.ShouldBe(false, summary);
+            secondMayRun.ShouldBe(true, summary);
+            ResolveCalls().ShouldBe(2, summary);
         }
 
         [Fact]

@@ -87,6 +87,13 @@ namespace Blazemoji.Shared.State
         // older one that ends later is about text that is no longer the project's.
         private int _asks;
 
+        // What stops the latest ask's work. An ask that a newer one has taken over from has
+        // nobody left to answer to, and is stopped: its pmj command holds one of the few
+        // places the host has for everyone, and its wait on a toolchain that is building asks
+        // again every two seconds for ten minutes. Typing in a manifest starts an ask at
+        // every pause, so without this nothing bounds how much one session has going.
+        private CancellationTokenSource? _stopsTheLatest;
+
         public PackagesStatus Status { get; private set; } = PackagesStatus.None;
 
         public IReadOnlyList<PackageProblem> Problems { get; private set; } = [];
@@ -127,6 +134,9 @@ namespace Blazemoji.Shared.State
                 _asks++;
                 _running = null;
                 Apply(PackagesStatus.None, [], null, fromARun: false, about: null, remembered: true);
+                var left = _stopsTheLatest;
+                _stopsTheLatest = null;
+                Stop(left);
                 return Task.CompletedTask;
             }
 
@@ -141,11 +151,12 @@ namespace Blazemoji.Shared.State
                 return running.Work;
             }
 
-            var ask = ++_asks;
-            var work = RestoreAsync(pair, ask);
+            var (ask, stop, overtaken) = NextAsk();
+            var work = RestoreAsync(pair, ask, stop);
 
             // A restore that ended before it had to wait for anything is not going on.
             _running = work.IsCompleted ? null : (null, pair, ask, work);
+            Stop(overtaken);
             return work;
         }
 
@@ -186,14 +197,15 @@ namespace Blazemoji.Shared.State
                 // pause that asks about the same two texts meanwhile joins it. It must not
                 // start a restore of its own: that would be a newer ask, the resolve's answer
                 // would be thrown away, and the run would be left with nothing.
-                var ask = ++_asks;
-                var resolving = ResolveAsync(project.Id, pair, ask);
+                var (ask, stop, overtaken) = NextAsk();
+                var resolving = ResolveAsync(project.Id, pair, ask, stop);
 
                 // Unless it is already over, or has already moved on to the restore that
                 // follows it, which is a newer ask and has said so for itself.
                 if (!resolving.IsCompleted && _asks == ask)
                     _running = (project.Id, pair, ask, resolving);
 
+                Stop(overtaken);
                 await resolving;
                 settled = SaysHowThingsStandFor(project.Id);
             }
@@ -210,11 +222,18 @@ namespace Blazemoji.Shared.State
             return false;
         }
 
-        public async Task<string?> RestoreAgainAsync(CancellationToken cancellationToken = default)
+        public async Task<string?> RestoreAgainAsync(string lost, CancellationToken cancellationToken = default)
         {
+            // The compile that asks was sent a while ago. Only when what is open is still
+            // what was built into the set it named is there anything to give it: another
+            // project's set would have its files compiled against packages that are not theirs.
+            var pair = PairOf(projects.Current);
+            if (pair is null || pair != _about || Dependencies != lost)
+                return null;
+
             _remembered = false;
             await EnsureRestoredAsync(projects.Current).WaitAsync(cancellationToken);
-            return Status == PackagesStatus.Ready && PairOf(projects.Current) == _about ? Dependencies : null;
+            return Status == PackagesStatus.Ready && pair == _about && PairOf(projects.Current) == pair ? Dependencies : null;
         }
 
         public async ValueTask DisposeAsync()
@@ -236,20 +255,47 @@ namespace Blazemoji.Shared.State
         private bool SaysHowThingsStandFor(string projectId) =>
             projects.Current.Id == projectId && PairOf(projects.Current) == _about && Status != PackagesStatus.Restoring;
 
-        private async Task RestoreAsync(Pair pair, int ask)
+        /// <summary>
+        /// Takes the next number for an ask, and gives it a token that is cancelled when a
+        /// later ask takes its place or the session goes away.
+        /// </summary>
+        /// <returns>
+        /// The number, the token, and what stops the ask before this one, which the caller
+        /// hands to <see cref="Stop"/> as the last thing it does.
+        /// </returns>
+        private (int Ask, CancellationToken Stop, CancellationTokenSource? Overtaken) NextAsk()
+        {
+            var overtaken = _stopsTheLatest;
+            _stopsTheLatest = CancellationTokenSource.CreateLinkedTokenSource(_disposal.Token);
+            return (++_asks, _stopsTheLatest.Token, overtaken);
+        }
+
+        /// <summary>
+        /// Stops the work of an ask that a newer one has taken over from. Whatever was
+        /// waiting on that work goes on there and then, inside this call, and may ask again
+        /// itself: so this is called last, when the newer ask is in place for it to find.
+        /// </summary>
+        private static void Stop(CancellationTokenSource? overtaken)
+        {
+            overtaken?.Cancel();
+            overtaken?.Dispose();
+        }
+
+        private async Task RestoreAsync(Pair pair, int ask, CancellationToken stop)
         {
             Apply(PackagesStatus.Restoring, [], null, fromARun: false, pair, remembered: false);
             try
             {
-                var outcome = await WorkOutAsync(pair, _disposal.Token);
+                var outcome = await WorkOutAsync(pair, stop);
                 if (ask != _asks)
                     return;
 
                 Apply(outcome.Status, outcome.Problems, outcome.Dependencies, fromARun: false, pair, outcome.Remember);
             }
-            catch (OperationCanceledException) when (_disposal.IsCancellationRequested)
+            catch (OperationCanceledException) when (stop.IsCancellationRequested)
             {
-                // The session is going away; there is nobody left to tell.
+                // A newer ask has taken over, or the session is going away. Either way there
+                // is nothing to say.
             }
             catch (Exception exception)
             {
@@ -375,12 +421,13 @@ namespace Blazemoji.Shared.State
         /// restores what is then open.
         /// </summary>
         /// <param name="ask">This resolve's number among the asks, taken by whoever started it.</param>
-        private async Task ResolveAsync(string projectId, Pair pair, int ask)
+        /// <param name="stop">Cancelled when a newer ask takes over from this one.</param>
+        private async Task ResolveAsync(string projectId, Pair pair, int ask, CancellationToken stop)
         {
             Apply(PackagesStatus.Restoring, [], null, fromARun: false, pair, remembered: false);
             try
             {
-                if (!await ChooseAsync(projectId, pair, ask))
+                if (!await ChooseAsync(projectId, pair, ask, stop))
                     return;
             }
             finally
@@ -402,14 +449,14 @@ namespace Blazemoji.Shared.State
         /// there is nothing to restore: choosing failed, and the status says so, or a newer
         /// ask has taken over.
         /// </returns>
-        private async Task<bool> ChooseAsync(string projectId, Pair pair, int ask)
+        private async Task<bool> ChooseAsync(string projectId, Pair pair, int ask, CancellationToken stop)
         {
             PackageResolve? resolved;
             try
             {
-                resolved = await manager.ResolveAsync(pair.Manifest, pair.Lockfile, _disposal.Token);
+                resolved = await manager.ResolveAsync(pair.Manifest, pair.Lockfile, stop);
             }
-            catch (OperationCanceledException) when (_disposal.IsCancellationRequested)
+            catch (OperationCanceledException) when (stop.IsCancellationRequested)
             {
                 return false;
             }
