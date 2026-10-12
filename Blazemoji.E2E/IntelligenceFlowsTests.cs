@@ -15,12 +15,21 @@ namespace Blazemoji.E2E
         {
             Assert.SkipUnless(await BrowserFixture.PackagesCanBeFetchedAsync(), BrowserFixture.NoPackages);
             var editor = await EditorPage.OpenAsync(browser);
-            await editor.CreateProjectAsync("Todo API", "grapevine-todo");
+            try
+            {
+                await editor.CreateProjectAsync("Todo API", "grapevine-todo");
 
-            // Grapevine is the project's locked package: it has completion once it is built.
-            await editor.WaitForPackagesAsync(PackagesFlowsTests.BuildPatience);
-            await editor.OpenFileAsync("Todo API", "startup.🍇");
-            return editor;
+                // Grapevine is the project's locked package: it has completion once it is built.
+                await editor.WaitForPackagesAsync(PackagesFlowsTests.BuildPatience);
+                await editor.OpenFileAsync("Todo API", "startup.🍇");
+                return editor;
+            }
+            catch
+            {
+                // Whoever called has no page to dispose of yet.
+                await editor.DisposeAsync();
+                throw;
+            }
         }
 
         [Fact]
@@ -33,16 +42,23 @@ namespace Blazemoji.E2E
             await editor.StartLineAfterAsync(TheAppIsMade);
             await editor.TypeAsync("app.");
 
+            // The app has some forty methods and the list shows a dozen of them at a time, in
+            // the order the package declares them. Middleware comes first.
             var offered = await editor.SuggestionTextsAsync();
             offered.ShouldContain(text => text.StartsWith("🧱 layer") && text.Contains("🍷"));
-            offered.ShouldContain(text => text.StartsWith("📥 path handler"));
-            offered.ShouldContain(text => text.StartsWith("📮 path handler"));
-            offered.ShouldContain(text => text.StartsWith("✏ path handler"));
-            offered.ShouldContain(text => text.StartsWith("🗑 path handler"));
 
             await editor.ShowSuggestionDetailsAsync();
             await editor.SuggestionDetails.GetByText("Adds middleware to the pipeline").WaitForAsync();
             (await editor.SuggestionDetails.InnerTextAsync()).ShouldContain("🧱 app layer");
+
+            // Typing narrows the list. The routes all take a path, which brings them into view.
+            await editor.TypeAsync("pa");
+            await editor.WaitForSuggestionAsync("📥 path handler");
+            var routes = await editor.SuggestionTextsAsync();
+            routes.ShouldContain(text => text.StartsWith("📥 path handler"));
+            routes.ShouldContain(text => text.StartsWith("📮 path handler"));
+            routes.ShouldContain(text => text.StartsWith("✏ path handler"));
+            routes.ShouldContain(text => text.StartsWith("🗑 path handler"));
             editor.ConsoleErrors.ShouldBeEmpty();
             await editor.ScreenshotAsync("p4-01-methods-after-a-dot");
         }

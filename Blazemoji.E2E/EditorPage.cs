@@ -333,10 +333,39 @@ namespace Blazemoji.E2E
         /// <summary>
         /// Waits until the open project's packages are fetched and built. Until then a locked
         /// package has no completion. The status carries how they stand as well as its words,
-        /// which say so only while it lasts and can be over before anyone looks.
+        /// which say so only while it lasts and can be over before anyone looks. The status is
+        /// in the page only while the Output tab is the one on show, as it is until something
+        /// is run or another tab is opened.
         /// </summary>
-        public Task WaitForPackagesAsync(float patience) =>
-            Page.Locator("[data-testid=run-status][data-packages=ready]").WaitForAsync(new LocatorWaitForOptions { Timeout = patience });
+        public async Task WaitForPackagesAsync(float patience)
+        {
+            // Packages that could not be made ready stay so until someone types or runs, so
+            // that is an answer too, and is not waited out.
+            var settled = Page.Locator("[data-testid=run-status]:is([data-packages=ready], [data-packages=failed], [data-packages=outofdate], [data-packages=unavailable])");
+            await settled.WaitForAsync(new LocatorWaitForOptions { Timeout = patience });
+            var state = await settled.GetAttributeAsync("data-packages");
+            if (state == "ready")
+                return;
+
+            await OpenTabAsync("Problems");
+            Assert.Fail($"The project's packages are {state}, not ready: {string.Join(" | ", await PackageProblems.AllInnerTextsAsync())}");
+        }
+
+        /// <summary>
+        /// Waits for something a run of a project with packages shows. Packages that cannot be
+        /// made ready stop the run and bring the Problems tab forward: that is said at once,
+        /// in the problems' own words, where waiting would only run out of time.
+        /// </summary>
+        public async Task WaitForARunWithPackagesAsync(ILocator shown, float patience)
+        {
+            await shown.First.Or(PackageProblems.First).First.WaitForAsync(new LocatorWaitForOptions { Timeout = patience });
+            if (await shown.CountAsync() == 0)
+                Assert.Fail($"The project's packages stopped the run: {string.Join(" | ", await PackageProblems.AllInnerTextsAsync())}");
+        }
+
+        /// <summary>Waits for a suggestion that starts with <paramref name="start"/> to be in the list.</summary>
+        public Task WaitForSuggestionAsync(string start) =>
+            Page.Locator($".suggest-widget.visible .monaco-list-row[aria-label^=\"{start}\"]").First.WaitForAsync();
 
         public async Task ScreenshotAsync(string name)
         {

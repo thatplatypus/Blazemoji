@@ -7,7 +7,6 @@ namespace Blazemoji.E2E
     /// </summary>
     public class PackagesFlowsTests(BrowserFixture browser)
     {
-
         // Three packages are compiled the first time, one of them large. Under emulation that
         // has taken a minute and a half on a busy machine, and the toolchain allows five.
         internal const float BuildPatience = 600_000;
@@ -56,7 +55,7 @@ namespace Blazemoji.E2E
 
             await editor.RunButton.ClickAsync();
 
-            await editor.RunStatus.GetByText("Exited with code 0").WaitForAsync(new LocatorWaitForOptions { Timeout = BuildPatience });
+            await editor.WaitForARunWithPackagesAsync(editor.RunStatus.GetByText("Exited with code 0"), BuildPatience);
             (await editor.OutputLines.AllInnerTextsAsync()).ShouldBe(["built against a locked package"]);
             await editor.OpenTabAsync("Files");
             await editor.File("packmoji.lock").WaitForAsync();

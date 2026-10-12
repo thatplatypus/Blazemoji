@@ -195,7 +195,7 @@ namespace Blazemoji.E2E
             await editor.RunButton.ClickAsync();
 
             // The first run of a stack fetches the template's three packages and has them built.
-            await editor.OutputLines.GetByText("Grapevine listening").WaitForAsync(new LocatorWaitForOptions { Timeout = PackagesFlowsTests.BuildPatience });
+            await editor.WaitForARunWithPackagesAsync(editor.OutputLines.GetByText("Grapevine listening"), PackagesFlowsTests.BuildPatience);
             (await editor.RunStatus.InnerTextAsync()).ShouldBe("Running");
 
             await editor.SendRequestAsync("POST", "/todos", "{\"title\":\"Buy grapes\"}");
