@@ -160,7 +160,7 @@ namespace Blazemoji.Test.Packages
         }
 
         [Fact]
-        public async Task A_package_outside_the_scopes_is_refused_and_nothing_is_written()
+        public async Task A_package_outside_the_scopes_is_refused_as_pmj_refused_it()
         {
             var refusal = Problem("scope.not-allowed");
             _pmj.Answer = _ => Refused(refusal);

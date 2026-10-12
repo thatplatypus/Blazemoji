@@ -326,11 +326,50 @@ namespace Blazemoji.Test
             if (told is not null)
                 settings[PackmojiOptions.SectionName + ":Scopes"] = told;
 
+            return ScopesOfTheWebsite(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+        }
+
+        private static string? ScopesOfTheWebsite(IConfiguration configuration)
+        {
             var services = new ServiceCollection();
-            services.AddBlazemojiEditor(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+            services.AddBlazemojiEditor(configuration);
             services.AddWebsitePackageScopes();
             using var provider = services.BuildServiceProvider();
             return provider.GetRequiredService<IOptions<PackmojiOptions>>().Value.Scopes;
+        }
+
+        private static string Said(string? scopes) => scopes is null ? "null" : $"\"{scopes}\"";
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("  ")]
+        public void A_website_told_an_empty_list_in_its_settings_takes_no_ones_packages(string told)
+        {
+            var scopes = ScopesOfTheWebsite(told);
+
+            PackageScopes.Parse(scopes).AllowsNothing.ShouldBeTrue($"the binder gave {Said(scopes)}");
+        }
+
+        [Fact]
+        public void A_website_whose_variable_is_set_to_nothing_takes_no_ones_packages()
+        {
+            const string Variable = "HOSTINGTESTS_Packmoji__Scopes";
+            Environment.SetEnvironmentVariable(Variable, string.Empty);
+            try
+            {
+                // On Unix a variable set to nothing exists; on Windows setting one to nothing removes it.
+                var exists = Environment.GetEnvironmentVariable(Variable) is not null;
+                var scopes = ScopesOfTheWebsite(new ConfigurationBuilder().AddEnvironmentVariables("HOSTINGTESTS_").Build());
+
+                var allowsNothing = PackageScopes.Parse(scopes).AllowsNothing;
+                var wider = PackageScopes.Parse(scopes).Allows("@someone/thing");
+                wider.ShouldBeFalse($"the binder gave {Said(scopes)}");
+                allowsNothing.ShouldBeTrue($"the variable {(exists ? "exists, empty" : "does not exist")}, and the binder gave {Said(scopes)}");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(Variable, null);
+            }
         }
 
         [Fact]
