@@ -406,6 +406,22 @@ namespace Blazemoji.Test.State
         }
 
         [Fact]
+        public async Task A_version_the_registry_does_not_vouch_for_is_not_asked_about_again_until_the_files_change()
+        {
+            var projects = await ProjectsAsync(Stored());
+            var state = State(projects);
+            _manager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new PackageRestore.Failed([Problem("registry.mismatch")]));
+
+            await state.EnsureRestoredAsync(projects.Current);
+            await state.EnsureRestoredAsync(projects.Current);
+
+            // It lasts until the registry or the release changes: asking at every pause of
+            // typing would fetch the same archive each time, for the same answer.
+            state.Status.ShouldBe(PackagesStatus.Failed);
+            await _manager.Received(1).RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        }
+
+        [Fact]
         public async Task What_the_toolchain_finds_wrong_is_shown_and_a_toolchain_that_cannot_be_reached_is_tried_again()
         {
             var projects = await ProjectsAsync(Stored());

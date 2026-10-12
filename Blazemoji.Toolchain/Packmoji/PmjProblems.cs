@@ -20,9 +20,13 @@ namespace Blazemoji.Toolchain.Packmoji
 
         public const string GitHubSaidReason = "what was asked of GitHub, and how that went, is in the log";
 
+        /// <summary>pmj's code for a registry it could not read at all.</summary>
+        public const string RegistryUnreachable = "registry.unreachable";
+
         public const string RegistrySaidReason = "what was asked of the registry, and how that went, is in the log";
 
-        // pmj's own advice is for someone at a command line, who can ask GitHub itself.
+        // For a registry out of reach, pmj's own advice is for someone at a command line, who
+        // can ask GitHub itself. Its advice about a version is anyone's to follow, and is kept.
         public const string RegistryFix = "try again later; if it goes on, the reason is in the log of whoever runs this";
 
         private const string CompilerTooOldCode = "compiler.too-old";
@@ -59,7 +63,7 @@ namespace Blazemoji.Toolchain.Packmoji
             else if (asksGitHub && problem.Code.StartsWith(GitHubPrefix, StringComparison.Ordinal))
                 shown = problem with { Reason = GitHubSaidReason };
             else if (asksGitHub && problem.Code.StartsWith(RegistryPrefix, StringComparison.Ordinal))
-                shown = problem with { Reason = RegistrySaidReason, Fix = RegistryFix };
+                shown = problem with { Reason = RegistrySaidReason, Fix = problem.Code == RegistryUnreachable ? RegistryFix : problem.Fix };
             else if (ProjectCodes.Contains(problem.Code) || ProjectPrefixes.Any(prefix => problem.Code.StartsWith(prefix, StringComparison.Ordinal)))
                 shown = problem;
             else
