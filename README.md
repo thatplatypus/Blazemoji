@@ -86,7 +86,7 @@ scripts/dev-toolchain.sh        # start; "scripts/dev-toolchain.sh stop" stops i
 scripts/get-pmj.sh              # once: pmj, for projects that have packages
 ```
 
-Either way the programs you run can reach the network, which `docker compose up` does not allow, so keep both to your own machine. For Grapevine to be there, run `scripts/build-grapevine.sh` once in this checkout first.
+Either way the programs you run can reach the network, which `docker compose up` does not allow, so keep both to your own machine.
 
 ### As a desktop app
 
@@ -130,15 +130,9 @@ The flame is drawn once, in `art/flame.svg`. Beside it are the same flame fitted
 
 ## Grapevine
 
-Grapevine is an HTTP framework written in Emojicode. It has its own repository, so its package and its Todo sample are not committed here. One script builds them from a local checkout:
+Grapevine is an HTTP framework written in Emojicode, with its own repository. Here it is a [Packmoji](https://github.com/thatplatypus/Packmoji) package like any other: the "Grapevine Todo API" template is a project whose `packmoji.json` asks for `@thatplatypus/grapevine` and whose `packmoji.lock` holds the release it was written for. Making a project from it, or running it, fetches Grapevine and the two packages it needs and has the toolchain build them, which takes about a minute the first time and nothing after that until the toolchain is restarted.
 
-```bash
-scripts/build-grapevine.sh
-```
-
-It reads the commit to build from `grapevine.pin`, takes that commit from `~/Code/grapevine` (or `GRAPEVINE_REPO`), builds the package in the toolchain container, and puts three things in place, all ignored by git: the package among the toolchain's packages, its documentation among the package documentation, and the Todo sample as the "Grapevine Todo API" project template. To move to a newer Grapevine, change the commit in `grapevine.pin` and run the script again. `scripts/test-in-docker.sh` and `scripts/e2e.sh` run it for you when the pin has changed.
-
-Without it everything else works: `📦 grapevine 🏠` does not compile and the template is not offered.
+The template is Grapevine's own Todo sample with its page, its signing in and its admin routes taken out. A program here is given no settings and runs in an empty folder, and the sample asks for a signing key before it will sign anyone in and looks for its page beside itself. What is left is the API: run it, and send it requests from the Requests tab.
 
 ## The toolchain service
 

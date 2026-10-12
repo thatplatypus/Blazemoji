@@ -22,7 +22,6 @@ if [ "${1:-}" = stop ]; then
   exit 0
 fi
 
-scripts/build-grapevine.sh --if-needed || echo "Grapevine could not be built; projects that import it will not compile." >&2
 docker build --quiet --file Blazemoji/Dockerfile --target toolchain --tag blazemoji-toolchain . > /dev/null
 
 # The same limits the compose file gives the service. It builds anyone's packages, which is
