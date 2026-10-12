@@ -19,6 +19,25 @@ namespace Blazemoji.Test.Service
             _catalog.Names().ShouldBe(["files", "json", "s", "sockets", "testtube"]);
         }
 
+        [Theory]
+        [InlineData("s", "🔡")]
+        [InlineData("files", "📄")]
+        [InlineData("json", "🚧🔸🌸")]
+        [InlineData("sockets", "🏄")]
+        [InlineData("testtube", "🧪")]
+        public void Each_report_lists_types_with_methods(string package, string expectedType)
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(_catalog.DocumentationPath(package)!));
+
+            var types = document.RootElement.GetProperty("types");
+            types.GetArrayLength().ShouldBeGreaterThan(0);
+            types.EnumerateArray().Select(type => type.GetProperty("name").GetString()).ShouldContain(expectedType);
+            types.EnumerateArray().Select(HasMethodList).ShouldAllBe(hasMethods => hasMethods);
+        }
+
+        private static bool HasMethodList(JsonElement type) =>
+            type.TryGetProperty("methods", out var methods) && methods.ValueKind == JsonValueKind.Array;
+
         [Fact]
         public void A_string_method_carries_its_name_parameters_return_type_and_documentation()
         {
