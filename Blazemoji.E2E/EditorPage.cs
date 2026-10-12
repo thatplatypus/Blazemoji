@@ -50,6 +50,8 @@ namespace Blazemoji.E2E
 
         public ILocator Problems => Page.GetByTestId("problem");
 
+        public ILocator PackageProblems => Page.GetByTestId("package-problem");
+
         public ILocator EditorText => Page.Locator(".monaco-editor .view-lines");
 
         public ILocator Dialog => Page.Locator(".mud-dialog");
@@ -161,6 +163,20 @@ namespace Blazemoji.E2E
                 },
                 name,
                 entry);
+        }
+
+        /// <summary>Adds a file to the open project and waits for it to be the one on show.</summary>
+        public async Task AddFileAsync(string project, string path)
+        {
+            await OpenTabAsync("Files");
+            await ShowsAnotherFileAsync(
+                async () =>
+                {
+                    await Page.GetByTestId("new-file").ClickAsync();
+                    await AnswerPromptAsync(path);
+                },
+                project,
+                path);
         }
 
         public async Task<bool> HasTemplateAsync(string templateId)
