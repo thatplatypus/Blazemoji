@@ -148,5 +148,5 @@ Blazemoji.Toolchain.Local/packages/grapevine/
 Blazemoji.Toolchain.Service/package-docs/grapevine/
 Blazemoji.Core/Emojicode/Templates/grapevine-todo/
 
-# pmj for a desk, built by scripts/get-pmj.sh from the commit in packmoji.pin.
+# pmj for this machine, fetched by scripts/get-pmj.sh as the release packmoji.pin names.
 Blazemoji.Toolchain/pmj/

@@ -386,6 +386,8 @@ namespace Blazemoji.Test
         {
             Document().ShouldContain($"\"{PackmojiOptions.SectionName}\"");
             Document().ShouldContain("scripts/get-pmj.sh");
+            Document().ShouldContain("packmoji.pin");
+            Document().ShouldNotContain("has none yet");
         }
 
         private static string Document() => File.ReadAllText(Path.Combine(RepositoryRoot(), "docs", "hosting.md"));
