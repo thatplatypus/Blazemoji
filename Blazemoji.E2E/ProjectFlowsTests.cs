@@ -182,18 +182,20 @@ namespace Blazemoji.E2E
         }
 
         [Fact]
+        [Trait("Requires", "GitHub")]
         public async Task The_grapevine_todo_sample_answers_create_read_update_and_delete_from_the_request_panel()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
+            Assert.SkipUnless(await BrowserFixture.PackagesCanBeFetchedAsync(), BrowserFixture.NoPackages);
             await using var editor = await EditorPage.OpenAsync(browser);
-            Assert.SkipUnless(await editor.HasTemplateAsync("grapevine-todo"), "The Grapevine package is not built into this stack. Run scripts/build-grapevine.sh.");
 
             await editor.CreateProjectAsync("Todo API", "grapevine-todo");
             await editor.WaitForOpenFileAsync("Todo API", "main.🍇");
             await editor.ScreenshotAsync("p3-06-grapevine-project");
             await editor.RunButton.ClickAsync();
 
-            await editor.OutputLines.GetByText("Grapevine listening").WaitForAsync();
+            // The first run of a stack fetches the template's three packages and has them built.
+            await editor.OutputLines.GetByText("Grapevine listening").WaitForAsync(new LocatorWaitForOptions { Timeout = PackagesFlowsTests.BuildPatience });
             (await editor.RunStatus.InnerTextAsync()).ShouldBe("Running");
 
             await editor.SendRequestAsync("POST", "/todos", "{\"title\":\"Buy grapes\"}");

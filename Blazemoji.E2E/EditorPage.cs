@@ -179,18 +179,6 @@ namespace Blazemoji.E2E
                 path);
         }
 
-        public async Task<bool> HasTemplateAsync(string templateId)
-        {
-            await OpenTabAsync("Files");
-            await Page.GetByTestId("project-menu").GetByRole(AriaRole.Button).ClickAsync();
-            await Page.GetByTestId("new-project").ClickAsync();
-            await Page.GetByTestId("new-project-name").WaitForAsync();
-            var offered = await Page.GetByTestId("template-" + templateId).CountAsync() > 0;
-            await Dialog.GetByText("Cancel").ClickAsync();
-            await Dialog.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Detached });
-            return offered;
-        }
-
         public async Task OpenFileAsync(string project, string path)
         {
             await OpenTabAsync("Files");
@@ -341,6 +329,14 @@ namespace Blazemoji.E2E
         }
 
         public Task WaitForStatusAsync(string text) => RunStatus.GetByText(text).WaitForAsync();
+
+        /// <summary>
+        /// Waits until the open project's packages are fetched and built. Until then a locked
+        /// package has no completion. The status carries how they stand as well as its words,
+        /// which say so only while it lasts and can be over before anyone looks.
+        /// </summary>
+        public Task WaitForPackagesAsync(float patience) =>
+            Page.Locator("[data-testid=run-status][data-packages=ready]").WaitForAsync(new LocatorWaitForOptions { Timeout = patience });
 
         public async Task ScreenshotAsync(string name)
         {

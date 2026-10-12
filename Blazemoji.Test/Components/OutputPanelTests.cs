@@ -424,6 +424,22 @@ namespace Blazemoji.Test.Components
         }
 
         [Fact]
+        public async Task The_status_says_how_the_packages_stand_for_whoever_waits_on_them_without_reading_words()
+        {
+            var restoring = new TaskCompletionSource<PackageRestore>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _packageManager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(restoring.Task);
+            var cut = Render<OutputPanel>();
+            cut.Find("[data-testid=run-status]").GetAttribute("data-packages").ShouldBe("none");
+
+            var ensuring = cut.InvokeAsync(() => _packages.EnsureRestoredAsync(WithAManifest));
+
+            cut.WaitForAssertion(() => cut.Find("[data-testid=run-status]").GetAttribute("data-packages").ShouldBe("restoring"));
+            restoring.SetResult(new PackageRestore.Restored([]));
+            await ensuring;
+            cut.WaitForAssertion(() => cut.Find("[data-testid=run-status]").GetAttribute("data-packages").ShouldBe("ready"));
+        }
+
+        [Fact]
         public async Task A_package_problem_found_while_typing_is_counted_on_the_tab_and_leaves_the_person_where_they_were()
         {
             _packageManager.RestoreAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new PackageRestore.OutOfDate());

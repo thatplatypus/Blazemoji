@@ -7,11 +7,10 @@ namespace Blazemoji.E2E
     /// </summary>
     public class PackagesFlowsTests(BrowserFixture browser)
     {
-        private const string GrapevineRelease = "https://github.com/thatplatypus/grapevine/releases/download/grapevine-v0.1.0/grapevine-0.1.0.pmj.tar.gz";
 
         // Three packages are compiled the first time, one of them large. Under emulation that
         // has taken a minute and a half on a busy machine, and the toolchain allows five.
-        private const float BuildPatience = 600_000;
+        internal const float BuildPatience = 600_000;
 
         private const string DependsOnGrapevine = """
             {
@@ -22,7 +21,7 @@ namespace Blazemoji.E2E
                 "emojicode": ">=1.0.0-beta.2"
               },
               "dependencies": {
-                "@thatplatypus/grapevine": "0.1.0"
+                "@thatplatypus/grapevine": "0.2.0"
               },
               "build": {
                 "entry": "main.🍇"
@@ -39,21 +38,6 @@ namespace Blazemoji.E2E
 
             """;
 
-        private static async Task<bool> GitHubCanBeReachedAsync()
-        {
-            try
-            {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-                using var request = new HttpRequestMessage(HttpMethod.Head, GrapevineRelease);
-                using var response = await http.SendAsync(request, TestContext.Current.CancellationToken);
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
-            {
-                return false;
-            }
-        }
-
         private static string NewName() => "Packages " + Guid.NewGuid().ToString("N")[..8];
 
         [Fact]
@@ -61,7 +45,7 @@ namespace Blazemoji.E2E
         public async Task A_typed_manifest_is_resolved_on_Run_its_lockfile_appears_and_the_program_runs_against_the_package()
         {
             Assert.SkipWhen(BrowserFixture.BaseUrl is null, BrowserFixture.SkipReason);
-            Assert.SkipUnless(await GitHubCanBeReachedAsync(), "GitHub could not be reached, and this test fetches Grapevine's release from it.");
+            Assert.SkipUnless(await BrowserFixture.PackagesCanBeFetchedAsync(), BrowserFixture.NoPackages);
             await using var editor = await EditorPage.OpenAsync(browser);
             var project = NewName();
             await editor.CreateProjectAsync(project, "hello-world");
@@ -80,7 +64,7 @@ namespace Blazemoji.E2E
             var lockfile = await editor.GetCodeAsync();
             lockfile.ShouldContain("\"@thatplatypus/grapevine\"");
             lockfile.ShouldContain("\"@thatplatypus/crypto\"");
-            lockfile.ShouldContain("grapevine-0.1.0.pmj.tar.gz");
+            lockfile.ShouldContain("grapevine-0.2.0.pmj.tar.gz");
 
             // The set is built now, and the lockfile answers the manifest: a second run asks
             // nothing of GitHub and compiles nothing but the program.
