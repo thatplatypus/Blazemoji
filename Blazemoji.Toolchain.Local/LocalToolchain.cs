@@ -317,8 +317,8 @@ namespace Blazemoji.Toolchain.Local
         /// object, and the link happens here: every package archive in one group, where the
         /// order does not matter and the linker takes only what the program refers to. The two
         /// system libraries are the link hints of the standard package.
-        /// A project's own packages join the same group, and the libraries their manifests name
-        /// are linked ahead of those two. This is how pmj links, which is how a program that
+        /// A project's own packages join the same group, in place of a stock package of the
+        /// same name, and the libraries their manifests name are linked ahead of those two. This is how pmj links, which is how a program that
         /// uses its packages has to be linked.
         /// </summary>
         private async Task<bool> LinkAsync(string buildDirectory, DependencySetLease? set, CancellationToken cancellationToken)
@@ -328,7 +328,7 @@ namespace Blazemoji.Toolchain.Local
             [
                 Path.Combine(buildDirectory, ObjectFileName),
                 "-Wl,--start-group",
-                .. PackageArchives(),
+                .. StockArchives(set),
                 .. set?.Archives ?? [],
                 "-Wl,--end-group",
                 .. (set?.LinkLibraries ?? []).Select(library => "-l" + library),
@@ -354,12 +354,25 @@ namespace Blazemoji.Toolchain.Local
             }
         }
 
-        private IEnumerable<string> PackageArchives()
+        /// <summary>
+        /// The stock packages' archives, without those of a package the project supplies
+        /// itself. The compiler took the project's where both have one of a name, and the two
+        /// in one link define everything in the package twice.
+        /// </summary>
+        private IEnumerable<string> StockArchives(DependencySetLease? set)
         {
             if (!Directory.Exists(_options.PackagesPath))
                 return [];
 
+            // A package's archive is in the folder of the package's name, in a set as in the
+            // stock folder, and the folder's name is what the compiler goes by.
+            var own = (set?.Archives ?? [])
+                .Select(archive => Path.GetFileName(Path.GetDirectoryName(archive)))
+                .OfType<string>()
+                .ToHashSet(StringComparer.Ordinal);
+
             return Directory.GetDirectories(_options.PackagesPath)
+                .Where(package => !own.Contains(Path.GetFileName(package)))
                 .SelectMany(package => Directory.GetFiles(package, "lib*.a"))
                 .Order(StringComparer.Ordinal);
         }

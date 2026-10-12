@@ -46,6 +46,57 @@ namespace Blazemoji.Test.Toolchain
         }
 
         [Fact]
+        public async Task A_stock_package_that_the_set_also_supplies_is_left_out_of_the_link()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var tools = new Tools();
+            tools.AddStock("grapevine");
+            tools.AddStock("json");
+            var store = new OneSet(SetId, "/the/set/packages", ["/the/set/packages/crypto/libcrypto.a", "/the/set/packages/grapevine/libgrapevine.a"], []);
+            await using var toolchain = ToolchainFixture.Create(tools.Use, store);
+
+            var result = await toolchain.CompileAsync(Request(SetId), Cancellation);
+
+            // The compiler took the set's grapevine, being the first it found. Both archives
+            // in one link define everything in the package twice.
+            result.Ok.ShouldBeTrue(string.Join("; ", result.Diagnostics.Select(diagnostic => diagnostic.Message)));
+            Lines(tools.LinkerArguments)[1..^2].ShouldBe(
+            [
+                "-Wl,--start-group",
+                Path.Combine(tools.Stock, "json", "libjson.a"),
+                Path.Combine(tools.Stock, "s", "libs.a"),
+                "/the/set/packages/crypto/libcrypto.a",
+                "/the/set/packages/grapevine/libgrapevine.a",
+                "-Wl,--end-group",
+                "-lm",
+                "-lpthread",
+            ]);
+        }
+
+        [Fact]
+        public async Task A_compile_that_names_no_set_links_every_stock_package_whatever_a_set_supplies()
+        {
+            Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
+            var tools = new Tools();
+            tools.AddStock("grapevine");
+            var store = new OneSet(SetId, "/the/set/packages", ["/the/set/packages/grapevine/libgrapevine.a"], []);
+            await using var toolchain = ToolchainFixture.Create(tools.Use, store);
+
+            var result = await toolchain.CompileAsync(Request(null), Cancellation);
+
+            result.Ok.ShouldBeTrue();
+            Lines(tools.LinkerArguments)[1..^2].ShouldBe(
+            [
+                "-Wl,--start-group",
+                Path.Combine(tools.Stock, "grapevine", "libgrapevine.a"),
+                Path.Combine(tools.Stock, "s", "libs.a"),
+                "-Wl,--end-group",
+                "-lm",
+                "-lpthread",
+            ]);
+        }
+
+        [Fact]
         public async Task A_set_is_held_for_the_compile_and_let_go_after_it()
         {
             Assert.SkipUnless(ToolchainFixture.IsUnix, ToolchainFixture.UnixOnly);
@@ -133,8 +184,13 @@ namespace Blazemoji.Test.Toolchain
 
             public Tools()
             {
-                Directory.CreateDirectory(Path.Combine(Stock, "s"));
-                File.WriteAllText(Path.Combine(Stock, "s", "libs.a"), "archive");
+                AddStock("s");
+            }
+
+            public void AddStock(string package)
+            {
+                Directory.CreateDirectory(Path.Combine(Stock, package));
+                File.WriteAllText(Path.Combine(Stock, package, $"lib{package}.a"), "archive");
             }
 
             public string Stock => Path.Combine(_folder, "stock");
