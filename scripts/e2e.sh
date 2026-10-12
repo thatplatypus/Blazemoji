@@ -80,6 +80,15 @@ if [ "$scopes" != "thatplatypus,emojicode" ]; then
 fi
 echo "toolchain container builds packages of thatplatypus and emojicode only: ok"
 
+# The web app fetches a project's packages itself, so its image has to hold a pmj that starts
+# as the image's own user.
+if ! docker compose -p "$PROJECT" exec -T web /app/pmj/pmj --version > /dev/null 2>&1; then
+  echo "The web container has no pmj that answers at /app/pmj/pmj." >&2
+  docker compose -p "$PROJECT" logs web | tail -20 >&2
+  exit 1
+fi
+echo "web container has a pmj that answers: ok"
+
 # The tests with the real compiler and the real pmj run in the SDK image, as root, on a writable
 # disk and with a network. This is the only place the toolchain image runs as it is deployed:
 # read-only root, the app's own user, a small tmpfs at /tmp and no route out. So it is the only

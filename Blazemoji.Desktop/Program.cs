@@ -6,6 +6,7 @@ using Blazemoji.Services.Settings;
 using Blazemoji.Shared.Models.Settings;
 using Blazemoji.Shared.State;
 using Blazemoji.Toolchain.Http;
+using Blazemoji.Toolchain.Packmoji;
 using Hermes.Blazor;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -84,6 +85,10 @@ public static class Program
         builder.Services.Configure<SettingsOptions>(settings => settings.Host = SettingHosts.Desktop);
         builder.Services.AddSingleton<LocalStorageFiles>();
         builder.Services.AddBlazemojiEditor(builder.Configuration);
+
+        // One person, on their own machine: packages of any scope. It is said outright,
+        // since a host that was told no scopes takes no one's.
+        builder.Services.PostConfigure<PackmojiOptions>(packmoji => packmoji.Scopes ??= PackageScopes.Any);
 
         // What this host supplies because it is a window and not a page in a browser.
         builder.Services.AddSingleton<IExternalLinks, HermesExternalLinks>();

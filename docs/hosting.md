@@ -151,6 +151,32 @@ That is all it takes for the setting to be shown in the Settings panel, kept bet
 - **A folder is a project when it has a `blazemoji.json`.** Renaming a project in the app renames its folder, and a folder renamed by hand is found again by what its description says. Of two folders with the same description, as when one was copied, the one whose name sorts first keeps the identity and the other becomes a project of its own the next time the app starts. The `Snippets` folder is never a project and no project is given it.
 - **A link is never written through.** A folder or file in a project that is a link to somewhere else is left out, and a save that would go through one is refused, which shows as changes not being saved.
 
+## A project's packages
+
+A project that has a `packmoji.json` is a [Packmoji](https://github.com/thatplatypus/Packmoji) project. `AddBlazemojiEditor` registers what fetches its packages: the host runs `pmj`, Packmoji's command, and the toolchain service builds what was fetched. A host registers nothing more for it.
+
+`pmj` is looked for beside the app, at `pmj/pmj` (`pmj/pmj.exe` on Windows). The web image is given one by the Dockerfile. At a desk, `scripts/get-pmj.sh` builds one from the commit in `packmoji.pin` into `Blazemoji.Toolchain/pmj`, and the next build copies it beside whichever app is built. A host with no `pmj` still edits, compiles and runs every project that has no `packmoji.json`, and says one thing about a project that has one. A packed desktop app has none yet: it has no .NET beside it for this `pmj` to run on, and gets one when Packmoji publishes its own programs.
+
+What a host can set, under `"Packmoji"`:
+
+| Setting | What it is | Without it |
+| --- | --- | --- |
+| `Scopes` | Whose packages are taken: scopes with commas between them, or `*` for anyone's | No one's. The web host makes `thatplatypus,emojicode` its own default and the desktop host `*`, each in its `Program.cs` |
+| `Path` | Where `pmj` is | `pmj/pmj` beside the app |
+| `Home` | The folder `pmj` keeps what it fetched in | `pmj`'s own, `.packmoji` in the home directory, which a desktop then shares with `pmj` on the command line |
+| `Timeout` | How long one `pmj` command may take | Two minutes |
+| `MaxAtOnce` | How many `pmj` commands run at once, for everyone using the host | 4 |
+
+```json
+{ "Packmoji": { "Scopes": "thatplatypus,emojicode" } }
+```
+
+- **`pmj` is run in a temporary folder that holds the project's two files,** never in a project's own folder. The lockfile it writes comes back into the project as one of its files, and the project's store keeps it like any other.
+- **Versions are chosen only when someone runs the project.** Opening a project, and typing in it, only fetch what its lockfile already locks.
+- **No token for GitHub is used.** Fetching a release's file needs none.
+- **The toolchain service has a list of scopes of its own,** `Packmoji__Scopes`, and builds no one's packages when it is told none. `scripts/dev-toolchain.sh` tells it `*`.
+- **The desktop host leaves two folders out of a project that has a `packmoji.json`:** `packages` and `target` at its top, which is where `pmj` builds when someone runs it there themselves.
+
 ## The desktop host
 
 `Blazemoji.Desktop` is a [Hermes](https://github.com/Mythetech/Hermes) window around `<Workspace />`. The program it builds is named `Blazemoji`, after the app, which is the name packaging looks for. It targets .NET 10 with `Mythetech.Hermes.Blazor` pinned at 1.2.0, the last release built for .NET 10, so it builds with the repository's own SDK.

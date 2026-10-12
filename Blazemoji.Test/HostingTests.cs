@@ -320,6 +320,34 @@ namespace Blazemoji.Test
                 styles.ShouldContain("." + bootstraps);
         }
 
+        private static string? ScopesOfTheWebsite(string? told)
+        {
+            var settings = new Dictionary<string, string?>();
+            if (told is not null)
+                settings[PackmojiOptions.SectionName + ":Scopes"] = told;
+
+            var services = new ServiceCollection();
+            services.AddBlazemojiEditor(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+            services.AddWebsitePackageScopes();
+            using var provider = services.BuildServiceProvider();
+            return provider.GetRequiredService<IOptions<PackmojiOptions>>().Value.Scopes;
+        }
+
+        [Fact]
+        public void The_website_takes_packages_of_two_scopes_without_being_told_and_of_others_only_when_it_is()
+        {
+            ScopesOfTheWebsite(told: null).ShouldBe("thatplatypus,emojicode");
+            ScopesOfTheWebsite(told: "emojicode").ShouldBe("emojicode");
+            PackageScopes.Parse(ScopesOfTheWebsite(told: null)).Allows("@someone/thing").ShouldBeFalse();
+        }
+
+        [Fact]
+        public void The_document_says_where_packages_are_configured()
+        {
+            Document().ShouldContain($"\"{PackmojiOptions.SectionName}\"");
+            Document().ShouldContain("scripts/get-pmj.sh");
+        }
+
         private static string Document() => File.ReadAllText(Path.Combine(RepositoryRoot(), "docs", "hosting.md"));
 
         private static string FirstCodeBlock(string language)
